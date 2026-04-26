@@ -1,11 +1,54 @@
-# Generar commit semántico
+---
+description: Crea un commit en formato Conventional Commits con el mensaje apropiado según los cambios staged.
+argument-hint: [mensaje-opcional]
+---
 
-1. git status y git diff --staged
-2. Analiza cambios y determina tipo y scope
-3. Tipos: feat/fix/refactor/style/chore/docs/test
-4. Scopes: auth/products/variants/pos/inventory/
-   barcode/returns/customers/reports/config/db
-5. Muestra mensaje propuesto y espera confirmación
-6. Ejecuta el commit solo con aprobación explícita
+Crea un commit en el proyecto gmura siguiendo el flujo:
 
-Nunca commitear directo a main o develop.
+## 1. Verificar estado
+
+Ejecuta `git status` y `git diff --staged` para ver qué hay en el stage.
+Si no hay nada staged, muestra los archivos modificados con `git diff --name-only`
+y pregunta cuáles incluir antes de continuar.
+
+## 2. Determinar el mensaje
+
+Si el usuario proporcionó un mensaje como argumento (`$ARGUMENTS`), úsalo como
+base y formatearlo en Conventional Commits. Si no hay argumento, analiza los
+cambios staged y genera el mensaje más apropiado.
+
+**Formato obligatorio:**
+**Tipos válidos:**
+- `feat` — nueva funcionalidad
+- `fix` — corrección de bug
+- `refactor` — cambio de código sin cambiar comportamiento
+- `style` — cambios de formato/estilos sin lógica
+- `test` — añadir o corregir tests
+- `chore` — tareas de mantenimiento, deps, config
+- `docs` — documentación
+
+**Scopes:** auth, products, variants, pos, inventory,
+barcode, returns, customers, reports, config, db, layout
+
+## 3. Confirmar antes de commitear
+
+Muestra el mensaje propuesto y espera confirmación explícita del usuario
+antes de ejecutar el commit. No commitees sin aprobación.
+
+## 4. Ejecutar el commit
+
+```bash
+git commit -m "$(cat <<'EOF'
+<mensaje aprobado>
+EOF
+)"
+```
+
+## Restricciones
+- Nunca hacer commit directo a `main`
+- Nunca hacer commit directo a `develop` — solo a ramas `feature/*` o `hotfix/*`
+- Un commit por funcionalidad o fix completo — si los staged incluyen cambios
+  mezclados, advertirlo
+- No usar `--no-verify`
+- Después de ejecutar el commit, actualizar la sección "Estado actual del
+  proyecto" en el `CLAUDE.md` raíz reflejando la funcionalidad commiteada
