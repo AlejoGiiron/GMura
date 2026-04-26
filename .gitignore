@@ -1,0 +1,58 @@
+# Entornos
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# Node
+node_modules/
+.pnpm-store/
+
+# Build outputs
+dist/
+build/
+out/
+
+# Vite
+*.local
+
+# Supabase local
+supabase/.branches/
+supabase/.temp/
+
+# Editores
+.vscode/settings.json
+.vscode/*.code-workspace
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Testing
+coverage/
+.nyc_output/
+
+# TypeScript
+*.tsbuildinfo
+
+# Misc
+*.pem
+.vercel
+.netlify
