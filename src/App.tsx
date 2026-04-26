@@ -1,16 +1,60 @@
-import { Routes, Route } from 'react-router-dom'
+import { Routes, Route, Navigate } from 'react-router-dom'
+import { AuthProvider } from '@/contexts/AuthContext'
+import ProtectedRoute from '@/components/layout/ProtectedRoute'
+import AppLayout from '@/components/layout/AppLayout'
+import LoginPage from '@/pages/LoginPage'
+import POSPage from '@/pages/POSPage'
+import ProductsPage from '@/pages/ProductsPage'
+import InventoryPage from '@/pages/InventoryPage'
+import ReturnsPage from '@/pages/ReturnsPage'
+import CustomersPage from '@/pages/CustomersPage'
+import ReportsPage from '@/pages/ReportsPage'
+import ConfigPage from '@/pages/ConfigPage'
 
 export default function App() {
   return (
-    <Routes>
-      <Route
-        path="/"
-        element={
-          <div className="flex h-screen items-center justify-center bg-white">
-            <h1 className="font-sans text-2xl font-semibold text-slate-900">G-Mura POS</h1>
-          </div>
-        }
-      />
-    </Routes>
+    <AuthProvider>
+      <Routes>
+        <Route path="/login" element={<LoginPage />} />
+        <Route
+          path="/"
+          element={
+            <ProtectedRoute>
+              <AppLayout />
+            </ProtectedRoute>
+          }
+        >
+          <Route index element={<Navigate to="/ventas" replace />} />
+          <Route path="ventas" element={<POSPage />} />
+          <Route
+            path="productos"
+            element={
+              <ProtectedRoute allowedRoles={['admin']}>
+                <ProductsPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route path="inventario" element={<InventoryPage />} />
+          <Route path="devoluciones" element={<ReturnsPage />} />
+          <Route path="clientes" element={<CustomersPage />} />
+          <Route
+            path="reportes"
+            element={
+              <ProtectedRoute allowedRoles={['admin']}>
+                <ReportsPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="configuracion"
+            element={
+              <ProtectedRoute allowedRoles={['admin']}>
+                <ConfigPage />
+              </ProtectedRoute>
+            }
+          />
+        </Route>
+      </Routes>
+    </AuthProvider>
   )
 }
