@@ -65,7 +65,6 @@ VITE_GMURA_SUPABASE_ANON_KEY=
 - Un commit por funcionalidad completa
 
 ## Estado actual del proyecto
-[ACTUALIZAR AL INICIO DE CADA SESIÓN]
-Última fase completada: —
-En progreso: 01 - Setup y arquitectura
-Siguiente: 02 - Core POS
+Última fase completada: 03 - Inventario y variantes
+En progreso: 04 - Devoluciones y cambios
+Siguiente: 05 - Clientes y CRM
