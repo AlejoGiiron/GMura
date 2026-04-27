@@ -43,6 +43,7 @@ export interface Product {
   name: string
   description: string | null
   brand: string | null
+  image_url: string | null
   store_id: string
   category_id: string | null
   is_active: boolean
@@ -62,6 +63,7 @@ export interface Variant {
   cost_price: number | null
   stock_qty: number
   min_stock: number
+  is_active: boolean
   created_at: string
   updated_at: string
 }
@@ -168,12 +170,20 @@ export interface Database {
       }
       products: {
         Row: Product
-        Insert: Omit<Product, 'id' | 'created_at'> & { id?: string; created_at?: string }
+        Insert: Omit<Product, 'id' | 'created_at' | 'image_url'> & {
+          id?: string
+          created_at?: string
+          image_url?: string | null
+        }
         Update: Partial<Omit<Product, 'id'>>
       }
       variants: {
         Row: Variant
-        Insert: Omit<Variant, 'id' | 'created_at'> & { id?: string; created_at?: string }
+        Insert: Omit<Variant, 'id' | 'created_at' | 'is_active'> & {
+          id?: string
+          created_at?: string
+          is_active?: boolean
+        }
         Update: Partial<Omit<Variant, 'id'>>
       }
       customers: {
