@@ -21,6 +21,7 @@ import {
   Printer,
   CheckCircle,
   ChevronDown,
+  Camera,
 } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
@@ -28,9 +29,12 @@ import { useCartStore, cartTotals } from '@/stores/cartStore'
 import type { CartItem, Discount } from '@/stores/cartStore'
 import {
   usePOSSearch,
+  usePOSProducts,
   findVariantByBarcode,
 } from '@/hooks/usePOSSearch'
 import type { POSProduct, POSVariant } from '@/hooks/usePOSSearch'
+import { useBarcode } from '@/hooks/useBarcode'
+import BarcodeScanner from '@/components/pos/BarcodeScanner'
 import { useCreateOrder } from '@/hooks/useCreateOrder'
 import { useCategories } from '@/hooks/useProducts'
 import { supabase } from '@/lib/supabase'
@@ -758,9 +762,11 @@ export default function POSPage() {
   const [pickerProduct, setPickerProduct] = useState<POSProduct | null>(null)
   const [showPayment, setShowPayment] = useState(false)
   const [completedSale, setCompletedSale] = useState<CompletedSale | null>(null)
+  const [showCamera, setShowCamera] = useState(false)
   const searchRef = useRef<HTMLInputElement>(null)
 
   const { data: searchResults = [], isLoading } = usePOSSearch(query)
+  const { data: allProducts = [] } = usePOSProducts()
   const { data: categories = [] } = useCategories()
   const { items, discount, customer_id, addItem, clear } = useCartStore()
   const createOrder = useCreateOrder()
@@ -780,11 +786,65 @@ export default function POSPage() {
     return () => document.removeEventListener('keydown', handler)
   }, [])
 
-  // Barcode: Enter key auto-adds the exact matched variant
-  const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key !== 'Enter' || !query.trim()) return
-    const match = findVariantByBarcode(searchResults, query.trim())
-    if (match) {
+  // Barcode scan handler — usado por escáner USB y cámara
+  const handleScan = useCallback(
+    (code: string) => {
+      setQuery('')
+      setShowCamera(false)
+
+      const match = findVariantByBarcode(allProducts, code)
+      if (!match) {
+        toast.error(`Código no encontrado: ${code}`)
+        return
+      }
+      if (match.variant.stock_qty === 0) {
+        toast.error(`Sin stock: ${match.product.name}`)
+        return
+      }
+
+      addItem({
+        variant_id: match.variant.id,
+        product_id: match.product.id,
+        name: match.product.name,
+        size: match.variant.size,
+        color: match.variant.color,
+        unit_price: match.variant.price,
+        stock_qty: match.variant.stock_qty,
+      })
+
+      const detail = [
+        match.variant.size && `talla ${match.variant.size}`,
+        match.variant.color,
+      ]
+        .filter(Boolean)
+        .join(' ')
+      toast.success(
+        `Añadido: ${match.product.name}${detail ? ` — ${detail}` : ''}`,
+      )
+    },
+    [allProducts, addItem],
+  )
+
+  const { isCameraActive, startCamera, stopCamera, handleKeyDown: barcodeKeyDown } =
+    useBarcode(handleScan)
+
+  // Combina detección de escáner USB con búsqueda manual por Enter
+  const handleSearchKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLInputElement>) => {
+      const consumed = barcodeKeyDown(e)
+      if (consumed) {
+        setQuery('')
+        return
+      }
+      // Enter manual — intenta coincidir con barcode en la búsqueda actual
+      if (e.key !== 'Enter' || !query.trim()) return
+      const match = findVariantByBarcode(searchResults, query.trim())
+      if (!match) return
+      if (match.variant.stock_qty === 0) {
+        toast.error(`Sin stock: ${match.product.name}`)
+        setQuery('')
+        return
+      }
       addItem({
         variant_id: match.variant.id,
         product_id: match.product.id,
@@ -795,9 +855,10 @@ export default function POSPage() {
         stock_qty: match.variant.stock_qty,
       })
       setQuery('')
-      toast.success(`${match.product.name} agregado`)
-    }
-  }
+      toast.success(`Añadido: ${match.product.name}`)
+    },
+    [barcodeKeyDown, query, searchResults, addItem],
+  )
 
   const displayed = useMemo(() => {
     if (activeCat === 'all') return searchResults
@@ -861,6 +922,17 @@ export default function POSPage() {
                 <X size={15} />
               </button>
             )}
+            <button
+              onClick={() => setShowCamera(true)}
+              title="Escanear con cámara"
+              className={`flex h-7 w-7 items-center justify-center rounded-lg border transition-colors ${
+                isCameraActive
+                  ? 'border-violet-300 bg-violet-50 text-violet-500'
+                  : 'border-slate-200 bg-white text-slate-400 hover:text-violet-500'
+              }`}
+            >
+              <Camera size={14} />
+            </button>
             <kbd className="rounded-md border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-medium text-slate-400">
               ⌘K
             </kbd>
@@ -950,6 +1022,17 @@ export default function POSPage() {
           items={completedSale.items}
           discount={completedSale.discount}
           onClose={handleTicketClose}
+        />
+      )}
+
+      {showCamera && (
+        <BarcodeScanner
+          startCamera={startCamera}
+          stopCamera={stopCamera}
+          onClose={() => {
+            stopCamera()
+            setShowCamera(false)
+          }}
         />
       )}
     </div>

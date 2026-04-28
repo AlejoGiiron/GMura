@@ -1,7 +1,8 @@
 import { useState } from 'react'
-import { X, Plus, AlertTriangle, Edit2, ToggleRight } from 'lucide-react'
+import { X, Plus, AlertTriangle, Edit2, ToggleRight, Printer } from 'lucide-react'
 import { useVariants } from '@/hooks/useVariants'
 import { useVariantMutations } from '@/hooks/useVariantMutations'
+import LabelPrintModal from '@/components/products/LabelPrintModal'
 import { fmtCOP } from '@/lib/formatters'
 import { generateBarcode, getColorHex, SIZES } from '@/lib/products'
 import type { Product, Variant } from '@/types/database.types'
@@ -55,6 +56,10 @@ export default function VariantsPanel({ product, onClose }: VariantsPanelProps) 
   const [editingId, setEditingId] = useState<string | null>(null)
   const [form, setForm] = useState<VariantFormData>(EMPTY_FORM)
   const [submitting, setSubmitting] = useState(false)
+
+  // Label printing state
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [labelVariants, setLabelVariants] = useState<Variant[] | null>(null)
 
   function openAdd() {
     setEditingId(null)
@@ -125,342 +130,405 @@ export default function VariantsPanel({ product, onClose }: VariantsPanelProps) 
     }
   }
 
+  function toggleSelect(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  function openLabelModal(vs: Variant[]) {
+    if (vs.length === 0) return
+    setLabelVariants(vs)
+  }
+
   const activeVariants = variants.filter((v) => v.is_active)
   const inactiveVariants = variants.filter((v) => !v.is_active)
+  const selectedVariants = activeVariants.filter((v) => selectedIds.has(v.id))
 
   return (
-    <div
-      onClick={onClose}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm"
-    >
+    <>
       <div
-        onClick={(e) => e.stopPropagation()}
-        className="flex h-[90vh] w-[720px] flex-col overflow-hidden rounded-2xl bg-white shadow-2xl"
+        onClick={onClose}
+        className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm"
       >
-        {/* Header */}
-        <div className="flex items-start justify-between border-b border-slate-100 px-6 py-5">
-          <div>
-            <h2 className="text-xl font-semibold tracking-tight text-slate-900">
-              Gestionar variantes
-            </h2>
-            <p className="mt-0.5 text-sm text-slate-400">
-              {product.name} · {activeVariants.length} activa
-              {activeVariants.length !== 1 ? 's' : ''}
-            </p>
-          </div>
-          <button
-            onClick={onClose}
-            className="grid h-7 w-7 place-items-center rounded-lg bg-slate-100 text-slate-500 hover:bg-slate-200"
-          >
-            <X size={14} />
-          </button>
-        </div>
-
-        {/* Scrollable body */}
-        <div className="flex-1 overflow-y-auto">
-          {/* Variant form */}
-          {showForm && (
-            <div className="border-b border-slate-100 bg-slate-50 px-6 py-5">
-              <h3 className="mb-4 text-sm font-semibold text-slate-700">
-                {editingId ? 'Editar variante' : 'Nueva variante'}
-              </h3>
-              <div className="space-y-3">
-                {/* Row 1: size + color + SKU */}
-                <div className="grid grid-cols-3 gap-3">
-                  <div>
-                    <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-slate-400">
-                      Talla
-                    </label>
-                    <select
-                      value={form.size}
-                      onChange={(e) => setField('size', e.target.value)}
-                      className="h-9 w-full rounded-lg border border-slate-200 bg-white px-2.5 text-sm outline-none focus:border-violet-400"
-                    >
-                      {SIZES.map((s) => (
-                        <option key={s} value={s}>
-                          {s}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-slate-400">
-                      Color
-                    </label>
-                    <input
-                      value={form.color}
-                      onChange={(e) => setField('color', e.target.value)}
-                      placeholder="Negro, Rojo…"
-                      className="h-9 w-full rounded-lg border border-slate-200 px-2.5 text-sm outline-none focus:border-violet-400"
-                    />
-                  </div>
-                  <div>
-                    <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-slate-400">
-                      SKU
-                    </label>
-                    <input
-                      value={form.sku}
-                      onChange={(e) => setField('sku', e.target.value)}
-                      placeholder="Opcional"
-                      className="h-9 w-full rounded-lg border border-slate-200 px-2.5 text-sm outline-none focus:border-violet-400"
-                    />
-                  </div>
-                </div>
-
-                {/* Barcode */}
-                <div>
-                  <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-slate-400">
-                    Código de barras
-                  </label>
-                  <div className="flex gap-2">
-                    <input
-                      value={form.barcode}
-                      onChange={(e) => setField('barcode', e.target.value)}
-                      placeholder="Dejar vacío para generar automáticamente"
-                      className="h-9 flex-1 rounded-lg border border-slate-200 px-2.5 font-mono text-sm outline-none focus:border-violet-400"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setField('barcode', generateBarcode())}
-                      className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs font-medium text-slate-600 hover:bg-slate-50"
-                    >
-                      Generar
-                    </button>
-                  </div>
-                </div>
-
-                {/* Prices */}
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-slate-400">
-                      Precio venta (COP)
-                    </label>
-                    <input
-                      type="number"
-                      min="0"
-                      step="1000"
-                      value={form.price}
-                      onChange={(e) => setField('price', e.target.value)}
-                      placeholder="0"
-                      className="h-9 w-full rounded-lg border border-slate-200 px-2.5 font-mono text-sm outline-none focus:border-violet-400"
-                    />
-                  </div>
-                  <div>
-                    <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-slate-400">
-                      Precio costo (COP)
-                    </label>
-                    <input
-                      type="number"
-                      min="0"
-                      step="1000"
-                      value={form.cost_price}
-                      onChange={(e) => setField('cost_price', e.target.value)}
-                      placeholder="Opcional"
-                      className="h-9 w-full rounded-lg border border-slate-200 px-2.5 font-mono text-sm outline-none focus:border-violet-400"
-                    />
-                  </div>
-                </div>
-
-                {/* Stock */}
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-slate-400">
-                      Stock inicial
-                    </label>
-                    <input
-                      type="number"
-                      min="0"
-                      value={form.stock_qty}
-                      onChange={(e) => setField('stock_qty', e.target.value)}
-                      className="h-9 w-full rounded-lg border border-slate-200 px-2.5 font-mono text-sm outline-none focus:border-violet-400"
-                    />
-                  </div>
-                  <div>
-                    <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-slate-400">
-                      Stock mínimo
-                    </label>
-                    <input
-                      type="number"
-                      min="0"
-                      value={form.min_stock}
-                      onChange={(e) => setField('min_stock', e.target.value)}
-                      className="h-9 w-full rounded-lg border border-slate-200 px-2.5 font-mono text-sm outline-none focus:border-violet-400"
-                    />
-                  </div>
-                </div>
-
-                {/* Form actions */}
-                <div className="flex gap-2 pt-1">
-                  <button
-                    type="button"
-                    onClick={cancelForm}
-                    className="h-9 flex-1 rounded-lg border border-slate-200 text-sm font-medium text-slate-600 hover:bg-white"
-                  >
-                    Cancelar
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void handleSubmit()}
-                    disabled={submitting}
-                    className="h-9 flex-[2] rounded-lg bg-violet-500 text-sm font-semibold text-white hover:bg-violet-600 disabled:opacity-50"
-                  >
-                    {submitting ? 'Guardando…' : editingId ? 'Guardar cambios' : 'Crear variante'}
-                  </button>
-                </div>
-              </div>
+        <div
+          onClick={(e) => e.stopPropagation()}
+          className="flex h-[90vh] w-[760px] flex-col overflow-hidden rounded-2xl bg-white shadow-2xl"
+        >
+          {/* Header */}
+          <div className="flex items-start justify-between border-b border-slate-100 px-6 py-5">
+            <div>
+              <h2 className="text-xl font-semibold tracking-tight text-slate-900">
+                Gestionar variantes
+              </h2>
+              <p className="mt-0.5 text-sm text-slate-400">
+                {product.name} · {activeVariants.length} activa
+                {activeVariants.length !== 1 ? 's' : ''}
+              </p>
             </div>
-          )}
-
-          {/* Add button */}
-          {!showForm && (
-            <div className="px-6 pt-5">
+            <div className="flex items-center gap-2">
+              {selectedVariants.length > 1 && (
+                <button
+                  onClick={() => openLabelModal(selectedVariants)}
+                  className="flex h-8 items-center gap-1.5 rounded-lg border border-[#ebe9e6] bg-white px-3 text-xs font-medium text-[#525252] hover:bg-[#f8f7f5]"
+                >
+                  <Printer size={12} />
+                  Etiquetas seleccionadas ({selectedVariants.length})
+                </button>
+              )}
               <button
-                onClick={openAdd}
-                className="flex h-10 w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed border-slate-200 text-sm font-medium text-violet-500 hover:border-violet-300 hover:bg-violet-50"
+                onClick={onClose}
+                className="grid h-7 w-7 place-items-center rounded-lg bg-slate-100 text-slate-500 hover:bg-slate-200"
               >
-                <Plus size={14} />
-                Nueva variante
+                <X size={14} />
               </button>
             </div>
-          )}
+          </div>
 
-          {isLoading && (
-            <div className="px-6 py-8 text-center text-sm text-slate-400">
-              Cargando variantes…
-            </div>
-          )}
-
-          {/* Active variants table */}
-          {activeVariants.length > 0 && (
-            <div className="px-6 pt-4 pb-2">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-slate-100">
-                    {['Talla', 'Color', 'SKU', 'Precio', 'Stock', ''].map((h) => (
-                      <th
-                        key={h}
-                        className={`pb-2.5 text-[11px] font-semibold uppercase tracking-wider text-slate-400 ${h === 'Precio' || h === 'Stock' ? 'text-right' : 'text-left'}`}
+          {/* Scrollable body */}
+          <div className="flex-1 overflow-y-auto">
+            {/* Variant form */}
+            {showForm && (
+              <div className="border-b border-slate-100 bg-slate-50 px-6 py-5">
+                <h3 className="mb-4 text-sm font-semibold text-slate-700">
+                  {editingId ? 'Editar variante' : 'Nueva variante'}
+                </h3>
+                <div className="space-y-3">
+                  {/* Row 1: size + color + SKU */}
+                  <div className="grid grid-cols-3 gap-3">
+                    <div>
+                      <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                        Talla
+                      </label>
+                      <select
+                        value={form.size}
+                        onChange={(e) => setField('size', e.target.value)}
+                        className="h-9 w-full rounded-lg border border-slate-200 bg-white px-2.5 text-sm outline-none focus:border-violet-400"
                       >
-                        {h}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {activeVariants.map((v) => {
-                    const isLow = v.stock_qty > 0 && v.stock_qty <= v.min_stock
-                    const isOut = v.stock_qty === 0
-                    return (
-                      <tr key={v.id} className="border-b border-slate-50">
-                        <td className="py-2.5">
-                          <span className="inline-flex h-6 min-w-[32px] items-center justify-center rounded-md bg-slate-100 px-2 text-xs font-semibold">
-                            {v.size ?? '—'}
-                          </span>
-                        </td>
-                        <td className="py-2.5">
-                          <span className="flex items-center gap-1.5 text-sm">
-                            <span
-                              className="h-3.5 w-3.5 flex-shrink-0 rounded-full shadow-[0_0_0_1px_rgba(0,0,0,0.1)]"
-                              style={{ background: getColorHex(v.color ?? '') }}
-                            />
-                            {v.color ?? '—'}
-                          </span>
-                        </td>
-                        <td className="py-2.5 font-mono text-xs text-slate-500">
-                          {v.sku ?? '—'}
-                        </td>
-                        <td className="py-2.5 text-right font-mono text-sm">{fmtCOP(v.price)}</td>
-                        <td className="py-2.5 text-right">
-                          <span
-                            className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold ${
-                              isOut
-                                ? 'bg-red-50 text-red-700'
-                                : isLow
-                                  ? 'bg-amber-50 text-amber-700'
-                                  : 'bg-emerald-50 text-emerald-700'
-                            }`}
-                          >
-                            {(isOut || isLow) && <AlertTriangle size={10} />}
-                            {v.stock_qty}
-                          </span>
-                        </td>
-                        <td className="py-2.5 text-right">
-                          <div className="flex justify-end gap-1">
-                            <button
-                              onClick={() => openEdit(v)}
-                              title="Editar variante"
-                              className="grid h-7 w-7 place-items-center rounded-md border border-slate-200 text-slate-400 hover:bg-slate-50 hover:text-slate-600"
-                            >
-                              <Edit2 size={12} />
-                            </button>
-                            <button
-                              onClick={() =>
-                                void toggleActive.mutateAsync({ id: v.id, isActive: v.is_active })
-                              }
-                              title="Desactivar variante"
-                              className="grid h-7 w-7 place-items-center rounded-md border border-slate-200 text-slate-400 hover:bg-slate-50 hover:text-red-500"
-                            >
-                              <ToggleRight size={14} />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
+                        {SIZES.map((s) => (
+                          <option key={s} value={s}>
+                            {s}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                        Color
+                      </label>
+                      <input
+                        value={form.color}
+                        onChange={(e) => setField('color', e.target.value)}
+                        placeholder="Negro, Rojo…"
+                        className="h-9 w-full rounded-lg border border-slate-200 px-2.5 text-sm outline-none focus:border-violet-400"
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                        SKU
+                      </label>
+                      <input
+                        value={form.sku}
+                        onChange={(e) => setField('sku', e.target.value)}
+                        placeholder="Opcional"
+                        className="h-9 w-full rounded-lg border border-slate-200 px-2.5 text-sm outline-none focus:border-violet-400"
+                      />
+                    </div>
+                  </div>
 
-          {/* Inactive variants */}
-          {inactiveVariants.length > 0 && (
-            <div className="px-6 py-4">
-              <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-400">
-                Inactivas ({inactiveVariants.length})
-              </p>
-              <div className="space-y-1">
-                {inactiveVariants.map((v) => (
-                  <div
-                    key={v.id}
-                    className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2"
-                  >
-                    <span className="text-sm text-slate-400">
-                      {v.size ?? '—'} · {v.color ?? '—'}
-                      {v.sku && ` · ${v.sku}`}
-                    </span>
+                  {/* Barcode */}
+                  <div>
+                    <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                      Código de barras
+                    </label>
+                    <div className="flex gap-2">
+                      <input
+                        value={form.barcode}
+                        onChange={(e) => setField('barcode', e.target.value)}
+                        placeholder="Dejar vacío para generar automáticamente"
+                        className="h-9 flex-1 rounded-lg border border-slate-200 px-2.5 font-mono text-sm outline-none focus:border-violet-400"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setField('barcode', generateBarcode())}
+                        className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs font-medium text-slate-600 hover:bg-slate-50"
+                      >
+                        Generar
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Prices */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                        Precio venta (COP)
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        step="1000"
+                        value={form.price}
+                        onChange={(e) => setField('price', e.target.value)}
+                        placeholder="0"
+                        className="h-9 w-full rounded-lg border border-slate-200 px-2.5 font-mono text-sm outline-none focus:border-violet-400"
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                        Precio costo (COP)
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        step="1000"
+                        value={form.cost_price}
+                        onChange={(e) => setField('cost_price', e.target.value)}
+                        placeholder="Opcional"
+                        className="h-9 w-full rounded-lg border border-slate-200 px-2.5 font-mono text-sm outline-none focus:border-violet-400"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Stock */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                        Stock inicial
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={form.stock_qty}
+                        onChange={(e) => setField('stock_qty', e.target.value)}
+                        className="h-9 w-full rounded-lg border border-slate-200 px-2.5 font-mono text-sm outline-none focus:border-violet-400"
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                        Stock mínimo
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={form.min_stock}
+                        onChange={(e) => setField('min_stock', e.target.value)}
+                        className="h-9 w-full rounded-lg border border-slate-200 px-2.5 font-mono text-sm outline-none focus:border-violet-400"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Form actions */}
+                  <div className="flex gap-2 pt-1">
                     <button
-                      onClick={() =>
-                        void toggleActive.mutateAsync({ id: v.id, isActive: v.is_active })
-                      }
-                      className="text-xs font-medium text-violet-500 hover:text-violet-700"
+                      type="button"
+                      onClick={cancelForm}
+                      className="h-9 flex-1 rounded-lg border border-slate-200 text-sm font-medium text-slate-600 hover:bg-white"
                     >
-                      Activar
+                      Cancelar
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void handleSubmit()}
+                      disabled={submitting}
+                      className="h-9 flex-[2] rounded-lg bg-violet-500 text-sm font-semibold text-white hover:bg-violet-600 disabled:opacity-50"
+                    >
+                      {submitting ? 'Guardando…' : editingId ? 'Guardar cambios' : 'Crear variante'}
                     </button>
                   </div>
-                ))}
+                </div>
               </div>
-            </div>
-          )}
+            )}
 
-          {!isLoading && variants.length === 0 && !showForm && (
-            <div className="px-6 py-10 text-center">
-              <p className="text-sm text-slate-400">
-                Sin variantes todavía. Agrega la primera con el botón de arriba.
-              </p>
-            </div>
-          )}
-        </div>
+            {/* Add button */}
+            {!showForm && (
+              <div className="px-6 pt-5">
+                <button
+                  onClick={openAdd}
+                  className="flex h-10 w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed border-slate-200 text-sm font-medium text-violet-500 hover:border-violet-300 hover:bg-violet-50"
+                >
+                  <Plus size={14} />
+                  Nueva variante
+                </button>
+              </div>
+            )}
 
-        {/* Footer */}
-        <div className="border-t border-slate-100 px-6 py-4">
-          <button
-            onClick={onClose}
-            className="h-10 w-full rounded-xl bg-slate-900 text-sm font-semibold text-white hover:bg-slate-700"
-          >
-            Listo
-          </button>
+            {isLoading && (
+              <div className="px-6 py-8 text-center text-sm text-slate-400">
+                Cargando variantes…
+              </div>
+            )}
+
+            {/* Active variants table */}
+            {activeVariants.length > 0 && (
+              <div className="px-6 pb-2 pt-4">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-slate-100">
+                      <th className="w-8 pb-2.5 text-left" />
+                      {['Talla', 'Color', 'SKU', 'Precio', 'Stock', ''].map((h) => (
+                        <th
+                          key={h}
+                          className={`pb-2.5 text-[11px] font-semibold uppercase tracking-wider text-slate-400 ${
+                            h === 'Precio' || h === 'Stock' ? 'text-right' : 'text-left'
+                          }`}
+                        >
+                          {h}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {activeVariants.map((v) => {
+                      const isLow = v.stock_qty > 0 && v.stock_qty <= v.min_stock
+                      const isOut = v.stock_qty === 0
+                      const isSelected = selectedIds.has(v.id)
+                      return (
+                        <tr
+                          key={v.id}
+                          className={`border-b border-slate-50 ${isSelected ? 'bg-violet-50/40' : ''}`}
+                        >
+                          {/* Checkbox */}
+                          <td className="py-2.5 pr-2">
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={() => toggleSelect(v.id)}
+                              className="h-4 w-4 cursor-pointer rounded accent-violet-500"
+                            />
+                          </td>
+                          <td className="py-2.5">
+                            <span className="inline-flex h-6 min-w-[32px] items-center justify-center rounded-md bg-slate-100 px-2 text-xs font-semibold">
+                              {v.size ?? '—'}
+                            </span>
+                          </td>
+                          <td className="py-2.5">
+                            <span className="flex items-center gap-1.5 text-sm">
+                              <span
+                                className="h-3.5 w-3.5 flex-shrink-0 rounded-full shadow-[0_0_0_1px_rgba(0,0,0,0.1)]"
+                                style={{ background: getColorHex(v.color ?? '') }}
+                              />
+                              {v.color ?? '—'}
+                            </span>
+                          </td>
+                          <td className="py-2.5 font-mono text-xs text-slate-500">
+                            {v.sku ?? '—'}
+                          </td>
+                          <td className="py-2.5 text-right font-mono text-sm">
+                            {fmtCOP(v.price)}
+                          </td>
+                          <td className="py-2.5 text-right">
+                            <span
+                              className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+                                isOut
+                                  ? 'bg-red-50 text-red-700'
+                                  : isLow
+                                    ? 'bg-amber-50 text-amber-700'
+                                    : 'bg-emerald-50 text-emerald-700'
+                              }`}
+                            >
+                              {(isOut || isLow) && <AlertTriangle size={10} />}
+                              {v.stock_qty}
+                            </span>
+                          </td>
+                          <td className="py-2.5 text-right">
+                            <div className="flex justify-end gap-1">
+                              {/* Etiqueta */}
+                              <button
+                                onClick={() => openLabelModal([v])}
+                                title="Imprimir etiqueta"
+                                className="grid h-7 w-7 place-items-center rounded-md border border-slate-200 text-slate-400 hover:bg-slate-50 hover:text-violet-500"
+                              >
+                                <Printer size={12} />
+                              </button>
+                              <button
+                                onClick={() => openEdit(v)}
+                                title="Editar variante"
+                                className="grid h-7 w-7 place-items-center rounded-md border border-slate-200 text-slate-400 hover:bg-slate-50 hover:text-slate-600"
+                              >
+                                <Edit2 size={12} />
+                              </button>
+                              <button
+                                onClick={() =>
+                                  void toggleActive.mutateAsync({ id: v.id, isActive: v.is_active })
+                                }
+                                title="Desactivar variante"
+                                className="grid h-7 w-7 place-items-center rounded-md border border-slate-200 text-slate-400 hover:bg-slate-50 hover:text-red-500"
+                              >
+                                <ToggleRight size={14} />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {/* Inactive variants */}
+            {inactiveVariants.length > 0 && (
+              <div className="px-6 py-4">
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-400">
+                  Inactivas ({inactiveVariants.length})
+                </p>
+                <div className="space-y-1">
+                  {inactiveVariants.map((v) => (
+                    <div
+                      key={v.id}
+                      className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2"
+                    >
+                      <span className="text-sm text-slate-400">
+                        {v.size ?? '—'} · {v.color ?? '—'}
+                        {v.sku && ` · ${v.sku}`}
+                      </span>
+                      <button
+                        onClick={() =>
+                          void toggleActive.mutateAsync({ id: v.id, isActive: v.is_active })
+                        }
+                        className="text-xs font-medium text-violet-500 hover:text-violet-700"
+                      >
+                        Activar
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {!isLoading && variants.length === 0 && !showForm && (
+              <div className="px-6 py-10 text-center">
+                <p className="text-sm text-slate-400">
+                  Sin variantes todavía. Agrega la primera con el botón de arriba.
+                </p>
+              </div>
+            )}
+          </div>
+
+          {/* Footer */}
+          <div className="border-t border-slate-100 px-6 py-4">
+            <button
+              onClick={onClose}
+              className="h-10 w-full rounded-xl bg-slate-900 text-sm font-semibold text-white hover:bg-slate-700"
+            >
+              Listo
+            </button>
+          </div>
         </div>
       </div>
-    </div>
+
+      {/* Label print modal */}
+      {labelVariants && (
+        <LabelPrintModal
+          productName={product.name}
+          variants={labelVariants}
+          onClose={() => setLabelVariants(null)}
+        />
+      )}
+    </>
   )
 }

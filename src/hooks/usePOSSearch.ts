@@ -34,7 +34,7 @@ interface RawProduct {
   variants: POSVariant[]
 }
 
-function usePOSProducts() {
+export function usePOSProducts() {
   const { profile } = useAuth()
   const storeId = profile?.store_id ?? ''
 
