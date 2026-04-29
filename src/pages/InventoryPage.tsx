@@ -118,10 +118,10 @@ function SummaryCard({ label, value, icon: Icon, tone = 'normal', mono }: Summar
       </div>
       <p
         className={`leading-none tracking-[-0.025em] tabular-nums ${
-          mono ? 'font-mono text-[22px] font-semibold' : 'text-[28px] font-semibold'
+          mono ? 'font-mono text-[22px] font-semibold' : 'text-[28px] font-bold'
         }`}
         style={{
-          fontFamily: mono ? undefined : 'Bricolage Grotesque, serif',
+          fontFamily: mono ? undefined : "'Bricolage Grotesque', sans-serif",
           color: valueColors[tone],
         }}
       >
@@ -217,7 +217,7 @@ function AdjustModal({ open, onClose }: AdjustModalProps) {
             <h2
               className="tracking-[-0.025em]"
               style={{
-                fontFamily: 'Bricolage Grotesque, serif',
+                fontFamily: 'Bricolage Grotesque, sans-serif',
                 fontSize: 22,
                 fontWeight: 600,
                 color: '#1a1a1a',
@@ -316,7 +316,7 @@ function AdjustModal({ open, onClose }: AdjustModalProps) {
                   </p>
                   <p
                     className="text-[28px] font-bold tabular-nums leading-none"
-                    style={{ fontFamily: 'Bricolage Grotesque, serif', color: '#1a1a1a' }}
+                    style={{ fontFamily: 'Bricolage Grotesque, sans-serif', color: '#1a1a1a' }}
                   >
                     {selectedVariant.stock_qty}
                   </p>
@@ -578,7 +578,7 @@ export default function InventoryPage() {
           <h1
             className="tracking-[-0.02em]"
             style={{
-              fontFamily: 'Bricolage Grotesque, serif',
+              fontFamily: 'Bricolage Grotesque, sans-serif',
               fontSize: 20,
               fontWeight: 600,
               color: '#1a1a1a',

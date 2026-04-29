@@ -190,7 +190,7 @@ export default function LabelPrintModal({
             <div>
               <h2
                 style={{
-                  fontFamily: 'Bricolage Grotesque, serif',
+                  fontFamily: 'Bricolage Grotesque, sans-serif',
                   fontSize: 22,
                   fontWeight: 600,
                   letterSpacing: '-0.025em',
