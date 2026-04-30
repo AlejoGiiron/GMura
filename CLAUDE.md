@@ -65,10 +65,19 @@ VITE_GMURA_SUPABASE_ANON_KEY=
 - Un commit por funcionalidad completa
 
 ## Estado actual del proyecto
-Última fase completada: 06 - Reportes ✅
-  - Vistas SQL: daily_sales_summary, product_performance, inventory_status, returns_summary
-  - Hooks: useReports, useDailySummary, useInventoryReport (staleTime 5 min)
-  - ReportsPage.tsx: selector de período, 6 KPIs con comparación, 4 gráficas Recharts,
-    tabla de variantes ordenable, resumen de inventario, exportación Excel (4 hojas)
+Última fase completada: 07 - Configuración ✅
+  - src/types/config.types.ts: StoreConfig, StoreColorConfig, LabelFields, LabelFormat
+  - src/hooks/useConfig.ts: useStoreConfig, useStoreUsers, resolveConfig, DEFAULT_CONFIG
+  - src/hooks/useConfigMutations.ts: updateStore, updateStoreConfig, uploadLogo,
+    uploadNequiQR, createUser (Edge Function), updateUserRole, toggleUserActive
+  - supabase/functions/create-user/index.ts: Deno Edge Function con admin client
+  - ConfigPage.tsx: layout nav w-56 + 5 secciones (Tienda, Usuarios, Productos, Caja, Etiquetas)
+  - StoreSection: nombre/dirección/teléfono, logo upload circular, zona horaria
+  - UsersSection: lista con avatar gradiente, badges de rol, toggles activo/inactivo, modal crear usuario
+  - ProductsSection: drag-and-drop de tallas, color picker nativo, marcas, días devolución
+  - CajaSection: motivos de ajuste, métodos de pago checkboxes, QR Nequi upload
+  - EtiquetasSection: formato radio (3 tamaños), campos checkboxes, preview JsBarcode en vivo
+  - stores.config (jsonb) centraliza: sizes, colors, brands, return_days_limit,
+    adjustment_reasons, payment_methods, nequi_qr_url, label_format, label_fields
 En progreso: —
-Siguiente: 07 - Configuración (ConfigPage) o merge a develop
+Siguiente: merge feature/07-configuracion → develop
