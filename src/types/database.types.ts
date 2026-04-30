@@ -150,6 +150,68 @@ export interface CashShift {
   updated_at: string
 }
 
+// ── Views ─────────────────────────────────────────────────────────────────────
+
+export interface DailySalesSummary {
+  store_id: string
+  sale_date: string          // 'YYYY-MM-DD'
+  payment_method: PaymentMethod
+  order_count: number
+  items_sold: number
+  subtotal_sum: number
+  discount_sum: number
+  total_sum: number
+  avg_ticket: number
+}
+
+export interface ProductPerformance {
+  variant_id: string
+  product_id: string
+  product_name: string
+  brand: string | null
+  category_name: string | null
+  size: string | null
+  color: string | null
+  sku: string | null
+  barcode: string | null
+  store_id: string
+  units_sold: number
+  revenue: number
+  return_units: number
+  net_units: number
+  net_revenue: number
+}
+
+export interface InventoryStatus {
+  variant_id: string
+  product_id: string
+  product_name: string
+  brand: string | null
+  category_name: string | null
+  size: string | null
+  color: string | null
+  sku: string | null
+  barcode: string | null
+  store_id: string
+  stock_qty: number
+  min_stock: number
+  price: number
+  cost_price: number | null
+  stock_value: number
+  stock_state: 'out' | 'low' | 'ok'
+}
+
+export interface ReturnsSummary {
+  store_id: string
+  return_date: string        // 'YYYY-MM-DD'
+  return_type: ReturnType
+  return_count: number
+  items_returned: number
+  refund_amount: number
+}
+
+// ── Database schema ───────────────────────────────────────────────────────────
+
 export interface Database {
   public: {
     Tables: {
@@ -222,7 +284,12 @@ export interface Database {
         Update: Partial<Omit<CashShift, 'id'>>
       }
     }
-    Views: Record<string, never>
+    Views: {
+      daily_sales_summary: { Row: DailySalesSummary }
+      product_performance:  { Row: ProductPerformance }
+      inventory_status:     { Row: InventoryStatus }
+      returns_summary:      { Row: ReturnsSummary }
+    }
     Functions: Record<string, never>
     Enums: Record<string, never>
   }
