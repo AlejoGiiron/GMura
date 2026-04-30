@@ -42,6 +42,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { fmtCOP } from '@/lib/formatters'
 import { getColorHex } from '@/lib/products'
 import { useDebounce } from '@/hooks/useDebounce'
+import { useCreateCustomer } from '@/hooks/useCustomerMutations'
 import type { Customer, PaymentMethod, Order } from '@/types/database.types'
 
 // ── Customer search hook ─────────────────────────────────────────────────────
@@ -494,6 +495,115 @@ function ProductCard({ product, onClick }: ProductCardProps) {
   )
 }
 
+// ── Customer helpers ──────────────────────────────────────────────────────────
+
+function customerInitials(name: string): string {
+  return name
+    .split(' ')
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((w) => w[0]?.toUpperCase() ?? '')
+    .join('')
+}
+
+// ── Quick create modal ────────────────────────────────────────────────────────
+
+interface QuickCreateModalProps {
+  prefillName: string
+  onCreated: (c: Customer) => void
+  onClose: () => void
+}
+
+function QuickCreateModal({ prefillName, onCreated, onClose }: QuickCreateModalProps) {
+  const [name, setName] = useState(prefillName)
+  const [phone, setPhone] = useState('')
+  const [nameErr, setNameErr] = useState('')
+  const [phoneErr, setPhoneErr] = useState('')
+  const createCustomer = useCreateCustomer()
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+    }
+    document.addEventListener('keydown', handler)
+    return () => document.removeEventListener('keydown', handler)
+  }, [onClose])
+
+  const handleSave = () => {
+    let ok = true
+    if (name.trim().length < 2) { setNameErr('Mínimo 2 caracteres'); ok = false }
+    if (phone.trim().length < 7) { setPhoneErr('Teléfono inválido'); ok = false }
+    if (!ok) return
+
+    createCustomer.mutate(
+      { full_name: name.trim(), phone: phone.trim(), email: '', document_id: '', notes: '' },
+      {
+        onSuccess: (c) => {
+          onCreated(c)
+          onClose()
+        },
+      },
+    )
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-[rgba(15,23,42,0.5)] backdrop-blur-[2px]"
+      onClick={onClose}
+    >
+      <div
+        className="mx-4 w-full max-w-sm rounded-2xl bg-white p-6 shadow-[0_20px_60px_rgba(0,0,0,0.25)]"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="mb-4 flex items-center justify-between">
+          <p className="text-base font-semibold text-slate-900">Crear cliente rápido</p>
+          <button onClick={onClose} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100">
+            <X size={15} />
+          </button>
+        </div>
+
+        <div className="space-y-3">
+          <div>
+            <input
+              autoFocus
+              value={name}
+              onChange={(e) => { setName(e.target.value); setNameErr('') }}
+              placeholder="Nombre completo *"
+              className="h-10 w-full rounded-lg border border-slate-200 px-3 text-sm outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-100"
+            />
+            {nameErr && <p className="mt-1 text-[11px] text-red-500">{nameErr}</p>}
+          </div>
+          <div>
+            <input
+              value={phone}
+              onChange={(e) => { setPhone(e.target.value); setPhoneErr('') }}
+              placeholder="Teléfono *"
+              className="h-10 w-full rounded-lg border border-slate-200 px-3 text-sm outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-100"
+            />
+            {phoneErr && <p className="mt-1 text-[11px] text-red-500">{phoneErr}</p>}
+          </div>
+        </div>
+
+        <div className="mt-4 flex gap-2">
+          <button
+            onClick={onClose}
+            className="flex-1 rounded-xl border border-slate-200 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-50"
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={createCustomer.isPending}
+            className="flex-1 rounded-xl bg-violet-600 py-2.5 text-sm font-semibold text-white disabled:opacity-50 hover:bg-violet-700"
+          >
+            {createCustomer.isPending ? 'Guardando…' : 'Crear'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Customer Search Input ─────────────────────────────────────────────────────
 
 interface CustomerSearchInputProps {
@@ -504,8 +614,10 @@ interface CustomerSearchInputProps {
 function CustomerSearchInput({ selected, onSelect }: CustomerSearchInputProps) {
   const [query, setQuery] = useState('')
   const [open, setOpen] = useState(false)
+  const [showQuickCreate, setShowQuickCreate] = useState(false)
   const { data: results = [] } = useCustomerSearch(query)
   const containerRef = useRef<HTMLDivElement>(null)
+  const dq = useDebounce(query.trim(), 300)
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -516,11 +628,25 @@ function CustomerSearchInput({ selected, onSelect }: CustomerSearchInputProps) {
     return () => document.removeEventListener('mousedown', handler)
   }, [])
 
+  const handleSelect = (c: Customer) => {
+    onSelect(c)
+    setOpen(false)
+    setQuery('')
+  }
+
   if (selected) {
     return (
       <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm">
-        <User size={14} className="shrink-0 text-slate-400" />
+        <div
+          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold text-white"
+          style={{ background: 'linear-gradient(135deg,#a78bfa,#7c3aed)' }}
+        >
+          {customerInitials(selected.full_name)}
+        </div>
         <span className="flex-1 font-medium text-slate-800">{selected.full_name}</span>
+        {selected.phone && (
+          <span className="text-xs text-slate-400">{selected.phone}</span>
+        )}
         <button
           onClick={() => {
             onSelect(null)
@@ -534,40 +660,69 @@ function CustomerSearchInput({ selected, onSelect }: CustomerSearchInputProps) {
     )
   }
 
+  const showNoResults = open && dq.length >= 2 && results.length === 0
+
   return (
-    <div ref={containerRef} className="relative">
-      <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-        <User size={14} className="shrink-0 text-slate-400" />
-        <input
-          value={query}
-          onChange={(e) => {
-            setQuery(e.target.value)
-            setOpen(true)
-          }}
-          onFocus={() => setOpen(true)}
-          placeholder="Buscar cliente o teléfono…"
-          className="flex-1 bg-transparent text-sm outline-none placeholder:text-slate-400"
-        />
-      </div>
-      {open && results.length > 0 && (
-        <div className="absolute left-0 right-0 top-full z-20 mt-1 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg">
-          {results.map((c) => (
-            <button
-              key={c.id}
-              onClick={() => {
-                onSelect(c)
-                setOpen(false)
-                setQuery('')
-              }}
-              className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm hover:bg-slate-50"
-            >
-              <span className="font-medium text-slate-800">{c.full_name}</span>
-              {c.phone && <span className="text-slate-400">{c.phone}</span>}
-            </button>
-          ))}
+    <>
+      <div ref={containerRef} className="relative">
+        <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+          <User size={14} className="shrink-0 text-slate-400" />
+          <input
+            value={query}
+            onChange={(e) => {
+              setQuery(e.target.value)
+              setOpen(true)
+            }}
+            onFocus={() => setOpen(true)}
+            placeholder="Buscar cliente o teléfono…"
+            className="flex-1 bg-transparent text-sm outline-none placeholder:text-slate-400"
+          />
         </div>
+        {open && (results.length > 0 || showNoResults) && (
+          <div className="absolute left-0 right-0 top-full z-20 mt-1 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg">
+            {results.map((c) => (
+              <button
+                key={c.id}
+                onClick={() => handleSelect(c)}
+                className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left text-sm hover:bg-slate-50"
+              >
+                <div
+                  className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold text-white"
+                  style={{ background: 'linear-gradient(135deg,#a78bfa,#7c3aed)' }}
+                >
+                  {customerInitials(c.full_name)}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <span className="block truncate font-medium text-slate-800">
+                    {c.full_name}
+                  </span>
+                  {c.phone && (
+                    <span className="text-xs text-slate-400">{c.phone}</span>
+                  )}
+                </div>
+              </button>
+            ))}
+            {showNoResults && (
+              <button
+                onClick={() => { setOpen(false); setShowQuickCreate(true) }}
+                className="flex w-full items-center gap-2.5 border-t border-slate-100 px-3 py-2.5 text-left text-sm font-medium text-violet-600 hover:bg-violet-50"
+              >
+                <Plus size={14} className="shrink-0" />
+                Crear cliente rápido &ldquo;{dq}&rdquo;
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+
+      {showQuickCreate && (
+        <QuickCreateModal
+          prefillName={query}
+          onCreated={handleSelect}
+          onClose={() => setShowQuickCreate(false)}
+        />
       )}
-    </div>
+    </>
   )
 }
 
