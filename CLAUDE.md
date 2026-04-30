@@ -65,6 +65,10 @@ VITE_GMURA_SUPABASE_ANON_KEY=
 - Un commit por funcionalidad completa
 
 ## Estado actual del proyecto
-Última fase completada: 04 - Devoluciones y cambios
-En progreso: —
-Siguiente: 05 - Clientes y CRM
+Última fase completada: 05 - Clientes y CRM
+En progreso: 06 - Reportes (capa de datos lista; dashboard visual pendiente)
+  - ✅ Vistas SQL: daily_sales_summary, product_performance, inventory_status, returns_summary
+  - ✅ Tipos TypeScript para las 4 vistas (database.types.ts)
+  - ✅ Hooks: useReports, useDailySummary, useInventoryReport
+  - ⏳ ReportsPage.tsx — dashboard visual (siguiente prompt)
+Siguiente: dashboard visual de reportes
