@@ -349,7 +349,7 @@ export default function CategoriesManager() {
   const inactiveCats = localCats.filter((c) => !c.is_active)
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+    <div className="overflow-hidden rounded-[14px] border border-[#ebe9e6] bg-white">
       {/* Header */}
       <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
         <div className="flex items-center gap-2.5">
@@ -378,7 +378,11 @@ export default function CategoriesManager() {
       {/* List */}
       <div className="p-3">
         {isLoading && (
-          <p className="py-6 text-center text-sm text-slate-400">Cargando categorías…</p>
+          <div className="space-y-2">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="h-10 animate-pulse rounded-xl bg-slate-100" />
+            ))}
+          </div>
         )}
 
         {!isLoading && localCats.length === 0 && !showNewForm && (

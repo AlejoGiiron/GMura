@@ -29,11 +29,10 @@ import {
   type ExchangeVariantOption,
 } from '@/hooks/useReturns'
 import { useCreateReturn, type ExchangeItemInput } from '@/hooks/useReturnMutations'
+import { useStoreConfig, resolveConfig } from '@/hooks/useConfig'
 import type { PaymentMethod, ReturnType, Return } from '@/types/database.types'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
-
-const RETURN_DAYS_LIMIT = 30
 
 const PAYMENT_METHODS: { id: PaymentMethod; label: string }[] = [
   { id: 'cash', label: 'Efectivo' },
@@ -88,7 +87,13 @@ function StepperBar({ current }: { current: number }) {
 
 // ── Step 1 — Buscar orden ─────────────────────────────────────────────────────
 
-function Step1Search({ onOrderSelected }: { onOrderSelected: (o: FoundOrder) => void }) {
+function Step1Search({
+  onOrderSelected,
+  returnDaysLimit,
+}: {
+  onOrderSelected: (o: FoundOrder) => void
+  returnDaysLimit: number
+}) {
   const [query, setQuery] = useState('')
   const { data: results = [], isLoading } = useOrderSearch(query)
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -100,8 +105,8 @@ function Step1Search({ onOrderSelected }: { onOrderSelected: (o: FoundOrder) => 
   useEffect(() => {
     if (!detail) return
     const age = differenceInDays(new Date(), new Date(detail.created_at))
-    if (age > RETURN_DAYS_LIMIT) {
-      toast.error(`Esta orden tiene ${age} días. El límite es ${RETURN_DAYS_LIMIT} días.`)
+    if (age > returnDaysLimit) {
+      toast.error(`Esta orden tiene ${age} días. El límite es ${returnDaysLimit} días.`)
       setSelectedId(null)
       return
     }
@@ -1217,6 +1222,9 @@ export default function ReturnsPage() {
   const [completedReturn, setCompletedReturn] = useState<Return | null>(null)
 
   const createReturn = useCreateReturn()
+  const { data: storeData } = useStoreConfig()
+  const config = resolveConfig((storeData as unknown as { config: Record<string, unknown> | null } | undefined)?.config)
+  const returnDaysLimit = config.return_days_limit
 
   const reset = useCallback(() => {
     setStep(1)
@@ -1300,7 +1308,7 @@ export default function ReturnsPage() {
             <div>
               <p className="text-sm font-semibold text-[#1a1a1a]">Devoluciones y cambios</p>
               <p className="text-xs text-[#737373]">
-                Límite: {RETURN_DAYS_LIMIT} días desde la compra
+                Límite: {returnDaysLimit} días desde la compra
               </p>
             </div>
           </div>
@@ -1319,7 +1327,7 @@ export default function ReturnsPage() {
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
           {step === 1 && (
             <div className="flex-1 overflow-y-auto">
-              <Step1Search onOrderSelected={handleOrderSelected} />
+              <Step1Search onOrderSelected={handleOrderSelected} returnDaysLimit={returnDaysLimit} />
             </div>
           )}
 

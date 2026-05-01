@@ -54,11 +54,16 @@ export default function CajaSection() {
       toast.error('El archivo debe ser una imagen')
       return
     }
-    const url = await uploadNequiQR.mutateAsync(file)
-    setNequiQrUrl(url)
-    await updateStoreConfig.mutateAsync({ nequi_qr_url: url })
-    toast.success('QR de Nequi actualizado')
-    if (fileRef.current) fileRef.current.value = ''
+    try {
+      const url = await uploadNequiQR.mutateAsync(file)
+      setNequiQrUrl(url)
+      await updateStoreConfig.mutateAsync({ nequi_qr_url: url })
+      toast.success('QR de Nequi actualizado')
+    } catch (err) {
+      toast.error((err as Error).message)
+    } finally {
+      if (fileRef.current) fileRef.current.value = ''
+    }
   }
 
   async function handleSave() {

@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from './useAuth'
 import { useDebounce } from './useDebounce'
+import toast from 'react-hot-toast'
 import type { PaymentMethod, ReturnType, ReturnStatus } from '@/types/database.types'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -155,7 +156,9 @@ export function useOrderSearch(query: string) {
         .or(`full_name.ilike.%${dq}%,phone.ilike.%${dq}%` as never)
         .limit(10)
 
-      if (!byCustomer.error && (byCustomer.data ?? []).length > 0) {
+      if (byCustomer.error) {
+        toast.error(byCustomer.error.message)
+      } else if ((byCustomer.data ?? []).length > 0) {
         const ids = (byCustomer.data ?? []).map((c) => (c as { id: string }).id)
         const byOrders = await supabase
           .from('orders')
@@ -165,7 +168,9 @@ export function useOrderSearch(query: string) {
           .order('created_at' as never, { ascending: false })
           .limit(5)
 
-        if (!byOrders.error) {
+        if (byOrders.error) {
+          toast.error(byOrders.error.message)
+        } else {
           for (const row of (byOrders.data ?? []) as unknown as RawOrderSearch[]) {
             if (!results.has(row.id)) {
               results.set(row.id, {
@@ -210,6 +215,7 @@ export function useOrderDetail(orderId: string | null) {
           )
         `)
         .eq('id' as never, orderId)
+        .eq('store_id' as never, storeId)
         .single()
 
       if (error) throw error
@@ -322,14 +328,6 @@ export function useVariantSearch(query: string) {
     queryKey: ['returns', 'variant-search', storeId, dq],
     queryFn: async (): Promise<ExchangeVariantOption[]> => {
       if (dq.length < 2) return []
-      const { data, error } = await supabase
-        .from('variants')
-        .select('id, product_id, size, color, price, stock_qty, sku, products(name)')
-        .eq('store_id' as never, storeId)
-        .eq('is_active' as never, true)
-        .limit(20)
-
-      if (error) throw error
 
       type RawVar = {
         id: string
@@ -342,28 +340,66 @@ export function useVariantSearch(query: string) {
         products: { name: string } | null
       }
 
-      const lower = dq.toLowerCase()
-      return (data ?? [])
-        .map((v) => {
-          const r = v as unknown as RawVar
-          return {
-            id: r.id,
-            product_id: r.product_id,
-            product_name: r.products?.name ?? '',
-            size: r.size,
-            color: r.color,
-            price: r.price,
-            stock_qty: r.stock_qty,
-            sku: r.sku,
-          }
-        })
-        .filter(
-          (v) =>
-            v.product_name.toLowerCase().includes(lower) ||
-            (v.sku ?? '').toLowerCase().includes(lower) ||
-            (v.size ?? '').toLowerCase().includes(lower) ||
-            (v.color ?? '').toLowerCase().includes(lower),
+      const toOption = (r: RawVar): ExchangeVariantOption => ({
+        id: r.id,
+        product_id: r.product_id,
+        product_name: r.products?.name ?? '',
+        size: r.size,
+        color: r.color,
+        price: r.price,
+        stock_qty: r.stock_qty,
+        sku: r.sku,
+      })
+
+      // Query 1: match by SKU, size, or color server-side
+      const q1 = await supabase
+        .from('variants')
+        .select('id, product_id, size, color, price, stock_qty, sku, products(name)')
+        .eq('store_id' as never, storeId)
+        .eq('is_active' as never, true)
+        .or(
+          `sku.ilike.%${dq}%,size.ilike.%${dq}%,color.ilike.%${dq}%` as never,
         )
+        .limit(50)
+
+      if (q1.error) throw q1.error
+
+      // Query 2: match by product name via products table
+      const { data: productMatches, error: pErr } = await supabase
+        .from('products')
+        .select('id')
+        .eq('store_id' as never, storeId)
+        .ilike('name' as never, `%${dq}%`)
+        .limit(20)
+
+      if (pErr) throw pErr
+
+      const productIds = (productMatches ?? []).map((p) => (p as { id: string }).id)
+
+      let q2Results: RawVar[] = []
+      if (productIds.length > 0) {
+        const q2 = await supabase
+          .from('variants')
+          .select('id, product_id, size, color, price, stock_qty, sku, products(name)')
+          .eq('store_id' as never, storeId)
+          .eq('is_active' as never, true)
+          .in('product_id' as never, productIds)
+          .limit(50)
+
+        if (q2.error) throw q2.error
+        q2Results = (q2.data ?? []) as unknown as RawVar[]
+      }
+
+      // Merge and dedup by id
+      const seen = new Map<string, ExchangeVariantOption>()
+      for (const v of (q1.data ?? []) as unknown as RawVar[]) {
+        seen.set(v.id, toOption(v))
+      }
+      for (const v of q2Results) {
+        if (!seen.has(v.id)) seen.set(v.id, toOption(v))
+      }
+
+      return Array.from(seen.values()).slice(0, 50)
     },
     enabled: !!storeId && dq.length >= 2,
     staleTime: 20_000,

@@ -2,7 +2,15 @@ import { useState, useEffect, useRef } from 'react'
 import { X, Printer, Minus, Plus } from 'lucide-react'
 import JsBarcode from 'jsbarcode'
 import { fmtCOP } from '@/lib/formatters'
+import { useStoreConfig, resolveConfig } from '@/hooks/useConfig'
+import type { LabelFormat } from '@/types/config.types'
 import type { Variant } from '@/types/database.types'
+
+const FORMAT_LABEL: Record<LabelFormat, string> = {
+  '38x25': '38 × 25 mm',
+  '50x30': '50 × 30 mm',
+  '58x40': '58 × 40 mm',
+}
 
 // ─── Barcode SVG helpers ──────────────────────────────────────────────────────
 
@@ -107,6 +115,10 @@ export default function LabelPrintModal({
   variants,
   onClose,
 }: LabelPrintModalProps) {
+  const { data: storeData } = useStoreConfig()
+  const config = resolveConfig((storeData as unknown as { config: Record<string, unknown> | null } | undefined)?.config)
+  const formatLabel = FORMAT_LABEL[config.label_format]
+
   const [items, setItems] = useState<LabelItem[]>(() =>
     variants.map((v) => ({ variant: v, qty: 1 })),
   )
@@ -277,7 +289,7 @@ export default function LabelPrintModal({
               )}
             </div>
             <p className="mt-2 text-center text-[11px] text-[#a8a29e]">
-              Escala real: 38 × 25 mm
+              Escala real: {formatLabel}
             </p>
           </div>
 

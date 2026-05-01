@@ -1,6 +1,7 @@
 import { createContext, useEffect, useState, type ReactNode } from 'react'
 import type { User } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabase'
+import toast from 'react-hot-toast'
 import type { Profile } from '@/types/database.types'
 
 interface AuthContextValue {
@@ -19,12 +20,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   async function fetchProfile(userId: string) {
     try {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('profiles')
         .select('*')
         .eq('id', userId)
         .single()
+      if (error) throw error
       setProfile(data)
+    } catch (err) {
+      toast.error('Error al cargar el perfil. Vuelve a iniciar sesión.')
+      await supabase.auth.signOut()
     } finally {
       setIsLoading(false)
     }
