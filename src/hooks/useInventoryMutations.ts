@@ -27,6 +27,7 @@ export function useInventoryMutations() {
         .from('variants')
         .select('stock_qty')
         .eq('id' as never, variantId)
+        .eq('store_id' as never, storeId)
         .single()
 
       if (fetchErr) throw fetchErr
@@ -43,6 +44,7 @@ export function useInventoryMutations() {
         .from('variants')
         .update({ stock_qty: newQty } as never)
         .eq('id' as never, variantId)
+        .eq('store_id' as never, storeId)
 
       if (updateErr) throw updateErr
 

@@ -68,7 +68,7 @@ export function useStoreConfig() {
       return data as unknown as Store
     },
     enabled: !!storeId,
-    staleTime: 30_000,
+    staleTime: 5 * 60 * 1_000,
   })
 }
 
@@ -88,6 +88,6 @@ export function useStoreUsers() {
       return (data ?? []) as unknown as Profile[]
     },
     enabled: !!storeId,
-    staleTime: 30_000,
+    staleTime: 5 * 60 * 1_000,
   })
 }

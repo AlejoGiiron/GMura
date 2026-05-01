@@ -23,7 +23,6 @@ import {
   ChevronDown,
   Camera,
 } from 'lucide-react'
-import { useQuery } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import { useCartStore, cartTotals } from '@/stores/cartStore'
 import type { CartItem, Discount } from '@/stores/cartStore'
@@ -37,38 +36,13 @@ import { useBarcode } from '@/hooks/useBarcode'
 import BarcodeScanner from '@/components/pos/BarcodeScanner'
 import { useCreateOrder } from '@/hooks/useCreateOrder'
 import { useCategories } from '@/hooks/useProducts'
-import { supabase } from '@/lib/supabase'
-import { useAuth } from '@/hooks/useAuth'
+import { useStoreConfig, resolveConfig } from '@/hooks/useConfig'
 import { fmtCOP } from '@/lib/formatters'
 import { getColorHex } from '@/lib/products'
 import { useDebounce } from '@/hooks/useDebounce'
 import { useCreateCustomer } from '@/hooks/useCustomerMutations'
+import { useCustomerSearch } from '@/hooks/useCustomers'
 import type { Customer, PaymentMethod, Order } from '@/types/database.types'
-
-// ── Customer search hook ─────────────────────────────────────────────────────
-
-function useCustomerSearch(query: string) {
-  const { profile } = useAuth()
-  const storeId = profile?.store_id ?? ''
-  const dq = useDebounce(query.trim(), 300)
-
-  return useQuery({
-    queryKey: ['customer-search', storeId, dq],
-    queryFn: async (): Promise<Customer[]> => {
-      if (dq.length < 2) return []
-      const { data, error } = await supabase
-        .from('customers')
-        .select('*')
-        .eq('store_id' as never, storeId)
-        .or(`full_name.ilike.%${dq}%,phone.ilike.%${dq}%` as never)
-        .limit(8)
-      if (error) throw error
-      return (data ?? []) as Customer[]
-    },
-    enabled: !!storeId && dq.length >= 2,
-    staleTime: 10_000,
-  })
-}
 
 // ── Variant Picker Modal ─────────────────────────────────────────────────────
 
@@ -228,13 +202,17 @@ const PAYMENT_METHODS: { id: PaymentMethod; label: string; icon: ReactNode }[] =
 
 interface PaymentModalProps {
   total: number
+  enabledMethods: PaymentMethod[]
   onConfirm: (method: PaymentMethod, cashReceived?: number) => void
   onClose: () => void
   isPending: boolean
 }
 
-function PaymentModal({ total, onConfirm, onClose, isPending }: PaymentModalProps) {
-  const [method, setMethod] = useState<PaymentMethod>('cash')
+function PaymentModal({ total, enabledMethods, onConfirm, onClose, isPending }: PaymentModalProps) {
+  const visibleMethods = PAYMENT_METHODS.filter((m) => enabledMethods.includes(m.id))
+  const [method, setMethod] = useState<PaymentMethod>(
+    enabledMethods.includes('cash') ? 'cash' : (enabledMethods[0] ?? 'cash'),
+  )
   const [cashReceived, setCashReceived] = useState('')
 
   const cashAmt = parseFloat(cashReceived) || 0
@@ -271,7 +249,7 @@ function PaymentModal({ total, onConfirm, onClose, isPending }: PaymentModalProp
           Método de pago
         </p>
         <div className="mb-5 grid grid-cols-2 gap-2">
-          {PAYMENT_METHODS.map((m) => (
+          {visibleMethods.map((m) => (
             <button
               key={m.id}
               onClick={() => setMethod(m.id)}
@@ -923,6 +901,8 @@ export default function POSPage() {
   const { data: searchResults = [], isLoading } = usePOSSearch(query)
   const { data: allProducts = [] } = usePOSProducts()
   const { data: categories = [] } = useCategories()
+  const { data: storeData } = useStoreConfig()
+  const config = resolveConfig((storeData as unknown as { config: Record<string, unknown> | null } | undefined)?.config)
   const { items, discount, customer_id, addItem, clear } = useCartStore()
   const createOrder = useCreateOrder()
 
@@ -1165,6 +1145,7 @@ export default function POSPage() {
       {showPayment && (
         <PaymentModal
           total={cartTotals(items, discount).total}
+          enabledMethods={config.payment_methods as PaymentMethod[]}
           onConfirm={handleConfirmPayment}
           onClose={() => setShowPayment(false)}
           isPending={createOrder.isPending}

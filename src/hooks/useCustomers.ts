@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from './useAuth'
 import { useDebounce } from './useDebounce'
-import type { PaymentMethod, OrderStatus, ReturnType, ReturnStatus } from '@/types/database.types'
+import type { Customer, PaymentMethod, OrderStatus, ReturnType, ReturnStatus } from '@/types/database.types'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -109,6 +109,31 @@ type RawReturnRow = {
   status: string
   original_order_id: string
   return_items: { qty: number; unit_price: number }[]
+}
+
+// ── useCustomerSearch ─────────────────────────────────────────────────────────
+
+export function useCustomerSearch(query: string) {
+  const { profile } = useAuth()
+  const storeId = profile?.store_id ?? ''
+  const dq = useDebounce(query.trim(), 300)
+
+  return useQuery({
+    queryKey: ['customer-search', storeId, dq],
+    queryFn: async (): Promise<Customer[]> => {
+      if (dq.length < 2) return []
+      const { data, error } = await supabase
+        .from('customers')
+        .select('*')
+        .eq('store_id' as never, storeId)
+        .or(`full_name.ilike.%${dq}%,phone.ilike.%${dq}%` as never)
+        .limit(8)
+      if (error) throw error
+      return (data ?? []) as unknown as Customer[]
+    },
+    enabled: !!storeId && dq.length >= 2,
+    staleTime: 10_000,
+  })
 }
 
 // ── useCustomerList ───────────────────────────────────────────────────────────
