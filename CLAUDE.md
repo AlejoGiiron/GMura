@@ -65,9 +65,10 @@ VITE_GMURA_SUPABASE_ANON_KEY=
 - Un commit por funcionalidad completa
 
 ## Estado actual del proyecto
-Última fase completada: 07 - Configuración ✅
+Última fase completada: 07 - Configuración ✅ + hotfix/qa-pre-deploy ✅
   - src/types/config.types.ts: StoreConfig, StoreColorConfig, LabelFields, LabelFormat
   - src/hooks/useConfig.ts: useStoreConfig, useStoreUsers, resolveConfig, DEFAULT_CONFIG
+    staleTime: 5min en ambas queries
   - src/hooks/useConfigMutations.ts: updateStore, updateStoreConfig, uploadLogo,
     uploadNequiQR, createUser (Edge Function), updateUserRole, toggleUserActive
   - supabase/functions/create-user/index.ts: Deno Edge Function con admin client
@@ -75,9 +76,21 @@ VITE_GMURA_SUPABASE_ANON_KEY=
   - StoreSection: nombre/dirección/teléfono, logo upload circular, zona horaria
   - UsersSection: lista con avatar gradiente, badges de rol, toggles activo/inactivo, modal crear usuario
   - ProductsSection: drag-and-drop de tallas, color picker nativo, marcas, días devolución
-  - CajaSection: motivos de ajuste, métodos de pago checkboxes, QR Nequi upload
+  - CajaSection: motivos de ajuste, métodos de pago checkboxes, QR Nequi upload (con try/catch)
   - EtiquetasSection: formato radio (3 tamaños), campos checkboxes, preview JsBarcode en vivo
   - stores.config (jsonb) centraliza: sizes, colors, brands, return_days_limit,
     adjustment_reasons, payment_methods, nequi_qr_url, label_format, label_fields
+
+Hotfix QA pre-deploy (hotfix/qa-pre-deploy) ✅
+  - SEGURIDAD: store_id en useOrderDetail y adjustStock (SELECT + UPDATE)
+  - SEGURIDAD: useVariantSearch reescrito con 2 queries server-side + LIMIT 50
+  - CONFIG→POS: payment_methods de StoreConfig conectado a PaymentModal
+  - CONFIG→Returns: return_days_limit de StoreConfig conectado a ReturnsPage
+  - useCustomerSearch extraído a useCustomers.ts (eliminado inline de POSPage)
+  - AuthContext: catch en fetchProfile con toast.error + signOut
+  - useOrderSearch: toast.error en rutas de error silenciosas
+  - CategoriesManager: skeleton loading, tokens border/radius corregidos
+  - LabelPrintModal: dimensiones de formato dinámicas desde StoreConfig
+
 En progreso: —
-Siguiente: merge feature/07-configuracion → develop
+Siguiente: merge hotfix/qa-pre-deploy → develop y → main
