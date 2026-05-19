@@ -46,6 +46,7 @@ export interface Product {
   image_url: string | null
   store_id: string
   category_id: string | null
+  size_type: string
   is_active: boolean
   created_at: string
   updated_at: string

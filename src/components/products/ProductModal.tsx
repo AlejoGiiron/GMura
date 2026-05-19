@@ -2,6 +2,7 @@ import { useState, useRef, type ChangeEvent, type FormEvent } from 'react'
 import { X, Package } from 'lucide-react'
 import { useCategories } from '@/hooks/useProducts'
 import { useProductMutations } from '@/hooks/useProductMutations'
+import { SIZE_TYPES, resolveSizeType, type SizeTypeKey } from '@/lib/sizeTypes'
 import type { Product } from '@/types/database.types'
 
 interface ProductModalProps {
@@ -18,6 +19,7 @@ export default function ProductModal({ product, onClose, onSaved }: ProductModal
   const [brand, setBrand] = useState(product?.brand ?? '')
   const [categoryId, setCategoryId] = useState(product?.category_id ?? '')
   const [description, setDescription] = useState(product?.description ?? '')
+  const [sizeType, setSizeType] = useState<SizeTypeKey>(resolveSizeType(product?.size_type))
   const [imageFile, setImageFile] = useState<File | null>(null)
   const [imagePreview, setImagePreview] = useState<string | null>(product?.image_url ?? null)
   const [submitting, setSubmitting] = useState(false)
@@ -51,6 +53,7 @@ export default function ProductModal({ product, onClose, onSaved }: ProductModal
         category_id: categoryId || null,
         description: description.trim() || null,
         image_url: finalImageUrl,
+        size_type: sizeType,
       }
 
       const saved = isEdit
@@ -164,6 +167,27 @@ export default function ProductModal({ product, onClose, onSaved }: ProductModal
                 ))}
               </select>
             </div>
+          </div>
+
+          {/* Size type */}
+          <div>
+            <label className="mb-1.5 block text-xs font-medium text-slate-600">
+              Tipo de talla
+            </label>
+            <select
+              value={sizeType}
+              onChange={(e) => setSizeType(e.target.value as SizeTypeKey)}
+              className="h-10 w-full rounded-lg border border-slate-200 px-3 text-sm outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100"
+            >
+              {(Object.keys(SIZE_TYPES) as SizeTypeKey[]).map((key) => (
+                <option key={key} value={key}>
+                  {SIZE_TYPES[key].label}
+                </option>
+              ))}
+            </select>
+            <p className="mt-1 text-[11px] text-slate-400">
+              Define qué tallas estarán disponibles al agregar variantes.
+            </p>
           </div>
 
           {/* Description */}

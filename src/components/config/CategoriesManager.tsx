@@ -1,5 +1,16 @@
 import { useState, useEffect } from 'react'
-import { GripVertical, Plus, Check, X, ToggleLeft, ToggleRight, Tag } from 'lucide-react'
+import {
+  GripVertical,
+  Plus,
+  Check,
+  X,
+  ToggleLeft,
+  ToggleRight,
+  Tag,
+  Trash2,
+  AlertTriangle,
+} from 'lucide-react'
+import toast from 'react-hot-toast'
 import { useAllCategories } from '@/hooks/useCategories'
 import { useCategoryMutations } from '@/hooks/useCategoryMutations'
 import type { Category } from '@/types/database.types'
@@ -59,6 +70,7 @@ interface CategoryRowProps {
   onCancelEdit: () => void
   onOpenEdit: () => void
   onToggle: () => void
+  onDelete: () => void
   onDragStart: () => void
   onDragEnd: () => void
   onDragOver: (e: React.DragEvent) => void
@@ -78,6 +90,7 @@ function CategoryRow({
   onCancelEdit,
   onOpenEdit,
   onToggle,
+  onDelete,
   onDragStart,
   onDragEnd,
   onDragOver,
@@ -175,6 +188,13 @@ function CategoryRow({
           >
             {cat.is_active ? <ToggleRight size={15} /> : <ToggleLeft size={15} />}
           </button>
+          <button
+            onClick={onDelete}
+            title="Eliminar"
+            className="grid h-7 w-7 flex-shrink-0 place-items-center rounded-lg border border-slate-200 text-slate-400 hover:bg-red-50 hover:text-red-500"
+          >
+            <Trash2 size={13} />
+          </button>
         </>
       )}
     </div>
@@ -244,7 +264,8 @@ function NewCategoryForm({
 
 export default function CategoriesManager() {
   const { data: categories = [], isLoading } = useAllCategories()
-  const { create, update, toggleActive, reorder } = useCategoryMutations()
+  const { create, update, toggleActive, reorder, remove, countProducts } =
+    useCategoryMutations()
 
   // Local copy for optimistic drag-and-drop reordering
   const [localCats, setLocalCats] = useState<Category[]>([])
@@ -263,6 +284,11 @@ export default function CategoriesManager() {
   // Drag-and-drop
   const [draggedId, setDraggedId] = useState<string | null>(null)
   const [dragOverId, setDragOverId] = useState<string | null>(null)
+
+  // Delete confirmation
+  const [deleteTarget, setDeleteTarget] = useState<Category | null>(null)
+  const [deleteProductCount, setDeleteProductCount] = useState<number | null>(null)
+  const [deleting, setDeleting] = useState(false)
 
   // Sync local state when server data changes
   useEffect(() => {
@@ -316,6 +342,40 @@ export default function CategoriesManager() {
       // toast shown by mutation
     } finally {
       setCreating(false)
+    }
+  }
+
+  // ── Delete handlers ──────────────────────────────────────────────────────
+
+  async function openDelete(cat: Category) {
+    setDeleteTarget(cat)
+    setDeleteProductCount(null)
+    try {
+      const n = await countProducts(cat.id)
+      setDeleteProductCount(n)
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'No se pudo verificar productos'
+      toast.error(msg)
+      setDeleteTarget(null)
+    }
+  }
+
+  function cancelDelete() {
+    setDeleteTarget(null)
+    setDeleteProductCount(null)
+  }
+
+  async function confirmDelete() {
+    if (!deleteTarget) return
+    setDeleting(true)
+    try {
+      await remove.mutateAsync(deleteTarget.id)
+      setDeleteTarget(null)
+      setDeleteProductCount(null)
+    } catch {
+      // toast shown by mutation
+    } finally {
+      setDeleting(false)
     }
   }
 
@@ -420,6 +480,7 @@ export default function CategoriesManager() {
               onToggle={() =>
                 void toggleActive.mutateAsync({ id: cat.id, isActive: cat.is_active })
               }
+              onDelete={() => void openDelete(cat)}
               onDragStart={() => setDraggedId(cat.id)}
               onDragEnd={() => {
                 setDraggedId(null)
@@ -459,6 +520,7 @@ export default function CategoriesManager() {
                 onToggle={() =>
                   void toggleActive.mutateAsync({ id: cat.id, isActive: cat.is_active })
                 }
+                onDelete={() => void openDelete(cat)}
                 onDragStart={() => {}}
                 onDragEnd={() => {}}
                 onDragOver={(e) => e.preventDefault()}
@@ -492,6 +554,66 @@ export default function CategoriesManager() {
           <p className="text-[11px] text-slate-400">
             Arrastra las categorías para cambiar el orden en que aparecen.
           </p>
+        </div>
+      )}
+
+      {/* Delete confirmation modal */}
+      {deleteTarget && (
+        <div
+          className="fixed inset-0 z-50 grid place-items-center p-4"
+          style={{ background: 'rgba(15,23,42,0.5)', backdropFilter: 'blur(4px)' }}
+          onClick={() => !deleting && cancelDelete()}
+        >
+          <div
+            className="w-full max-w-sm rounded-[14px] bg-white p-6 shadow-[0_20px_60px_rgba(0,0,0,0.3)]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-4 flex items-start gap-3">
+              <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-red-100">
+                <AlertTriangle size={18} className="text-red-600" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-base font-semibold text-slate-900">
+                  Eliminar categoría
+                </p>
+                <p className="mt-0.5 text-sm text-slate-500">
+                  ¿Eliminar <span className="font-medium text-slate-700">"{deleteTarget.name}"</span>?
+                </p>
+              </div>
+            </div>
+
+            {deleteProductCount === null ? (
+              <p className="mb-4 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-500">
+                Verificando productos asociados…
+              </p>
+            ) : deleteProductCount > 0 ? (
+              <p className="mb-4 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                {deleteProductCount} producto{deleteProductCount !== 1 ? 's' : ''}{' '}
+                quedará{deleteProductCount !== 1 ? 'n' : ''} sin categoría asignada.
+              </p>
+            ) : (
+              <p className="mb-4 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-500">
+                Esta categoría no tiene productos asociados.
+              </p>
+            )}
+
+            <div className="flex gap-2">
+              <button
+                onClick={cancelDelete}
+                disabled={deleting}
+                className="h-10 flex-1 rounded-lg border border-slate-200 bg-white text-sm font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => void confirmDelete()}
+                disabled={deleting || deleteProductCount === null}
+                className="h-10 flex-1 rounded-lg bg-red-600 text-sm font-semibold text-white shadow-[0_4px_12px_rgba(220,38,38,0.35)] hover:bg-red-700 disabled:cursor-wait disabled:opacity-70"
+              >
+                {deleting ? 'Eliminando…' : 'Eliminar'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

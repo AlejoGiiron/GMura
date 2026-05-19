@@ -85,6 +85,36 @@ export function useCategoryMutations() {
     onError: (err: Error) => toast.error(err.message),
   })
 
+  // Cuenta productos asociados a una categoría (para confirmar delete).
+  async function countProducts(categoryId: string): Promise<number> {
+    const { count, error } = await supabase
+      .from('products')
+      .select('id', { count: 'exact', head: true })
+      .eq('store_id' as never, storeId)
+      .eq('category_id' as never, categoryId)
+    if (error) throw error
+    return count ?? 0
+  }
+
+  const remove = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase
+        .from('categories')
+        .delete()
+        .eq('id' as never, id)
+      if (error) throw error
+      return id
+    },
+    onSuccess: () => {
+      invalidate()
+      // products.category_id usa ON DELETE SET NULL, así que también
+      // refrescamos la lista de productos para reflejar el cambio.
+      void queryClient.invalidateQueries({ queryKey: ['products', storeId] })
+      toast.success('Categoría eliminada')
+    },
+    onError: (err: Error) => toast.error(err.message),
+  })
+
   async function reorder(orderedIds: string[]) {
     try {
       await Promise.all(
@@ -105,5 +135,5 @@ export function useCategoryMutations() {
     }
   }
 
-  return { create, update, toggleActive, reorder }
+  return { create, update, toggleActive, reorder, remove, countProducts }
 }
