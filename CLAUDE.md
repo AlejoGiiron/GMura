@@ -92,5 +92,43 @@ Hotfix QA pre-deploy (hotfix/qa-pre-deploy) ✅
   - CategoriesManager: skeleton loading, tokens border/radius corregidos
   - LabelPrintModal: dimensiones de formato dinámicas desde StoreConfig
 
-En progreso: —
-Siguiente: merge hotfix/qa-pre-deploy → develop y → main
+En progreso: 08 - Bug fixes críticos (v1.1)
+Siguiente: 09 - Parametrización (v1.2)
+Versión actual en producción: v1.0.0
+
+Fix de impresión de etiquetas (feature/08-bugfixes-criticos) ✅
+  - LabelPrintModal: isValidCode() valida CODE128 antes de renderizar
+  - Autogeneración de barcode temporal cuando la variante no tiene; se
+    persiste en BD vía useVariantMutations.update
+  - useRef en contenedor de impresión + chequeo de montaje antes de
+    window.print()
+  - Guard contra inyección duplicada del @media print (getElementById)
+  - Fallback a '38x25' cuando stores.config.label_format es inválido
+  - try/catch en JsBarcode con toast.error agregado por sesión del modal
+  - LabelCard usa dimensiones reales del formato configurado (38x25 / 50x30 / 58x40)
+
+Fix de flujo de devoluciones y cambios (feature/08-bugfixes-criticos) ✅
+  - useReturnMutations: validación de inputs (returnItems vacío, qty<=0,
+    exchangeItems vacío en cambio)
+  - Chequeo de auth (profile.store_id / profile.id) antes de tocar BD
+  - Pre-check de stock agrega cantidades por variant_id y filtra por
+    store_id para defensa en profundidad
+  - Rollback compensatorio: DELETE de returns huérfano si return_items falla
+  - Rollback compensatorio: DELETE de orden huérfana si order_items de cambio falla
+  - Mensaje accionable cuando "devolución se commiteó pero cambio falló"
+  - Invalidación ampliada de queries: variants, products, stock-movements,
+    orders, inventory, pos-products, returns
+  - trim() de notes para que strings vacíos se persistan como NULL
+
+Feature de turno de caja (feature/08-bugfixes-criticos) ✅
+  - useCashShift: useCurrentShift (turno abierto del usuario, closed_at IS NULL)
+    y useCashShiftSales (suma de ventas cash desde opened_at)
+  - useCashShiftMutations: openShift (rechaza si ya hay turno abierto del
+    usuario) y closeShift (setea closing_amount, closed_at, closed_by)
+  - CashShiftModals: OpenShiftModal (input monto inicial COP) y
+    CloseShiftModal (resumen apertura + ventas cash + esperado + contado +
+    diferencia sobrante/faltante con colores)
+  - Header: badge verde "Turno abierto · HH:mm" + botón "Cerrar turno"
+    cuando hay turno; CTA violeta "Abrir turno" cuando no
+  - POSPage: bloqueo full-screen "Debes abrir turno para vender" con
+    botón "Abrir turno ahora" si el usuario no tiene turno abierto
