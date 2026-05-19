@@ -22,6 +22,7 @@ import {
   CheckCircle,
   ChevronDown,
   Camera,
+  Wallet,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useCartStore, cartTotals } from '@/stores/cartStore'
@@ -42,6 +43,8 @@ import { getColorHex } from '@/lib/products'
 import { useDebounce } from '@/hooks/useDebounce'
 import { useCreateCustomer } from '@/hooks/useCustomerMutations'
 import { useCustomerSearch } from '@/hooks/useCustomers'
+import { useCurrentShift } from '@/hooks/useCashShift'
+import { OpenShiftModal } from '@/components/layout/CashShiftModals'
 import type { Customer, PaymentMethod, Order } from '@/types/database.types'
 
 // ── Variant Picker Modal ─────────────────────────────────────────────────────
@@ -896,6 +899,7 @@ export default function POSPage() {
   const [showPayment, setShowPayment] = useState(false)
   const [completedSale, setCompletedSale] = useState<CompletedSale | null>(null)
   const [showCamera, setShowCamera] = useState(false)
+  const [showOpenShift, setShowOpenShift] = useState(false)
   const searchRef = useRef<HTMLInputElement>(null)
 
   const { data: searchResults = [], isLoading } = usePOSSearch(query)
@@ -905,6 +909,7 @@ export default function POSPage() {
   const config = resolveConfig((storeData as unknown as { config: Record<string, unknown> | null } | undefined)?.config)
   const { items, discount, customer_id, addItem, clear } = useCartStore()
   const createOrder = useCreateOrder()
+  const { data: currentShift, isLoading: loadingShift } = useCurrentShift()
 
   // Focus search on mount + Ctrl/Cmd+K
   useEffect(() => {
@@ -1032,6 +1037,37 @@ export default function POSPage() {
     clear()
     searchRef.current?.focus()
   }, [clear])
+
+  // Bloqueo: sin turno abierto no se permite vender
+  if (!loadingShift && !currentShift) {
+    return (
+      <>
+        <div className="flex h-full items-center justify-center p-4">
+          <div className="w-full max-w-sm rounded-2xl border border-[#ebe9e6] bg-white p-8 text-center shadow-sm">
+            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-violet-100">
+              <Wallet size={28} className="text-violet-600" />
+            </div>
+            <p className="mb-1 text-base font-semibold text-[#1a1a1a]">
+              Debes abrir turno para vender
+            </p>
+            <p className="mb-5 text-sm text-[#737373]">
+              Registra el monto inicial en caja para comenzar a registrar
+              ventas en este turno.
+            </p>
+            <button
+              onClick={() => setShowOpenShift(true)}
+              className="flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-violet-600 text-sm font-semibold text-white shadow-[0_4px_12px_#8b5cf640] hover:bg-violet-700"
+            >
+              <Wallet size={14} /> Abrir turno ahora
+            </button>
+          </div>
+        </div>
+        {showOpenShift && (
+          <OpenShiftModal onClose={() => setShowOpenShift(false)} />
+        )}
+      </>
+    )
+  }
 
   return (
     <div className="flex h-full gap-4 p-4">
