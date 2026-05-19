@@ -1,8 +1,11 @@
 import { useState, useEffect, useRef } from 'react'
 import { X, Printer, Minus, Plus } from 'lucide-react'
 import JsBarcode from 'jsbarcode'
+import toast from 'react-hot-toast'
 import { fmtCOP } from '@/lib/formatters'
+import { generateBarcode } from '@/lib/products'
 import { useStoreConfig, resolveConfig } from '@/hooks/useConfig'
+import { useVariantMutations } from '@/hooks/useVariantMutations'
 import type { LabelFormat } from '@/types/config.types'
 import type { Variant } from '@/types/database.types'
 
@@ -12,19 +15,43 @@ const FORMAT_LABEL: Record<LabelFormat, string> = {
   '58x40': '58 × 40 mm',
 }
 
+const FORMAT_DIMS: Record<LabelFormat, { width: string; height: string }> = {
+  '38x25': { width: '38mm', height: '25mm' },
+  '50x30': { width: '50mm', height: '30mm' },
+  '58x40': { width: '58mm', height: '40mm' },
+}
+
+const FALLBACK_FORMAT: LabelFormat = '38x25'
+const PRINT_STYLE_ID = 'gmura-label-print-style'
+const PRINT_CONTAINER_ID = 'gmura-label-print'
+
+// JsBarcode (CODE128) acepta ASCII imprimible. Un código vacío o con
+// caracteres fuera de rango lanza excepción al renderizar.
+function isValidCode(code: string | null | undefined): code is string {
+  if (!code) return false
+  const trimmed = code.trim()
+  if (trimmed.length === 0) return false
+  return /^[\x20-\x7e]+$/.test(trimmed)
+}
+
 // ─── Barcode SVG helpers ──────────────────────────────────────────────────────
 
 interface BarcodeSvgProps {
   code: string
   height?: number
   width?: number
+  onError?: () => void
 }
 
-function BarcodeSvg({ code, height = 28, width = 1.2 }: BarcodeSvgProps) {
+function BarcodeSvg({ code, height = 28, width = 1.2, onError }: BarcodeSvgProps) {
   const ref = useRef<SVGSVGElement>(null)
 
   useEffect(() => {
-    if (!ref.current || !code) return
+    if (!ref.current) return
+    if (!isValidCode(code)) {
+      onError?.()
+      return
+    }
     try {
       JsBarcode(ref.current, code, {
         format: 'CODE128',
@@ -34,21 +61,24 @@ function BarcodeSvg({ code, height = 28, width = 1.2 }: BarcodeSvgProps) {
         margin: 1,
       })
     } catch {
-      // Código inválido — dejar el SVG vacío
+      onError?.()
     }
-  }, [code, height, width])
+  }, [code, height, width, onError])
 
   return <svg ref={ref} style={{ width: '100%' }} />
 }
 
-// ─── Etiqueta física 38×25mm ──────────────────────────────────────────────────
+// ─── Etiqueta física ──────────────────────────────────────────────────────────
 
 interface LabelCardProps {
   variant: Variant
   productName: string
+  format: LabelFormat
+  onBarcodeError?: () => void
 }
 
-function LabelCard({ variant, productName }: LabelCardProps) {
+function LabelCard({ variant, productName, format, onBarcodeError }: LabelCardProps) {
+  const dims = FORMAT_DIMS[format]
   const code = variant.barcode ?? variant.sku ?? variant.id.slice(-10)
   const truncName =
     productName.length > 22 ? `${productName.slice(0, 21)}…` : productName
@@ -60,8 +90,8 @@ function LabelCard({ variant, productName }: LabelCardProps) {
     <div
       className="label-card"
       style={{
-        width: '38mm',
-        height: '25mm',
+        width: dims.width,
+        height: dims.height,
         border: '0.3mm solid #ccc',
         padding: '1mm 1.5mm',
         boxSizing: 'border-box',
@@ -83,7 +113,7 @@ function LabelCard({ variant, productName }: LabelCardProps) {
         </p>
       )}
       <div style={{ flex: 1, minHeight: 0, display: 'flex', alignItems: 'center' }}>
-        <BarcodeSvg code={code} height={24} width={1} />
+        <BarcodeSvg code={code} height={24} width={1} onError={onBarcodeError} />
       </div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
         <p style={{ fontSize: '4pt', color: '#666', fontFamily: 'monospace', margin: 0 }}>
@@ -116,23 +146,59 @@ export default function LabelPrintModal({
   onClose,
 }: LabelPrintModalProps) {
   const { data: storeData } = useStoreConfig()
-  const config = resolveConfig((storeData as unknown as { config: Record<string, unknown> | null } | undefined)?.config)
-  const formatLabel = FORMAT_LABEL[config.label_format]
+  const config = resolveConfig(
+    (storeData as unknown as { config: Record<string, unknown> | null } | undefined)?.config,
+  )
+  const labelFormat: LabelFormat = FORMAT_DIMS[config.label_format]
+    ? config.label_format
+    : FALLBACK_FORMAT
+  const formatLabel = FORMAT_LABEL[labelFormat]
 
+  const productId = variants[0]?.product_id ?? ''
+  const { update } = useVariantMutations(productId)
+
+  const printRef = useRef<HTMLDivElement>(null)
+  const persistedRef = useRef(false)
+  const errorReportedRef = useRef(false)
+
+  // Si una variante no tiene barcode válido, generamos uno temporal
+  // para poder imprimir; la persistencia en BD ocurre en el useEffect siguiente.
   const [items, setItems] = useState<LabelItem[]>(() =>
-    variants.map((v) => ({ variant: v, qty: 1 })),
+    variants.map((v) => ({
+      variant: isValidCode(v.barcode) ? v : { ...v, barcode: generateBarcode() },
+      qty: 1,
+    })),
   )
 
-  // Inyectar estilos de impresión mientras el modal está abierto
+  // Persistir barcodes autogenerados (una sola vez por sesión del modal)
   useEffect(() => {
+    if (persistedRef.current) return
+    persistedRef.current = true
+    items.forEach((item, i) => {
+      const original = variants[i]
+      if (!isValidCode(original?.barcode) && item.variant.barcode) {
+        update
+          .mutateAsync({ id: item.variant.id, barcode: item.variant.barcode })
+          .catch(() => {
+            /* la mutation ya muestra toast.error */
+          })
+      }
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Inyectar estilos de impresión — con guard para evitar duplicados
+  useEffect(() => {
+    if (document.getElementById(PRINT_STYLE_ID)) return
     const style = document.createElement('style')
-    style.id = 'gmura-label-print-style'
+    style.id = PRINT_STYLE_ID
     style.textContent = `
       @media print {
         body > * { visibility: hidden !important; }
-        #gmura-label-print,
-        #gmura-label-print * { visibility: visible !important; }
-        #gmura-label-print {
+        #${PRINT_CONTAINER_ID},
+        #${PRINT_CONTAINER_ID} * { visibility: visible !important; }
+        #${PRINT_CONTAINER_ID} {
+          display: block !important;
           position: fixed !important;
           top: 0 !important; left: 0 !important;
           width: 100% !important;
@@ -143,7 +209,9 @@ export default function LabelPrintModal({
       }
     `
     document.head.appendChild(style)
-    return () => document.getElementById('gmura-label-print-style')?.remove()
+    return () => {
+      document.getElementById(PRINT_STYLE_ID)?.remove()
+    }
   }, [])
 
   useEffect(() => {
@@ -164,6 +232,28 @@ export default function LabelPrintModal({
     )
   }
 
+  function reportBarcodeError() {
+    if (errorReportedRef.current) return
+    errorReportedRef.current = true
+    toast.error('Una o más etiquetas tienen códigos inválidos')
+  }
+
+  function handlePrint() {
+    if (!printRef.current) {
+      toast.error('La vista de impresión aún no está lista. Intenta de nuevo.')
+      return
+    }
+    if (totalLabels === 0) {
+      toast.error('No hay etiquetas para imprimir')
+      return
+    }
+    try {
+      window.print()
+    } catch {
+      toast.error('No se pudo abrir el diálogo de impresión')
+    }
+  }
+
   const labelsToRender = items.flatMap(({ variant, qty }) =>
     Array.from({ length: qty }, (_, i) => ({ variant, key: `${variant.id}-${i}` })),
   )
@@ -174,7 +264,8 @@ export default function LabelPrintModal({
     <>
       {/* Contenedor de impresión (invisible en pantalla) */}
       <div
-        id="gmura-label-print"
+        ref={printRef}
+        id={PRINT_CONTAINER_ID}
         style={{
           display: 'none',
           fontFamily: 'system-ui, sans-serif',
@@ -182,7 +273,13 @@ export default function LabelPrintModal({
       >
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '2mm' }}>
           {labelsToRender.map(({ variant, key }) => (
-            <LabelCard key={key} variant={variant} productName={productName} />
+            <LabelCard
+              key={key}
+              variant={variant}
+              productName={productName}
+              format={labelFormat}
+              onBarcodeError={reportBarcodeError}
+            />
           ))}
         </div>
       </div>
@@ -240,6 +337,7 @@ export default function LabelPrintModal({
                       code={variant.barcode ?? variant.sku ?? variant.id.slice(-8)}
                       height={14}
                       width={1}
+                      onError={reportBarcodeError}
                     />
                   </div>
                   <div>
@@ -285,6 +383,8 @@ export default function LabelPrintModal({
                 <LabelCard
                   variant={items[0].variant}
                   productName={productName}
+                  format={labelFormat}
+                  onBarcodeError={reportBarcodeError}
                 />
               )}
             </div>
@@ -302,7 +402,7 @@ export default function LabelPrintModal({
               Cancelar
             </button>
             <button
-              onClick={() => window.print()}
+              onClick={handlePrint}
               className="flex h-10 flex-1 items-center justify-center gap-2 rounded-lg bg-[#8b5cf6] text-sm font-semibold text-white shadow-[0_4px_12px_#8b5cf640] hover:brightness-95"
             >
               <Printer size={14} />
