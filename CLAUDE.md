@@ -168,6 +168,30 @@ Historial de ventas + reparación de useCreateOrder (feature/10-historial-ventas
     (return_days_limit, items ya devueltos) y salta al paso 2; limpia el
     URL param tras consumirlo
 
+Numeración secuencial + copyable cells + búsqueda mejorada (feature/10-historial-ventas) ✅
+  - Migración 005_sequential_order_numbers: orders.order_number int NOT NULL,
+    índice único (store_id, order_number), trigger BEFORE INSERT
+    assign_order_number con pg_advisory_xact_lock por tienda + backfill
+    cronológico de filas existentes
+  - Order type extendido con order_number; Insert type lo deja opcional
+    porque el trigger lo asigna
+  - useSalesHistory/useSaleDetail/useOrderSearch/useOrderDetail fetch
+    order_number; useReturnHistory JOIN orders:original_order_id para
+    mostrar Ord. #N en el panel de historial
+  - useOrderSearch reescrito: mínimo 1 char, debounce 300ms, detecta
+    /^#?\d+$/ (numérico → eq order_number) vs texto (≥2 chars → JOIN
+    customers full_name/phone). Filtra siempre por store_id como defensa
+    en profundidad además de RLS
+  - SalesHistoryPage: muestra #order_number (no UUID), celdas copiables
+    (#, cliente, total) con CopyableCell + toast.success 1.5s; detalle
+    expandido muestra UUID completo + botón "Copiar UUID" para soporte
+  - POSPage TicketModal y ReturnsPage (stepper + ticket + search cards
+    + historial) muestran #order_number en todos los lugares
+  - Search cards de ReturnsPage rediseñadas: avatar 48px con #N grande,
+    cliente arriba, fecha+items+total a la derecha; empty state
+    "No se encontraron ventas para X" + sugerencia
+
 ## Estado actual del proyecto
 En progreso: 09 - Parametrización (pausada — pendiente prompt 2 de Addi)
+En progreso: 11 - Multi-store admin (siguiente — switcher de tienda para admin)
 Última fase completada: 10 - Historial de ventas ✅

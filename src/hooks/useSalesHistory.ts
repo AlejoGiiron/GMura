@@ -23,6 +23,7 @@ export const PAGE_SIZE = 50
 
 export type SalesHistoryRow = {
   id: string
+  order_number: number
   created_at: string
   total: number
   subtotal: number
@@ -72,6 +73,7 @@ export type SaleDetailReturn = {
 
 export type SaleDetail = {
   id: string
+  order_number: number
   created_at: string
   status: OrderStatus
   subtotal: number
@@ -88,6 +90,7 @@ export type SaleDetail = {
 
 type RawOrderRow = {
   id: string
+  order_number: number
   created_at: string
   total: number
   subtotal: number
@@ -102,6 +105,7 @@ type RawOrderRow = {
 
 type RawOrderDetail = {
   id: string
+  order_number: number
   created_at: string
   status: string
   subtotal: number
@@ -160,8 +164,8 @@ export function useSalesHistory(filters: SalesHistoryFilters) {
       let q = supabase
         .from('orders')
         .select(
-          `id, created_at, total, subtotal, discount, payment_method, status,
-           cash_received, customer_id,
+          `id, order_number, created_at, total, subtotal, discount,
+           payment_method, status, cash_received, customer_id,
            customers(full_name, phone),
            order_items(id)`,
           { count: 'exact' },
@@ -183,12 +187,20 @@ export function useSalesHistory(filters: SalesHistoryFilters) {
         q = q.lte('created_at' as never, `${filters.dateTo}T23:59:59`)
       }
 
-      if (dq.length >= 2) {
-        const orParts: string[] = [`id.ilike.%${dq}%`]
+      if (dq.length >= 1) {
+        const orParts: string[] = []
+        const numericQuery = dq.replace(/^#/, '')
+        if (/^\d+$/.test(numericQuery)) {
+          orParts.push(`order_number.eq.${numericQuery}`)
+        } else if (dq.length >= 2) {
+          orParts.push(`id.ilike.%${dq}%`)
+        }
         if (customerIds && customerIds.length > 0) {
           orParts.push(`customer_id.in.(${customerIds.join(',')})`)
         }
-        q = q.or(orParts.join(',') as never)
+        if (orParts.length > 0) {
+          q = q.or(orParts.join(',') as never)
+        }
       }
 
       const { data, error, count } = await q
@@ -198,6 +210,7 @@ export function useSalesHistory(filters: SalesHistoryFilters) {
         const r = row as unknown as RawOrderRow
         return {
           id: r.id,
+          order_number: r.order_number,
           created_at: r.created_at,
           total: r.total,
           subtotal: r.subtotal,
@@ -309,7 +322,7 @@ export function useSaleDetail(orderId: string | null) {
       const { data: raw, error } = await supabase
         .from('orders')
         .select(`
-          id, created_at, status, subtotal, discount, total,
+          id, order_number, created_at, status, subtotal, discount, total,
           payment_method, cash_received,
           customers(id, full_name, phone),
           order_items(
@@ -350,6 +363,7 @@ export function useSaleDetail(orderId: string | null) {
 
       return {
         id: order.id,
+        order_number: order.order_number,
         created_at: order.created_at,
         status: order.status as OrderStatus,
         subtotal: order.subtotal,

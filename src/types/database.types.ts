@@ -91,6 +91,7 @@ export interface Order {
   total: number
   payment_method: PaymentMethod
   cash_received: number | null
+  order_number: number
   created_at: string
   updated_at: string
 }
@@ -255,7 +256,11 @@ export interface Database {
       }
       orders: {
         Row: Order
-        Insert: Omit<Order, 'id' | 'created_at'> & { id?: string; created_at?: string }
+        Insert: Omit<Order, 'id' | 'created_at' | 'order_number'> & {
+          id?: string
+          created_at?: string
+          order_number?: number
+        }
         Update: Partial<Omit<Order, 'id'>>
       }
       order_items: {

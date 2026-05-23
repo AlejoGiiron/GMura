@@ -15,7 +15,9 @@ import {
   CheckCircle,
   Ban,
   RefreshCw,
+  Copy,
 } from 'lucide-react'
+import toast from 'react-hot-toast'
 import {
   startOfDay,
   endOfDay,
@@ -126,6 +128,45 @@ function StatusBadge({ status }: { status: OrderStatus }) {
     <span className="inline-flex items-center gap-1.5 rounded-full bg-red-100 px-2.5 py-0.5 text-[11px] font-semibold text-red-800">
       <Ban size={10} /> Cancelada
     </span>
+  )
+}
+
+// ── Copyable helpers ──────────────────────────────────────────────────────────
+
+async function copyToClipboard(value: string, label: string, displayValue?: string) {
+  try {
+    await navigator.clipboard.writeText(value)
+    toast.success(`Copiado: ${displayValue ?? value}`, { duration: 1500 })
+  } catch {
+    toast.error(`No se pudo copiar ${label}`)
+  }
+}
+
+interface CopyableProps {
+  value: string
+  label: string
+  displayValue?: string
+  className?: string
+  children: React.ReactNode
+}
+
+function CopyableCell({ value, label, displayValue, className, children }: CopyableProps) {
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation()
+        void copyToClipboard(value, label, displayValue)
+      }}
+      aria-label={`Copiar ${label}: ${displayValue ?? value}`}
+      className={`group -mx-1 inline-flex items-center gap-1.5 rounded px-1 py-0.5 text-left transition-colors hover:bg-stone-100 ${className ?? ''}`}
+    >
+      <span className="min-w-0 truncate">{children}</span>
+      <Copy
+        size={12}
+        className="shrink-0 text-[#a8a29e] opacity-0 transition-opacity group-hover:opacity-100"
+      />
+    </button>
   )
 }
 
@@ -261,9 +302,14 @@ function SaleDetailRow({ detail }: { detail: SaleDetail }) {
 
         <div className="flex flex-col gap-4">
           <div className="rounded-xl border border-[#ebe9e6] bg-white p-4">
-            <p className="mb-3 text-[10.5px] font-semibold uppercase tracking-[.06em] text-[#737373]">
-              Resumen
-            </p>
+            <div className="mb-3 flex items-center justify-between">
+              <p className="text-[10.5px] font-semibold uppercase tracking-[.06em] text-[#737373]">
+                Resumen
+              </p>
+              <span className="font-mono text-sm font-semibold text-[#1a1a1a]">
+                #{detail.order_number}
+              </span>
+            </div>
             <div className="space-y-1.5 text-sm">
               <div className="flex justify-between text-[#525252]">
                 <span>Subtotal</span>
@@ -318,6 +364,27 @@ function SaleDetailRow({ detail }: { detail: SaleDetail }) {
                 )}
               </div>
             )}
+
+            <div className="mt-4 border-t border-[#f5f4f1] pt-3">
+              <p className="mb-1 text-[10.5px] font-semibold uppercase tracking-[.06em] text-[#737373]">
+                UUID (soporte)
+              </p>
+              <div className="flex items-center justify-between gap-2">
+                <code className="min-w-0 truncate font-mono text-[11px] text-[#737373]">
+                  {detail.id}
+                </code>
+                <button
+                  type="button"
+                  onClick={() =>
+                    void copyToClipboard(detail.id, 'UUID', detail.id)
+                  }
+                  aria-label={`Copiar UUID: ${detail.id}`}
+                  className="flex shrink-0 items-center gap-1 rounded-md border border-[#ebe9e6] bg-white px-2 py-1 text-[11px] font-medium text-[#525252] hover:bg-[#f5f4f1]"
+                >
+                  <Copy size={11} /> Copiar UUID
+                </button>
+              </div>
+            </div>
           </div>
 
           <div className="flex flex-col gap-2">
@@ -378,15 +445,31 @@ function SalesRow({
   isExpanded: boolean
   onToggle: () => void
 }) {
+  const orderLabel = `#${row.order_number}`
+  const totalLabel = fmtCOP(row.total)
+
   return (
     <>
-      <button
+      <div
+        role="button"
+        tabIndex={0}
         onClick={onToggle}
-        className="grid w-full grid-cols-[90px_160px_minmax(0,1fr)_60px_120px_140px_140px_24px] items-center gap-3 border-b border-[#f5f4f1] px-6 py-3 text-left transition-colors hover:bg-[#f8f7f5]"
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault()
+            onToggle()
+          }
+        }}
+        className="grid w-full cursor-pointer grid-cols-[100px_160px_minmax(0,1fr)_60px_140px_140px_140px_24px] items-center gap-3 border-b border-[#f5f4f1] px-6 py-3 text-left transition-colors hover:bg-[#f8f7f5]"
       >
-        <span className="font-mono text-xs font-semibold text-[#1a1a1a]">
-          #{row.id.slice(-6).toUpperCase()}
-        </span>
+        <CopyableCell
+          value={orderLabel}
+          label="número de venta"
+          displayValue={orderLabel}
+          className="font-mono text-sm font-semibold text-[#1a1a1a]"
+        >
+          {orderLabel}
+        </CopyableCell>
         <span className="text-xs text-[#525252]">
           {new Date(row.created_at).toLocaleString('es-CO', {
             timeZone: 'America/Bogota',
@@ -394,17 +477,28 @@ function SalesRow({
             timeStyle: 'short',
           })}
         </span>
-        <span className="min-w-0 truncate text-sm text-[#1a1a1a]">
-          {row.customer_name ?? (
-            <span className="text-[#a8a29e]">Sin cliente</span>
-          )}
-        </span>
+        {row.customer_name ? (
+          <CopyableCell
+            value={row.customer_name}
+            label="cliente"
+            className="text-sm text-[#1a1a1a]"
+          >
+            {row.customer_name}
+          </CopyableCell>
+        ) : (
+          <span className="text-sm text-[#a8a29e]">Sin cliente</span>
+        )}
         <span className="text-xs tabular-nums text-[#525252]">
           {row.items_count}
         </span>
-        <span className="font-mono text-sm font-semibold tabular-nums text-[#1a1a1a]">
-          {fmtCOP(row.total)}
-        </span>
+        <CopyableCell
+          value={String(row.total)}
+          label="total"
+          displayValue={totalLabel}
+          className="font-mono text-sm font-semibold tabular-nums text-[#1a1a1a]"
+        >
+          {totalLabel}
+        </CopyableCell>
         <span>
           <PaymentBadge method={row.payment_method} />
         </span>
@@ -415,7 +509,7 @@ function SalesRow({
           size={14}
           className={`text-[#a8a29e] transition-transform ${isExpanded ? 'rotate-90' : ''}`}
         />
-      </button>
+      </div>
       {isExpanded && <SaleDetailLoader orderId={row.id} />}
     </>
   )
@@ -631,7 +725,7 @@ export default function SalesHistoryPage() {
 
       {/* Table */}
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-[#ebe9e6] bg-white">
-        <div className="grid grid-cols-[90px_160px_minmax(0,1fr)_60px_120px_140px_140px_24px] gap-3 border-b border-[#ebe9e6] bg-[#fafaf9] px-6 py-3 text-[11px] font-semibold uppercase tracking-[.05em] text-[#737373]">
+        <div className="grid grid-cols-[100px_160px_minmax(0,1fr)_60px_140px_140px_140px_24px] gap-3 border-b border-[#ebe9e6] bg-[#fafaf9] px-6 py-3 text-[11px] font-semibold uppercase tracking-[.05em] text-[#737373]">
           <span>#</span>
           <span>Fecha</span>
           <span>Cliente</span>
