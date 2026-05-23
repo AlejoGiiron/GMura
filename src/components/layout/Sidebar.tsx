@@ -2,6 +2,7 @@ import { NavLink } from 'react-router-dom'
 import type { LucideIcon } from 'lucide-react'
 import {
   ShoppingCart,
+  History,
   Package,
   Layers,
   RotateCcw,
@@ -17,10 +18,12 @@ interface NavItem {
   label: string
   icon: LucideIcon
   adminOnly?: boolean
+  end?: boolean
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { to: '/ventas', label: 'Ventas', icon: ShoppingCart },
+  { to: '/ventas', label: 'Ventas', icon: ShoppingCart, end: true },
+  { to: '/ventas/historial', label: 'Historial', icon: History },
   { to: '/productos', label: 'Productos', icon: Package, adminOnly: true },
   { to: '/inventario', label: 'Inventario', icon: Layers },
   { to: '/devoluciones', label: 'Devoluciones', icon: RotateCcw },
@@ -53,6 +56,7 @@ export default function Sidebar() {
             <NavLink
               key={item.to}
               to={item.to}
+              end={item.end}
               className={({ isActive }) =>
                 `flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
                   isActive

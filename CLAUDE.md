@@ -92,8 +92,8 @@ Hotfix QA pre-deploy (hotfix/qa-pre-deploy) ✅
   - CategoriesManager: skeleton loading, tokens border/radius corregidos
   - LabelPrintModal: dimensiones de formato dinámicas desde StoreConfig
 
-En progreso: 08 - Bug fixes críticos (v1.1)
-Siguiente: 09 - Parametrización (v1.2)
+Última fase completada: 08 - Bug fixes críticos (v1.1.0) ✅
+En progreso: 09 - Parametrización (v1.2)
 Versión actual en producción: v1.0.0
 
 Fix de impresión de etiquetas (feature/08-bugfixes-criticos) ✅
@@ -132,3 +132,42 @@ Feature de turno de caja (feature/08-bugfixes-criticos) ✅
     cuando hay turno; CTA violeta "Abrir turno" cuando no
   - POSPage: bloqueo full-screen "Debes abrir turno para vender" con
     botón "Abrir turno ahora" si el usuario no tiene turno abierto
+
+Tipos de talla configurables + delete de categorías (feature/09-parametrizacion) ✅
+  - Migración 004_size_types: products.size_type text NOT NULL DEFAULT 'letter'
+  - src/lib/sizeTypes.ts: catálogo letter / pants_co / shoes_co / baby /
+    unique / custom + SizeTypeKey, resolveSizeType, isValidSizeType
+  - Product type extendido con size_type
+  - ProductModal: select "Tipo de talla" (default 'letter')
+  - VariantsPanel: selector de talla dinámico según product.size_type;
+    'custom' = input libre, otros = <select> con catálogo predefinido;
+    preserva tallas legacy fuera del catálogo al editar
+  - useCategoryMutations: agregado remove + countProducts;
+    delete usa ON DELETE SET NULL de products.category_id;
+    invalida queries de products tras delete
+  - CategoriesManager: botón papelera + modal de confirmación que muestra
+    cuántos productos quedarán sin categoría antes de eliminar
+
+Historial de ventas + reparación de useCreateOrder (feature/10-historial-ventas) ✅
+  - useCreateOrder reescrito con validación de inputs (auth, items, qty,
+    unit_price), logging detallado y rollback compensatorio: si falla el
+    insert de order_items se elimina la orden recién creada para evitar
+    huérfanas. Invalidación amplia post-éxito: orders, sales-history,
+    variants, products, pos-products, stock-movements, customers, cash-shift
+  - src/hooks/useSalesHistory.ts: useSalesHistory (paginado 50/pág con
+    filtros server-side), useSalesSummary (revenue, count, ticket promedio,
+    devoluciones del período), useSaleDetail (orden + items + cliente +
+    devoluciones asociadas)
+  - SalesHistoryPage: cards resumen, filtros (búsqueda debounced, presets
+    fecha hoy/semana/mes/custom, método pago, estado), tabla con fila
+    expandible para detalle inline, paginación anterior/siguiente,
+    empty state hacia POS
+  - Ruta /ventas/historial dentro de ProtectedRoute + entrada Sidebar
+    "Historial" con icono History (visible para admin y seller)
+  - ReturnsPage: lee ?orderId=xxx, precarga la orden con validación
+    (return_days_limit, items ya devueltos) y salta al paso 2; limpia el
+    URL param tras consumirlo
+
+## Estado actual del proyecto
+En progreso: 09 - Parametrización (pausada — pendiente prompt 2 de Addi)
+Última fase completada: 10 - Historial de ventas ✅

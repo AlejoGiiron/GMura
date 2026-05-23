@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import {
   Search,
   X,
@@ -1210,6 +1211,7 @@ function HistoryPanel() {
 type Step = 1 | 2 | 3 | 4
 
 export default function ReturnsPage() {
+  const [searchParams, setSearchParams] = useSearchParams()
   const [step, setStep] = useState<Step>(1)
   const [selectedOrder, setSelectedOrder] = useState<FoundOrder | null>(null)
   const [returnQtys, setReturnQtys] = useState<Record<string, number>>({})
@@ -1220,11 +1222,54 @@ export default function ReturnsPage() {
     Record<string, ExchangeVariantOption | null>
   >({})
   const [completedReturn, setCompletedReturn] = useState<Return | null>(null)
+  const preloadAttemptedRef = useRef<string | null>(null)
 
   const createReturn = useCreateReturn()
   const { data: storeData } = useStoreConfig()
   const config = resolveConfig((storeData as unknown as { config: Record<string, unknown> | null } | undefined)?.config)
   const returnDaysLimit = config.return_days_limit
+
+  const preloadOrderId = searchParams.get('orderId')
+  const shouldPreload =
+    !!preloadOrderId &&
+    preloadAttemptedRef.current !== preloadOrderId &&
+    !selectedOrder
+  const { data: preloadDetail } = useOrderDetail(
+    shouldPreload ? preloadOrderId : null,
+  )
+
+  useEffect(() => {
+    if (!shouldPreload || !preloadDetail || !preloadOrderId) return
+    preloadAttemptedRef.current = preloadOrderId
+
+    const age = differenceInDays(new Date(), new Date(preloadDetail.created_at))
+    if (age > returnDaysLimit) {
+      toast.error(
+        `Esta orden tiene ${age} días. El límite es ${returnDaysLimit} días.`,
+      )
+      setSearchParams({}, { replace: true })
+      return
+    }
+    const allReturned =
+      preloadDetail.items.length > 0 &&
+      preloadDetail.items.every((i) => i.qty_returned >= i.qty)
+    if (allReturned) {
+      toast.error('Todos los ítems de esta orden ya fueron devueltos.')
+      setSearchParams({}, { replace: true })
+      return
+    }
+
+    setSelectedOrder(preloadDetail)
+    setReturnQtys({})
+    setStep(2)
+    setSearchParams({}, { replace: true })
+  }, [
+    shouldPreload,
+    preloadDetail,
+    preloadOrderId,
+    returnDaysLimit,
+    setSearchParams,
+  ])
 
   const reset = useCallback(() => {
     setStep(1)
@@ -1235,6 +1280,7 @@ export default function ReturnsPage() {
     setNotes('')
     setExchangeVariants({})
     setCompletedReturn(null)
+    preloadAttemptedRef.current = null
   }, [])
 
   const handleOrderSelected = useCallback((order: FoundOrder) => {

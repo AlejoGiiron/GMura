@@ -4,6 +4,7 @@ import ProtectedRoute from '@/components/layout/ProtectedRoute'
 import AppLayout from '@/components/layout/AppLayout'
 import LoginPage from '@/pages/LoginPage'
 import POSPage from '@/pages/POSPage'
+import SalesHistoryPage from '@/pages/SalesHistoryPage'
 import ProductsPage from '@/pages/ProductsPage'
 import InventoryPage from '@/pages/InventoryPage'
 import ReturnsPage from '@/pages/ReturnsPage'
@@ -26,6 +27,7 @@ export default function App() {
         >
           <Route index element={<Navigate to="/ventas" replace />} />
           <Route path="ventas" element={<POSPage />} />
+          <Route path="ventas/historial" element={<SalesHistoryPage />} />
           <Route
             path="productos"
             element={
