@@ -1,10 +1,11 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { X, Plus, AlertTriangle, Edit2, ToggleRight, Printer } from 'lucide-react'
 import { useVariants } from '@/hooks/useVariants'
 import { useVariantMutations } from '@/hooks/useVariantMutations'
 import LabelPrintModal from '@/components/products/LabelPrintModal'
 import { fmtCOP } from '@/lib/formatters'
-import { generateBarcode, getColorHex, SIZES } from '@/lib/products'
+import { generateBarcode, getColorHex } from '@/lib/products'
+import { SIZE_TYPES, resolveSizeType } from '@/lib/sizeTypes'
 import type { Product, Variant } from '@/types/database.types'
 import toast from 'react-hot-toast'
 
@@ -19,15 +20,17 @@ interface VariantFormData {
   min_stock: string
 }
 
-const EMPTY_FORM: VariantFormData = {
-  size: 'S',
-  color: '',
-  sku: '',
-  barcode: '',
-  price: '',
-  cost_price: '',
-  stock_qty: '0',
-  min_stock: '0',
+function buildEmptyForm(defaultSize: string): VariantFormData {
+  return {
+    size: defaultSize,
+    color: '',
+    sku: '',
+    barcode: '',
+    price: '',
+    cost_price: '',
+    stock_qty: '0',
+    min_stock: '0',
+  }
 }
 
 function variantToForm(v: Variant): VariantFormData {
@@ -52,18 +55,34 @@ export default function VariantsPanel({ product, onClose }: VariantsPanelProps) 
   const { data: variants = [], isLoading } = useVariants(product.id)
   const { create, update, toggleActive } = useVariantMutations(product.id)
 
+  const sizeType = resolveSizeType(product.size_type)
+  const catalogSizes: readonly string[] = SIZE_TYPES[sizeType].sizes
+  const isCustomSizes = sizeType === 'custom'
+  const defaultSize = catalogSizes[0] ?? ''
+  const emptyForm = useMemo(() => buildEmptyForm(defaultSize), [defaultSize])
+
   const [showForm, setShowForm] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
-  const [form, setForm] = useState<VariantFormData>(EMPTY_FORM)
+  const [form, setForm] = useState<VariantFormData>(emptyForm)
   const [submitting, setSubmitting] = useState(false)
 
   // Label printing state
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [labelVariants, setLabelVariants] = useState<Variant[] | null>(null)
 
+  // Si el size del form actual no está en el catálogo (ej: variante vieja
+  // de otro size_type), lo incluimos como opción para preservarlo al editar.
+  const sizeOptions = useMemo(() => {
+    if (isCustomSizes) return catalogSizes
+    if (form.size && !catalogSizes.includes(form.size)) {
+      return [...catalogSizes, form.size]
+    }
+    return catalogSizes
+  }, [catalogSizes, isCustomSizes, form.size])
+
   function openAdd() {
     setEditingId(null)
-    setForm(EMPTY_FORM)
+    setForm(emptyForm)
     setShowForm(true)
   }
 
@@ -203,17 +222,26 @@ export default function VariantsPanel({ product, onClose }: VariantsPanelProps) 
                       <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-slate-400">
                         Talla
                       </label>
-                      <select
-                        value={form.size}
-                        onChange={(e) => setField('size', e.target.value)}
-                        className="h-9 w-full rounded-lg border border-slate-200 bg-white px-2.5 text-sm outline-none focus:border-violet-400"
-                      >
-                        {SIZES.map((s) => (
-                          <option key={s} value={s}>
-                            {s}
-                          </option>
-                        ))}
-                      </select>
+                      {isCustomSizes ? (
+                        <input
+                          value={form.size}
+                          onChange={(e) => setField('size', e.target.value)}
+                          placeholder="Talla libre"
+                          className="h-9 w-full rounded-lg border border-slate-200 bg-white px-2.5 text-sm outline-none focus:border-violet-400"
+                        />
+                      ) : (
+                        <select
+                          value={form.size}
+                          onChange={(e) => setField('size', e.target.value)}
+                          className="h-9 w-full rounded-lg border border-slate-200 bg-white px-2.5 text-sm outline-none focus:border-violet-400"
+                        >
+                          {sizeOptions.map((s) => (
+                            <option key={s} value={s}>
+                              {s}
+                            </option>
+                          ))}
+                        </select>
+                      )}
                     </div>
                     <div>
                       <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-slate-400">

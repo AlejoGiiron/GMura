@@ -10,6 +10,7 @@ type CreateProductInput = {
   brand: string | null
   category_id: string | null
   image_url: string | null
+  size_type: string
 }
 
 type UpdateProductInput = Partial<CreateProductInput> & { id: string }
