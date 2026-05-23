@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import {
   Search,
   X,
@@ -144,16 +145,21 @@ function Step1Search({
         )}
       </div>
 
-      {query.length >= 3 && (
+      {query.length >= 1 && (
         <div className="overflow-hidden rounded-xl border border-[#ebe9e6]">
           {isLoading ? (
             <div className="flex items-center justify-center gap-2 py-8 text-sm text-[#737373]">
               <RefreshCw size={14} className="animate-spin" /> Buscando…
             </div>
           ) : results.length === 0 ? (
-            <div className="flex flex-col items-center justify-center gap-2 py-10">
+            <div className="flex flex-col items-center justify-center gap-2 py-10 px-4 text-center">
               <Package size={24} className="text-[#d6d3d1]" />
-              <p className="text-sm text-[#737373]">Sin resultados para "{query}"</p>
+              <p className="text-sm text-[#737373]">
+                No se encontraron ventas para "{query}"
+              </p>
+              <p className="text-xs text-[#a8a29e]">
+                Busca por número de venta o nombre de cliente.
+              </p>
             </div>
           ) : (
             <div className="divide-y divide-[#f5f4f1]">
@@ -164,29 +170,39 @@ function Step1Search({
                   disabled={loadingDetail && selectedId === r.id}
                   className="flex w-full items-center gap-4 px-4 py-3 text-left transition-colors hover:bg-[#f8f7f5] disabled:opacity-60"
                 >
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-violet-100">
-                    <RotateCcw size={14} className="text-violet-600" />
+                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-violet-100">
+                    <span className="font-mono text-xl font-bold text-violet-700">
+                      #{r.order_number}
+                    </span>
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-medium text-[#1a1a1a]">
-                      #{r.id.slice(-8).toUpperCase()}
+                      {r.customer ? r.customer.full_name : (
+                        <span className="text-[#a8a29e]">Sin cliente</span>
+                      )}
                     </p>
-                    {r.customer && (
+                    {r.customer?.phone && (
                       <p className="text-xs text-[#737373]">
-                        {r.customer.full_name}
-                        {r.customer.phone ? ` · ${r.customer.phone}` : ''}
+                        {r.customer.phone}
                       </p>
                     )}
-                    <p className="text-xs text-[#a8a29e]">
-                      {new Date(r.created_at).toLocaleDateString('es-CO', {
+                    <p className="mt-0.5 text-xs text-[#a8a29e]">
+                      {new Date(r.created_at).toLocaleString('es-CO', {
                         timeZone: 'America/Bogota',
-                        dateStyle: 'medium',
+                        dateStyle: 'short',
+                        timeStyle: 'short',
                       })}
+                      {' · '}
+                      {r.items_count} ítem{r.items_count !== 1 ? 's' : ''}
                     </p>
                   </div>
                   <div className="shrink-0 text-right">
-                    <p className="font-mono text-sm font-semibold text-[#1a1a1a]">{fmtCOP(r.total)}</p>
-                    <p className="text-xs text-[#737373]">{METHOD_LABEL[r.payment_method]}</p>
+                    <p className="font-mono text-sm font-semibold text-[#1a1a1a]">
+                      {fmtCOP(r.total)}
+                    </p>
+                    <p className="text-xs text-[#737373]">
+                      {METHOD_LABEL[r.payment_method]}
+                    </p>
                   </div>
                   {loadingDetail && selectedId === r.id && (
                     <RefreshCw size={13} className="shrink-0 animate-spin text-violet-500" />
@@ -196,10 +212,6 @@ function Step1Search({
             </div>
           )}
         </div>
-      )}
-
-      {query.length > 0 && query.length < 3 && (
-        <p className="text-xs text-[#a8a29e]">Escribe al menos 3 caracteres para buscar.</p>
       )}
     </div>
   )
@@ -226,7 +238,7 @@ function Step2Items({ order, returnQtys, onQtyChange, onBack, onNext }: Step2Pro
           <div>
             <p className="text-xs font-semibold uppercase tracking-[.05em] text-[#737373]">Orden original</p>
             <p className="mt-0.5 text-sm font-semibold text-[#1a1a1a]">
-              #{order.id.slice(-8).toUpperCase()}
+              #{order.order_number}
             </p>
           </div>
           <div className="text-right">
@@ -946,7 +958,7 @@ function ReturnTicketModal({
             {returnRecord.id.slice(-6).toUpperCase()}
           </p>
           <p className="text-[11px] text-[#a8a29e]">
-            Ref. orden #{order.id.slice(-6).toUpperCase()}
+            Ref. orden #{order.order_number}
           </p>
         </div>
 
@@ -1075,7 +1087,7 @@ function HistoryRowItem({
             <TypeBadge type={row.type} />
           </div>
           <p className="text-xs text-[#737373]">
-            Ord. #{row.original_order_id.slice(-6).toUpperCase()}
+            Ord. #{row.original_order_number ?? '—'}
           </p>
           <p className="mt-0.5 flex items-center gap-1 text-[11px] text-[#a8a29e]">
             <Clock size={9} />
@@ -1210,6 +1222,7 @@ function HistoryPanel() {
 type Step = 1 | 2 | 3 | 4
 
 export default function ReturnsPage() {
+  const [searchParams, setSearchParams] = useSearchParams()
   const [step, setStep] = useState<Step>(1)
   const [selectedOrder, setSelectedOrder] = useState<FoundOrder | null>(null)
   const [returnQtys, setReturnQtys] = useState<Record<string, number>>({})
@@ -1220,11 +1233,54 @@ export default function ReturnsPage() {
     Record<string, ExchangeVariantOption | null>
   >({})
   const [completedReturn, setCompletedReturn] = useState<Return | null>(null)
+  const preloadAttemptedRef = useRef<string | null>(null)
 
   const createReturn = useCreateReturn()
   const { data: storeData } = useStoreConfig()
   const config = resolveConfig((storeData as unknown as { config: Record<string, unknown> | null } | undefined)?.config)
   const returnDaysLimit = config.return_days_limit
+
+  const preloadOrderId = searchParams.get('orderId')
+  const shouldPreload =
+    !!preloadOrderId &&
+    preloadAttemptedRef.current !== preloadOrderId &&
+    !selectedOrder
+  const { data: preloadDetail } = useOrderDetail(
+    shouldPreload ? preloadOrderId : null,
+  )
+
+  useEffect(() => {
+    if (!shouldPreload || !preloadDetail || !preloadOrderId) return
+    preloadAttemptedRef.current = preloadOrderId
+
+    const age = differenceInDays(new Date(), new Date(preloadDetail.created_at))
+    if (age > returnDaysLimit) {
+      toast.error(
+        `Esta orden tiene ${age} días. El límite es ${returnDaysLimit} días.`,
+      )
+      setSearchParams({}, { replace: true })
+      return
+    }
+    const allReturned =
+      preloadDetail.items.length > 0 &&
+      preloadDetail.items.every((i) => i.qty_returned >= i.qty)
+    if (allReturned) {
+      toast.error('Todos los ítems de esta orden ya fueron devueltos.')
+      setSearchParams({}, { replace: true })
+      return
+    }
+
+    setSelectedOrder(preloadDetail)
+    setReturnQtys({})
+    setStep(2)
+    setSearchParams({}, { replace: true })
+  }, [
+    shouldPreload,
+    preloadDetail,
+    preloadOrderId,
+    returnDaysLimit,
+    setSearchParams,
+  ])
 
   const reset = useCallback(() => {
     setStep(1)
@@ -1235,6 +1291,7 @@ export default function ReturnsPage() {
     setNotes('')
     setExchangeVariants({})
     setCompletedReturn(null)
+    preloadAttemptedRef.current = null
   }, [])
 
   const handleOrderSelected = useCallback((order: FoundOrder) => {

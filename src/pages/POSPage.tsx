@@ -339,7 +339,7 @@ function TicketModal({ order, items, discount, onClose }: TicketModalProps) {
             })}
           </p>
           <p className="mt-1 text-xs text-slate-400">
-            Venta #{order.id.slice(-6).toUpperCase()}
+            Venta #{order.order_number}
           </p>
         </div>
 

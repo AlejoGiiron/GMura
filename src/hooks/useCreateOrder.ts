@@ -20,9 +20,38 @@ export function useCreateOrder() {
 
   return useMutation({
     mutationFn: async (input: CreateOrderInput): Promise<Order> => {
+      const storeId = profile?.store_id
+      const userId = profile?.id
+
+      if (!storeId || !userId) {
+        throw new Error('Sesión inválida. Vuelve a iniciar sesión.')
+      }
+
+      if (input.items.length === 0) {
+        throw new Error('El carrito está vacío')
+      }
+      for (const item of input.items) {
+        if (!item.variant_id || !item.product_id) {
+          throw new Error('Ítem inválido en el carrito (falta variante o producto)')
+        }
+        if (item.qty <= 0) {
+          throw new Error(`Cantidad inválida para ${item.name}`)
+        }
+        if (item.unit_price < 0) {
+          throw new Error(`Precio inválido para ${item.name}`)
+        }
+      }
+
       const { subtotal, discountAmt, total } = cartTotals(input.items, input.discount)
-      const storeId = profile?.store_id ?? ''
-      const userId = profile?.id ?? ''
+      if (total < 0) {
+        throw new Error('El total no puede ser negativo')
+      }
+
+      console.info('[useCreateOrder] Creando orden…', {
+        items: input.items.length,
+        total,
+        payment_method: input.payment_method,
+      })
 
       const { data: order, error: orderError } = await supabase
         .from('orders')
@@ -39,9 +68,18 @@ export function useCreateOrder() {
         } as never)
         .select()
         .single()
-      if (orderError) throw orderError
+
+      if (orderError || !order) {
+        console.error('[useCreateOrder] Error insertando orden:', orderError)
+        throw new Error(
+          `Error al guardar venta: ${orderError?.message ?? 'desconocido'}`,
+        )
+      }
 
       const o = order as Order
+      console.info(
+        `[useCreateOrder] Orden creada con id ${o.id}, insertando ${input.items.length} ítems…`,
+      )
 
       const { error: itemsError } = await supabase.from('order_items').insert(
         input.items.map((item) => ({
@@ -52,13 +90,44 @@ export function useCreateOrder() {
           unit_price: item.unit_price,
         })) as never,
       )
-      if (itemsError) throw itemsError
 
+      if (itemsError) {
+        console.error(
+          '[useCreateOrder] Error insertando ítems, ejecutando rollback…',
+          itemsError,
+        )
+        const { error: rollbackError } = await supabase
+          .from('orders')
+          .delete()
+          .eq('id' as never, o.id)
+        if (rollbackError) {
+          console.error(
+            '[useCreateOrder] Rollback de orden falló:',
+            rollbackError,
+          )
+        }
+        throw new Error(`Error al guardar venta: ${itemsError.message}`)
+      }
+
+      console.info('[useCreateOrder] Ítems insertados correctamente')
       return o
     },
-    onSuccess: () => {
+
+    onSuccess: (order) => {
+      console.info('✅ Orden creada:', order.id)
+      void queryClient.invalidateQueries({ queryKey: ['orders'] })
+      void queryClient.invalidateQueries({ queryKey: ['sales-history'] })
+      void queryClient.invalidateQueries({ queryKey: ['variants'] })
+      void queryClient.invalidateQueries({ queryKey: ['products'] })
       void queryClient.invalidateQueries({ queryKey: ['pos-products'] })
+      void queryClient.invalidateQueries({ queryKey: ['stock-movements'] })
+      void queryClient.invalidateQueries({ queryKey: ['customers'] })
+      void queryClient.invalidateQueries({ queryKey: ['cash-shift'] })
     },
-    onError: (err: Error) => toast.error(err.message),
+
+    onError: (err: Error) => {
+      console.error('[useCreateOrder] Mutación falló:', err)
+      toast.error(err.message)
+    },
   })
 }
