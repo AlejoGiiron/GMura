@@ -734,7 +734,7 @@ Tamaño: `17×17`
 | `Banknote`          | Efectivo                                 |
 | `CreditCard`        | Tarjeta                                  |
 | `ArrowLeftRight`    | Transferencia                            |
-| `Smartphone`        | Nequi                                    |
+| `Smartphone`        | Addi (pago en cuotas)                    |
 | `Printer`           | Imprimir ticket                          |
 | `ShoppingCart`      | Empty state del carrito                  |
 

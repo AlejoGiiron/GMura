@@ -48,7 +48,7 @@ const PAYMENT_METHOD_LABEL: Record<PaymentMethod, string> = {
   cash: 'Efectivo',
   card: 'Tarjeta',
   transfer: 'Transferencia',
-  nequi: 'Nequi',
+  addi: 'Addi',
 }
 
 const PAYMENT_OPTIONS: { id: PaymentMethod | 'all'; label: string }[] = [
@@ -56,7 +56,7 @@ const PAYMENT_OPTIONS: { id: PaymentMethod | 'all'; label: string }[] = [
   { id: 'cash', label: 'Efectivo' },
   { id: 'card', label: 'Tarjeta' },
   { id: 'transfer', label: 'Transferencia' },
-  { id: 'nequi', label: 'Nequi' },
+  { id: 'addi', label: 'Addi' },
 ]
 
 const STATUS_OPTIONS: { id: OrderStatus | 'all'; label: string }[] = [

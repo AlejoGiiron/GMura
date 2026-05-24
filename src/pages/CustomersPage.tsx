@@ -123,14 +123,14 @@ const PAYMENT_LABEL: Record<PaymentMethod, string> = {
   cash: 'Efectivo',
   card: 'Tarjeta',
   transfer: 'Transferencia',
-  nequi: 'Nequi',
+  addi: 'Addi',
 }
 
 const PAYMENT_ICON: Record<PaymentMethod, React.ReactNode> = {
   cash: <Banknote size={12} />,
   card: <CreditCard size={12} />,
   transfer: <ArrowLeftRight size={12} />,
-  nequi: <Smartphone size={12} />,
+  addi: <Smartphone size={12} />,
 }
 
 // ── Avatar ────────────────────────────────────────────────────────────────────

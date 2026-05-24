@@ -4,7 +4,6 @@ import {
   useEffect,
   useCallback,
   useMemo,
-  type ReactNode,
 } from 'react'
 import {
   ShoppingCart,
@@ -14,10 +13,6 @@ import {
   Minus,
   User,
   Tag,
-  Banknote,
-  CreditCard,
-  Smartphone,
-  ArrowLeftRight,
   Printer,
   CheckCircle,
   ChevronDown,
@@ -45,6 +40,11 @@ import { useCreateCustomer } from '@/hooks/useCustomerMutations'
 import { useCustomerSearch } from '@/hooks/useCustomers'
 import { useCurrentShift } from '@/hooks/useCashShift'
 import { OpenShiftModal } from '@/components/layout/CashShiftModals'
+import {
+  PAYMENT_METHODS as PAYMENT_META,
+  PAYMENT_METHOD_KEYS,
+  migrateLegacyPaymentMethods,
+} from '@/lib/paymentMethods'
 import type { Customer, PaymentMethod, Order } from '@/types/database.types'
 
 // ── Variant Picker Modal ─────────────────────────────────────────────────────
@@ -196,23 +196,41 @@ function VariantPickerModal({ product, onAdd, onClose }: VariantPickerProps) {
 
 // ── Payment Modal ─────────────────────────────────────────────────────────────
 
-const PAYMENT_METHODS: { id: PaymentMethod; label: string; icon: ReactNode }[] = [
-  { id: 'cash', label: 'Efectivo', icon: <Banknote size={18} /> },
-  { id: 'card', label: 'Tarjeta', icon: <CreditCard size={18} /> },
-  { id: 'transfer', label: 'Transferencia', icon: <ArrowLeftRight size={18} /> },
-  { id: 'nequi', label: 'Nequi', icon: <Smartphone size={18} /> },
-]
+// Denominaciones de billetes en COP (el más grande en circulación es $100k).
+const QUICK_CASH_AMOUNTS = [20_000, 50_000, 100_000]
+
+function suggestCashAmounts(total: number): number[] {
+  if (total <= 0) return []
+  const candidates = new Set<number>(QUICK_CASH_AMOUNTS)
+  // Próximo múltiplo de $10k: ajustes finos entre denominaciones
+  // (ej: $87.500 → $90.000).
+  candidates.add(Math.ceil(total / 10_000) * 10_000)
+  // Próximo múltiplo de $100k: para totales grandes equivale a recibir
+  // "un billete de $100k más" (ej: $245.000 → $300.000).
+  candidates.add(Math.ceil(total / 100_000) * 100_000)
+  return Array.from(candidates)
+    .filter((n) => n > total)
+    .sort((a, b) => a - b)
+}
 
 interface PaymentModalProps {
   total: number
   enabledMethods: PaymentMethod[]
+  paymentQrUrl: string | null
   onConfirm: (method: PaymentMethod, cashReceived?: number) => void
   onClose: () => void
   isPending: boolean
 }
 
-function PaymentModal({ total, enabledMethods, onConfirm, onClose, isPending }: PaymentModalProps) {
-  const visibleMethods = PAYMENT_METHODS.filter((m) => enabledMethods.includes(m.id))
+function PaymentModal({
+  total,
+  enabledMethods,
+  paymentQrUrl,
+  onConfirm,
+  onClose,
+  isPending,
+}: PaymentModalProps) {
+  const visibleMethods = PAYMENT_METHOD_KEYS.filter((m) => enabledMethods.includes(m))
   const [method, setMethod] = useState<PaymentMethod>(
     enabledMethods.includes('cash') ? 'cash' : (enabledMethods[0] ?? 'cash'),
   )
@@ -252,19 +270,25 @@ function PaymentModal({ total, enabledMethods, onConfirm, onClose, isPending }: 
           Método de pago
         </p>
         <div className="mb-5 grid grid-cols-2 gap-2">
-          {visibleMethods.map((m) => (
-            <button
-              key={m.id}
-              onClick={() => setMethod(m.id)}
-              className={`flex items-center gap-2.5 rounded-xl border px-4 py-3 text-sm font-medium transition-colors ${
-                method === m.id
-                  ? 'border-violet-600 bg-violet-50 text-violet-700'
-                  : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'
-              }`}
-            >
-              {m.icon} {m.label}
-            </button>
-          ))}
+          {visibleMethods.map((id) => {
+            const meta = PAYMENT_META[id]
+            const Icon = meta.icon
+            const active = method === id
+            return (
+              <button
+                key={id}
+                onClick={() => setMethod(id)}
+                className={`flex items-center gap-2.5 rounded-xl border px-4 py-3 text-sm font-medium transition-colors ${
+                  active
+                    ? 'border-violet-600 bg-violet-50 text-violet-700'
+                    : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'
+                }`}
+              >
+                <Icon size={18} style={{ color: active ? undefined : meta.hex }} />
+                {meta.label}
+              </button>
+            )
+          })}
         </div>
 
         {method === 'cash' && (
@@ -280,12 +304,62 @@ function PaymentModal({ total, enabledMethods, onConfirm, onClose, isPending }: 
               placeholder="0"
               className="w-full rounded-xl border border-slate-200 px-4 py-3 font-mono text-lg font-semibold outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-100"
             />
+            {total > 0 && (
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setCashReceived(String(total))}
+                  className={`rounded-lg border px-2.5 py-1 text-xs font-semibold transition-colors ${
+                    cashAmt === total
+                      ? 'border-violet-600 bg-violet-50 text-violet-700'
+                      : 'border-slate-200 bg-white text-slate-700 hover:border-violet-300 hover:bg-violet-50'
+                  }`}
+                >
+                  Exacto
+                </button>
+                {suggestCashAmounts(total).map((amt) => (
+                  <button
+                    key={amt}
+                    type="button"
+                    onClick={() => setCashReceived(String(amt))}
+                    className={`rounded-lg border px-2.5 py-1 font-mono text-xs font-semibold transition-colors ${
+                      cashAmt === amt
+                        ? 'border-violet-600 bg-violet-50 text-violet-700'
+                        : 'border-slate-200 bg-white text-slate-700 hover:border-violet-300 hover:bg-violet-50'
+                    }`}
+                  >
+                    {fmtCOP(amt)}
+                  </button>
+                ))}
+              </div>
+            )}
             {cashAmt >= total && (
               <p className="mt-2 text-sm text-green-600">
                 Cambio:{' '}
                 <span className="font-semibold">{fmtCOP(change)}</span>
               </p>
             )}
+          </div>
+        )}
+
+        {method === 'transfer' && paymentQrUrl && (
+          <div className="mb-5 flex flex-col items-center gap-2 rounded-xl border border-blue-100 bg-blue-50/50 p-4">
+            <img
+              src={paymentQrUrl}
+              alt="QR para pagos"
+              className="h-40 w-40 rounded-lg border border-blue-100 bg-white object-contain p-2"
+            />
+            <p className="text-center text-xs text-slate-600">
+              Cliente escanea para transferir
+            </p>
+          </div>
+        )}
+
+        {method === 'addi' && (
+          <div className="mb-5 rounded-xl border border-pink-100 bg-pink-50/50 p-4 text-center">
+            <p className="text-xs text-slate-700">
+              Pago en cuotas con Addi — confirma desde la app del cliente
+            </p>
           </div>
         )}
 
@@ -320,7 +394,7 @@ const METHOD_LABEL: Record<PaymentMethod, string> = {
   cash: 'Efectivo',
   card: 'Tarjeta',
   transfer: 'Transferencia',
-  nequi: 'Nequi',
+  addi: 'Addi',
 }
 
 function TicketModal({ order, items, discount, onClose }: TicketModalProps) {
@@ -1181,7 +1255,8 @@ export default function POSPage() {
       {showPayment && (
         <PaymentModal
           total={cartTotals(items, discount).total}
-          enabledMethods={config.payment_methods as PaymentMethod[]}
+          enabledMethods={migrateLegacyPaymentMethods(config.payment_methods)}
+          paymentQrUrl={config.payment_qr_url}
           onConfirm={handleConfirmPayment}
           onClose={() => setShowPayment(false)}
           isPending={createOrder.isPending}

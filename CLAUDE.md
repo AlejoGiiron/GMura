@@ -193,8 +193,41 @@ Numeración secuencial + copyable cells + búsqueda mejorada (feature/10-histori
 
 
 
+Reemplazo de Nequi por Addi en métodos de pago (feature/11-payment-methods) ✅
+  - Migración 006_payment_methods_cleanup: ADD VALUE 'addi' al enum
+    payment_method, UPDATE orders SET 'transfer' WHERE 'nequi', recrear
+    enum payment_method_new sin 'nequi', swap de columnas y rename.
+    Líneas para supplier_payments y layaway_payments comentadas (tablas
+    aún no existen)
+  - src/lib/paymentMethods.ts: helper centralizado con label, color
+    token, hex y LucideIcon por método; PAYMENT_METHOD_KEYS const,
+    migrateLegacyPaymentMethods() convierte arrays con 'nequi' a 'transfer'
+  - PaymentMethod type actualizado en database.types.ts: 'cash' | 'card'
+    | 'transfer' | 'addi'
+  - StoreConfig.nequi_qr_url → payment_qr_url; resolveConfig migra el
+    valor legacy al leer; updateStoreConfig limpia la clave legacy del
+    jsonb cuando se actualiza payment_qr_url
+  - useConfigMutations.uploadNequiQR → uploadPaymentQR, path
+    storeId/payment-qr.ext
+  - CajaSection: checkboxes con ícono color por método, sección QR
+    "QR para pagos" (visible cuando transfer está habilitado), helper
+    de migración aplicado al leer config
+  - POSPage PaymentModal: cards muestran ícono con color del método;
+    transfer → muestra QR si payment_qr_url existe; addi → nota
+    "Pago en cuotas con Addi — confirma desde la app del cliente"
+  - SalesHistoryPage, ReturnsPage, CustomersPage, ReportsPage: labels
+    y filtros actualizados con Addi en lugar de Nequi
+  - ReportsPage: PAYMENT_COLORS, DailyBarRow type, Bar de la gráfica
+    apilada y pivotDailySales usan 'addi' (color #ec4899 pink)
+  - design-system.md y ConfigPage subtitle: referencias a Nequi
+    reemplazadas por Addi / "QR para pagos"
+  - POSPage PaymentModal: chips de monto rápido para efectivo —
+    "Exacto" + denominaciones COP reales (20k/50k/100k) + round-ups
+    al próximo $10k (ajuste fino) y al próximo $100k (un billete más).
+    Filtra ≤ total, dedupe via Set; click reemplaza el valor del input
+
 ## Estado actual del proyecto
-Última fase completada: 10 - Historial de ventas + per-store numbering
+Última fase completada: 11 - Reemplazo Nequi → Addi + quick cash chips ✅
 En progreso: 09 - Parametrización (pausada, falta prompt 2 Addi)
 Siguiente: continuar 09 (Addi) + retomar plan en orden
 Fase 14 agregada al roadmap: Switcher multi-store para admin

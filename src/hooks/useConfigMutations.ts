@@ -53,6 +53,11 @@ export function useConfigMutations() {
       if (fetchErr) throw fetchErr
       const current = ((data as unknown) as { config: Record<string, unknown> | null }).config ?? {}
       const merged = { ...current, ...config }
+      // Limpia la clave legacy nequi_qr_url cuando se actualiza payment_qr_url
+      // para evitar dejarla obsoleta en jsonb.
+      if ('payment_qr_url' in config && 'nequi_qr_url' in merged) {
+        delete (merged as Record<string, unknown>).nequi_qr_url
+      }
       const { error } = await supabase
         .from('stores')
         .update({ config: merged } as never)
@@ -86,10 +91,10 @@ export function useConfigMutations() {
     onError: (err: Error) => toast.error(err.message),
   })
 
-  const uploadNequiQR = useMutation({
+  const uploadPaymentQR = useMutation({
     mutationFn: async (file: File) => {
       const ext = file.name.split('.').pop() ?? 'jpg'
-      const path = `${storeId}/nequi-qr.${ext}`
+      const path = `${storeId}/payment-qr.${ext}`
       const { error: uploadErr } = await supabase.storage
         .from('store-assets')
         .upload(path, file, { upsert: true })
@@ -151,7 +156,7 @@ export function useConfigMutations() {
     updateStore,
     updateStoreConfig,
     uploadLogo,
-    uploadNequiQR,
+    uploadPaymentQR,
     createUser,
     updateUserRole,
     toggleUserActive,
