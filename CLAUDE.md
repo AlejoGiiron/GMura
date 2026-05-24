@@ -285,8 +285,25 @@ Cuadre de caja imprimible + historial de turnos (feature/12-caja-completa) ✅
   - Ruta /caja/historial bajo ProtectedRoute allowedRoles=['admin'];
     entrada Sidebar "Historial de caja" (Wallet icon) admin-only
 
+Sidebar agrupado en secciones colapsables (feature/12-caja-completa) ✅
+  - 4 grupos: Operación (Ventas/Historial/Devoluciones), Inventario
+    (Productos/Inventario), Clientes, Análisis y admin
+    (Reportes/Historial de caja/Configuración — admin only)
+  - Iconos: grupo ShoppingCart/Package/Users/BarChart3; items Store/
+    History/Undo2/Tag/Layers/Users/BarChart2/Wallet/Settings
+  - CollapsibleGroup subcomponente con animación grid-template-rows
+    1fr↔0fr 200ms ease-out (sin medir alturas); chevron rota 0↔-90deg
+  - Persistencia por usuario en localStorage
+    'gmura-sidebar-groups-{userId}' con try/catch
+  - Estado inicial: localStorage si existe; sino expande SOLO el grupo
+    que contiene la ruta actual al montar (no re-expande en navegación)
+  - Indicador de selección oculta: dot violet-400 antes del chevron
+    cuando grupo colapsado y contiene la ruta activa
+  - filterByRole filtra grupos y items por adminOnly; descarta grupos
+    vacíos. Accesibilidad: aria-expanded / aria-controls / aria-label
+
 ## Estado actual del proyecto
-Última fase completada: 12 - Cuadre imprimible + historial de turnos ✅
+Última fase completada: 12 - Caja completa + sidebar agrupado ✅
 En progreso: 09 - Parametrización (pausada, falta prompt 2 Addi)
 Siguiente: continuar 09 (Addi) + retomar plan en orden
 Fase 14 agregada al roadmap: Switcher multi-store para admin
