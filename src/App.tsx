@@ -11,6 +11,7 @@ import ReturnsPage from '@/pages/ReturnsPage'
 import CustomersPage from '@/pages/CustomersPage'
 import ReportsPage from '@/pages/ReportsPage'
 import ConfigPage from '@/pages/ConfigPage'
+import CashShiftsHistoryPage from '@/pages/CashShiftsHistoryPage'
 
 export default function App() {
   return (
@@ -44,6 +45,14 @@ export default function App() {
             element={
               <ProtectedRoute allowedRoles={['admin']}>
                 <ReportsPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="caja/historial"
+            element={
+              <ProtectedRoute allowedRoles={['admin']}>
+                <CashShiftsHistoryPage />
               </ProtectedRoute>
             }
           />

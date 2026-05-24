@@ -9,6 +9,7 @@ import {
   Users,
   BarChart2,
   Settings,
+  Wallet,
   LogOut,
 } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
@@ -29,6 +30,7 @@ const NAV_ITEMS: NavItem[] = [
   { to: '/devoluciones', label: 'Devoluciones', icon: RotateCcw },
   { to: '/clientes', label: 'Clientes', icon: Users },
   { to: '/reportes', label: 'Reportes', icon: BarChart2, adminOnly: true },
+  { to: '/caja/historial', label: 'Historial de caja', icon: Wallet, adminOnly: true },
   { to: '/configuracion', label: 'Configuración', icon: Settings, adminOnly: true },
 ]
 

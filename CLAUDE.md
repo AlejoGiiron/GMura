@@ -258,8 +258,35 @@ Sistema de gastos de caja durante el turno (feature/12-caja-completa) ✅
     con líneas separadas y colores (emerald +, rojo -), modal con
     max-h-[90vh] + overflow para listas largas
 
+Cuadre de caja imprimible + historial de turnos (feature/12-caja-completa) ✅
+  - src/hooks/useShiftClosing.ts: agrega shift + expenses + ventas por
+    método (JOIN profiles para userName, JOIN stores para storeName);
+    cashSales, totalSales, totalExpenses, expectedCash, orderCount,
+    avgTicket. Window de orders por opened_by + opened_at..closed_at
+    (o sin tope si turno abierto)
+  - src/components/cash/CashShiftReceipt.tsx: ticket 80mm con secciones
+    metadatos / VENTAS POR MÉTODO (oculta líneas con 0) / EGRESOS (oculta
+    si no hay) / CUADRE DE EFECTIVO con badge dinámico CUADRADO/
+    SOBRANTE/FALTANTE; CashShiftReceiptPrint render hidden con id único
+    + useShiftReceiptPrintStyle inyecta @media print (80mm, monospace
+    11px, oculta resto del body, @page size 80mm)
+  - CloseShiftModal refactor: input contado arriba, preview live del
+    recibo abajo, recálculo en vivo; botones "Cerrar sin imprimir"
+    (secondary) y "Imprimir y cerrar" (primary) con cleanup en
+    afterprint + fallback timeout 60s
+  - src/hooks/useShiftHistory.ts: useShiftHistory(filters) paginado
+    50/pág, JOIN profiles para cajero, agrupa ventas y gastos client-side
+    en una sola query por batch (IN sobre opened_by + ventana mínima/
+    máxima del page) para evitar N+1; useStoreCashiers para el filtro
+  - src/pages/CashShiftsHistoryPage.tsx: tabla con apertura→cierre,
+    cajero, montos y DifferenceBadge (slate cuadrado / emerald sobrante
+    / rojo faltante); filtros cajero + rango de fechas; ReprintReceiptModal
+    reusa CashShiftReceipt + CashShiftReceiptPrint
+  - Ruta /caja/historial bajo ProtectedRoute allowedRoles=['admin'];
+    entrada Sidebar "Historial de caja" (Wallet icon) admin-only
+
 ## Estado actual del proyecto
-Última fase completada: 12 - Sistema de gastos de caja ✅
+Última fase completada: 12 - Cuadre imprimible + historial de turnos ✅
 En progreso: 09 - Parametrización (pausada, falta prompt 2 Addi)
 Siguiente: continuar 09 (Addi) + retomar plan en orden
 Fase 14 agregada al roadmap: Switcher multi-store para admin
