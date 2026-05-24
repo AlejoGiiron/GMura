@@ -196,6 +196,23 @@ function VariantPickerModal({ product, onAdd, onClose }: VariantPickerProps) {
 
 // ── Payment Modal ─────────────────────────────────────────────────────────────
 
+// Denominaciones de billetes en COP (el más grande en circulación es $100k).
+const QUICK_CASH_AMOUNTS = [20_000, 50_000, 100_000]
+
+function suggestCashAmounts(total: number): number[] {
+  if (total <= 0) return []
+  const candidates = new Set<number>(QUICK_CASH_AMOUNTS)
+  // Próximo múltiplo de $10k: ajustes finos entre denominaciones
+  // (ej: $87.500 → $90.000).
+  candidates.add(Math.ceil(total / 10_000) * 10_000)
+  // Próximo múltiplo de $100k: para totales grandes equivale a recibir
+  // "un billete de $100k más" (ej: $245.000 → $300.000).
+  candidates.add(Math.ceil(total / 100_000) * 100_000)
+  return Array.from(candidates)
+    .filter((n) => n > total)
+    .sort((a, b) => a - b)
+}
+
 interface PaymentModalProps {
   total: number
   enabledMethods: PaymentMethod[]
@@ -287,6 +304,35 @@ function PaymentModal({
               placeholder="0"
               className="w-full rounded-xl border border-slate-200 px-4 py-3 font-mono text-lg font-semibold outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-100"
             />
+            {total > 0 && (
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setCashReceived(String(total))}
+                  className={`rounded-lg border px-2.5 py-1 text-xs font-semibold transition-colors ${
+                    cashAmt === total
+                      ? 'border-violet-600 bg-violet-50 text-violet-700'
+                      : 'border-slate-200 bg-white text-slate-700 hover:border-violet-300 hover:bg-violet-50'
+                  }`}
+                >
+                  Exacto
+                </button>
+                {suggestCashAmounts(total).map((amt) => (
+                  <button
+                    key={amt}
+                    type="button"
+                    onClick={() => setCashReceived(String(amt))}
+                    className={`rounded-lg border px-2.5 py-1 font-mono text-xs font-semibold transition-colors ${
+                      cashAmt === amt
+                        ? 'border-violet-600 bg-violet-50 text-violet-700'
+                        : 'border-slate-200 bg-white text-slate-700 hover:border-violet-300 hover:bg-violet-50'
+                    }`}
+                  >
+                    {fmtCOP(amt)}
+                  </button>
+                ))}
+              </div>
+            )}
             {cashAmt >= total && (
               <p className="mt-2 text-sm text-green-600">
                 Cambio:{' '}
