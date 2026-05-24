@@ -27,6 +27,7 @@ export const DEFAULT_CONFIG: StoreConfig = {
   return_days_limit: 30,
   adjustment_reasons: ['Ingreso de mercancía', 'Ajuste por conteo', 'Merma', 'Otro'],
   payment_methods: ['cash', 'card', 'transfer', 'addi'],
+  expense_reasons: ['Mercado', 'Servicios', 'Domicilio', 'Imprevisto', 'Otro'],
   payment_qr_url: null,
   label_format: '38x25',
   label_fields: { sku: true, name: true, size_color: true, price: true },
@@ -49,6 +50,10 @@ export function resolveConfig(raw: Record<string, unknown> | null | undefined): 
     adjustment_reasons: Array.isArray(r.adjustment_reasons)
       ? r.adjustment_reasons
       : DEFAULT_CONFIG.adjustment_reasons,
+    expense_reasons:
+      Array.isArray(r.expense_reasons) && r.expense_reasons.length > 0
+        ? r.expense_reasons
+        : DEFAULT_CONFIG.expense_reasons,
     payment_methods: legacyMethods,
     payment_qr_url: legacyQrUrl,
     label_fields: r.label_fields

@@ -21,6 +21,7 @@ export interface StoreConfig {
   return_days_limit: number
   adjustment_reasons: string[]
   payment_methods: string[]
+  expense_reasons: string[]
   payment_qr_url: string | null
   label_format: LabelFormat
   label_fields: LabelFields

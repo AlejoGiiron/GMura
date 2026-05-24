@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { CreditCard, Plus, Trash2, Upload } from 'lucide-react'
+import { CreditCard, Plus, Trash2, Upload, AlertTriangle, Receipt } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useStoreConfig, resolveConfig } from '@/hooks/useConfig'
 import { useConfigMutations } from '@/hooks/useConfigMutations'
@@ -8,7 +8,85 @@ import {
   PAYMENT_METHOD_KEYS,
   migrateLegacyPaymentMethods,
 } from '@/lib/paymentMethods'
+import { useExpenseCountByReason } from '@/hooks/useCashExpenses'
 import type { PaymentMethod } from '@/types/database.types'
+
+// ── Confirm delete reason modal ───────────────────────────────────────────────
+
+interface ConfirmDeleteReasonProps {
+  reason: string
+  onConfirm: () => void
+  onClose: () => void
+}
+
+function ConfirmDeleteReasonModal({
+  reason,
+  onConfirm,
+  onClose,
+}: ConfirmDeleteReasonProps) {
+  const { data: count = 0, isLoading } = useExpenseCountByReason(reason)
+  const hasUsage = count > 0
+
+  return (
+    <div
+      className="fixed inset-0 z-[60] grid place-items-center p-4"
+      style={{ background: 'rgba(15,23,42,0.5)', backdropFilter: 'blur(4px)' }}
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-sm rounded-[14px] bg-white p-6 shadow-[0_20px_60px_rgba(0,0,0,0.3)]"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="mb-4 flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-amber-100">
+            <AlertTriangle size={18} className="text-amber-700" />
+          </div>
+          <div>
+            <h3 className="text-base font-semibold text-[#1a1a1a]">
+              Eliminar motivo
+            </h3>
+            <p className="text-xs text-[#737373]">"{reason}"</p>
+          </div>
+        </div>
+
+        {isLoading ? (
+          <div className="mb-5 h-12 animate-pulse rounded-lg bg-slate-100" />
+        ) : hasUsage ? (
+          <p className="mb-5 text-sm text-[#525252]">
+            Este motivo está asociado a{' '}
+            <span className="font-semibold text-[#1a1a1a]">
+              {count} gasto{count !== 1 ? 's' : ''}
+            </span>{' '}
+            del historial. Los gastos previos no se modifican, pero ya no podrás
+            seleccionarlo en nuevos registros.
+          </p>
+        ) : (
+          <p className="mb-5 text-sm text-[#525252]">
+            Este motivo no tiene gastos asociados. Se eliminará de la lista
+            disponible para nuevos registros.
+          </p>
+        )}
+
+        <div className="flex gap-2">
+          <button
+            onClick={onClose}
+            className="h-9 flex-1 rounded-lg border border-[#ebe9e6] bg-white text-sm font-medium text-[#525252] hover:bg-[#f5f4f1]"
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={onConfirm}
+            className="h-9 flex-1 rounded-lg bg-red-600 text-sm font-semibold text-white hover:bg-red-700"
+          >
+            Eliminar
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Main section ──────────────────────────────────────────────────────────────
 
 export default function CajaSection() {
   const { data: store, isLoading } = useStoreConfig()
@@ -19,6 +97,9 @@ export default function CajaSection() {
   const [newReason, setNewReason] = useState('')
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([])
   const [paymentQrUrl, setPaymentQrUrl] = useState<string | null>(null)
+  const [expenseReasons, setExpenseReasons] = useState<string[]>([])
+  const [newExpenseReason, setNewExpenseReason] = useState('')
+  const [deletingExpenseReason, setDeletingExpenseReason] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
@@ -27,6 +108,7 @@ export default function CajaSection() {
     setReasons(cfg.adjustment_reasons)
     setPaymentMethods(migrateLegacyPaymentMethods(cfg.payment_methods))
     setPaymentQrUrl(cfg.payment_qr_url)
+    setExpenseReasons(cfg.expense_reasons)
   }, [store])
 
   function addReason() {
@@ -38,6 +120,32 @@ export default function CajaSection() {
     }
     setReasons([...reasons, v])
     setNewReason('')
+  }
+
+  function addExpenseReason() {
+    const v = newExpenseReason.trim()
+    if (!v) return
+    const lower = v.toLowerCase()
+    if (expenseReasons.some((r) => r.toLowerCase() === lower)) {
+      toast.error('Ese motivo ya existe')
+      return
+    }
+    setExpenseReasons([...expenseReasons, v])
+    setNewExpenseReason('')
+  }
+
+  function removeExpenseReason(reason: string) {
+    if (expenseReasons.length <= 2) {
+      toast.error('Debes mantener al menos 2 motivos de egreso')
+      return
+    }
+    setDeletingExpenseReason(reason)
+  }
+
+  function confirmRemoveExpenseReason() {
+    if (!deletingExpenseReason) return
+    setExpenseReasons(expenseReasons.filter((r) => r !== deletingExpenseReason))
+    setDeletingExpenseReason(null)
   }
 
   function togglePayment(value: PaymentMethod) {
@@ -71,6 +179,7 @@ export default function CajaSection() {
       await updateStoreConfig.mutateAsync({
         adjustment_reasons: reasons,
         payment_methods: paymentMethods,
+        expense_reasons: expenseReasons,
       })
       toast.success('Configuración de caja guardada')
     } catch {
@@ -101,7 +210,7 @@ export default function CajaSection() {
         </div>
         <div>
           <h2 className="text-sm font-semibold text-[#1a1a1a]">Configuración de caja</h2>
-          <p className="text-xs text-[#737373]">Ajustes, métodos de pago y QR para pagos</p>
+          <p className="text-xs text-[#737373]">Ajustes, métodos de pago, gastos y QR para pagos</p>
         </div>
       </div>
 
@@ -179,6 +288,50 @@ export default function CajaSection() {
           </div>
         </div>
 
+        {/* Expense reasons */}
+        <div className="px-5 py-5">
+          <div className="mb-3 flex items-center gap-2">
+            <Receipt size={13} className="text-[#737373]" />
+            <p className="text-[11px] font-semibold uppercase tracking-[.05em] text-[#737373]">
+              Motivos de egreso
+            </p>
+          </div>
+          <div className="space-y-1">
+            {expenseReasons.map((reason) => (
+              <div
+                key={reason}
+                className="flex items-center gap-2 rounded-lg border border-[#ebe9e6] bg-white px-3 py-2"
+              >
+                <span className="flex-1 text-sm text-[#1a1a1a]">{reason}</span>
+                <button
+                  onClick={() => removeExpenseReason(reason)}
+                  className="grid h-6 w-6 place-items-center rounded-md text-slate-300 hover:bg-red-50 hover:text-red-400"
+                  aria-label={`Eliminar motivo ${reason}`}
+                >
+                  <Trash2 size={12} />
+                </button>
+              </div>
+            ))}
+          </div>
+          <div className="mt-2 flex gap-2">
+            <input
+              value={newExpenseReason}
+              onChange={(e) => setNewExpenseReason(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') addExpenseReason() }}
+              placeholder="Nuevo motivo de egreso"
+              className="h-9 flex-1 rounded-lg border border-[#ebe9e6] px-3 text-sm outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100"
+            />
+            <button
+              onClick={addExpenseReason}
+              disabled={!newExpenseReason.trim()}
+              className="flex h-9 items-center gap-1.5 rounded-lg border border-[#ebe9e6] bg-white px-3 text-sm font-medium text-[#525252] hover:bg-slate-50 disabled:opacity-40"
+            >
+              <Plus size={13} />
+              Agregar
+            </button>
+          </div>
+        </div>
+
         {/* Payment QR (sirve para Transferencia) */}
         {paymentMethods.includes('transfer') && (
           <div className="px-5 py-5">
@@ -232,6 +385,14 @@ export default function CajaSection() {
           {saving ? 'Guardando…' : 'Guardar cambios'}
         </button>
       </div>
+
+      {deletingExpenseReason && (
+        <ConfirmDeleteReasonModal
+          reason={deletingExpenseReason}
+          onConfirm={confirmRemoveExpenseReason}
+          onClose={() => setDeletingExpenseReason(null)}
+        />
+      )}
     </div>
   )
 }

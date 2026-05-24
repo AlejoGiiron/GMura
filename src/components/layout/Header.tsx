@@ -1,8 +1,12 @@
 import { useEffect, useState } from 'react'
-import { Clock, Wallet } from 'lucide-react'
+import { Clock, Wallet, Receipt } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import { useCurrentShift } from '@/hooks/useCashShift'
-import { OpenShiftModal, CloseShiftModal } from './CashShiftModals'
+import {
+  OpenShiftModal,
+  CloseShiftModal,
+  ExpenseModal,
+} from './CashShiftModals'
 
 function getBogoTime(): string {
   return new Intl.DateTimeFormat('es-CO', {
@@ -28,6 +32,7 @@ export default function Header() {
   const [time, setTime] = useState(getBogoTime)
   const [showOpen, setShowOpen] = useState(false)
   const [showClose, setShowClose] = useState(false)
+  const [showExpense, setShowExpense] = useState(false)
 
   useEffect(() => {
     const id = setInterval(() => setTime(getBogoTime()), 60_000)
@@ -69,6 +74,13 @@ export default function Header() {
                 Turno abierto · {formatShiftTime(shift.opened_at)}
               </div>
               <button
+                onClick={() => setShowExpense(true)}
+                className="flex items-center gap-1.5 rounded-lg border border-stone-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-stone-50"
+              >
+                <Receipt size={12} />
+                Gasto
+              </button>
+              <button
                 onClick={() => setShowClose(true)}
                 className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50"
               >
@@ -90,6 +102,9 @@ export default function Header() {
       {showOpen && <OpenShiftModal onClose={() => setShowOpen(false)} />}
       {showClose && shift && (
         <CloseShiftModal shift={shift} onClose={() => setShowClose(false)} />
+      )}
+      {showExpense && shift && (
+        <ExpenseModal onClose={() => setShowExpense(false)} />
       )}
     </>
   )

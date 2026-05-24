@@ -226,8 +226,84 @@ Reemplazo de Nequi por Addi en métodos de pago (feature/11-payment-methods) ✅
     al próximo $10k (ajuste fino) y al próximo $100k (un billete más).
     Filtra ≤ total, dedupe via Set; click reemplaza el valor del input
 
+Sistema de gastos de caja durante el turno (feature/12-caja-completa) ✅
+  - Migración 007_cash_expenses: tabla cash_expenses con shift_id /
+    store_id / amount numeric(12,2) > 0 / reason / notes / created_by /
+    created_at. ON DELETE CASCADE desde cash_shifts y stores. RLS:
+    SELECT/INSERT por store_id, DELETE solo admin. Inmutable (sin UPDATE)
+    para trazabilidad
+  - CashExpense type + tabla en Database['public']['Tables'] de
+    database.types.ts
+  - StoreConfig.expense_reasons (string[]) + defaults
+    ['Mercado', 'Servicios', 'Domicilio', 'Imprevisto', 'Otro'] en
+    DEFAULT_CONFIG; resolveConfig usa defaults cuando es undefined o array
+    vacío
+  - useShiftExpenses(shiftId): lista de gastos del turno DESC.
+    useExpenseCountByReason(reason): conteo via head:true para validar
+    borrado desde Config
+  - useRegisterExpense: valida auth + turno abierto + amount > 0 + reason
+    no vacío; INSERT con shift_id del useCurrentShift; invalida
+    ['shift-expenses', shiftId]; toast con monto y motivo
+  - CajaSection: nueva sección "Motivos de egreso" con add/remove inline,
+    validación case-insensitive de duplicados, mínimo 2 motivos,
+    ConfirmDeleteReasonModal que muestra cuántos gastos quedarían
+    "huérfanos" (no rompe históricos, solo deshabilita para nuevos)
+  - ExpenseModal en CashShiftModals.tsx: input monto con prefijo $,
+    motivos como pills clickables (violeta cuando activo), textarea
+    notas opcional (max 200 chars), Esc para cerrar, Enter para enviar
+  - Header: botón "Gasto" (icono Receipt) entre badge de turno y "Cerrar
+    turno", abre ExpenseModal
+  - CloseShiftModal: nueva sección "Gastos del turno" antes del cuadre
+    (oculta si no hay), recálculo Esperado = apertura + ventas - egresos
+    con líneas separadas y colores (emerald +, rojo -), modal con
+    max-h-[90vh] + overflow para listas largas
+
+Cuadre de caja imprimible + historial de turnos (feature/12-caja-completa) ✅
+  - src/hooks/useShiftClosing.ts: agrega shift + expenses + ventas por
+    método (JOIN profiles para userName, JOIN stores para storeName);
+    cashSales, totalSales, totalExpenses, expectedCash, orderCount,
+    avgTicket. Window de orders por opened_by + opened_at..closed_at
+    (o sin tope si turno abierto)
+  - src/components/cash/CashShiftReceipt.tsx: ticket 80mm con secciones
+    metadatos / VENTAS POR MÉTODO (oculta líneas con 0) / EGRESOS (oculta
+    si no hay) / CUADRE DE EFECTIVO con badge dinámico CUADRADO/
+    SOBRANTE/FALTANTE; CashShiftReceiptPrint render hidden con id único
+    + useShiftReceiptPrintStyle inyecta @media print (80mm, monospace
+    11px, oculta resto del body, @page size 80mm)
+  - CloseShiftModal refactor: input contado arriba, preview live del
+    recibo abajo, recálculo en vivo; botones "Cerrar sin imprimir"
+    (secondary) y "Imprimir y cerrar" (primary) con cleanup en
+    afterprint + fallback timeout 60s
+  - src/hooks/useShiftHistory.ts: useShiftHistory(filters) paginado
+    50/pág, JOIN profiles para cajero, agrupa ventas y gastos client-side
+    en una sola query por batch (IN sobre opened_by + ventana mínima/
+    máxima del page) para evitar N+1; useStoreCashiers para el filtro
+  - src/pages/CashShiftsHistoryPage.tsx: tabla con apertura→cierre,
+    cajero, montos y DifferenceBadge (slate cuadrado / emerald sobrante
+    / rojo faltante); filtros cajero + rango de fechas; ReprintReceiptModal
+    reusa CashShiftReceipt + CashShiftReceiptPrint
+  - Ruta /caja/historial bajo ProtectedRoute allowedRoles=['admin'];
+    entrada Sidebar "Historial de caja" (Wallet icon) admin-only
+
+Sidebar agrupado en secciones colapsables (feature/12-caja-completa) ✅
+  - 4 grupos: Operación (Ventas/Historial/Devoluciones), Inventario
+    (Productos/Inventario), Clientes, Análisis y admin
+    (Reportes/Historial de caja/Configuración — admin only)
+  - Iconos: grupo ShoppingCart/Package/Users/BarChart3; items Store/
+    History/Undo2/Tag/Layers/Users/BarChart2/Wallet/Settings
+  - CollapsibleGroup subcomponente con animación grid-template-rows
+    1fr↔0fr 200ms ease-out (sin medir alturas); chevron rota 0↔-90deg
+  - Persistencia por usuario en localStorage
+    'gmura-sidebar-groups-{userId}' con try/catch
+  - Estado inicial: localStorage si existe; sino expande SOLO el grupo
+    que contiene la ruta actual al montar (no re-expande en navegación)
+  - Indicador de selección oculta: dot violet-400 antes del chevron
+    cuando grupo colapsado y contiene la ruta activa
+  - filterByRole filtra grupos y items por adminOnly; descarta grupos
+    vacíos. Accesibilidad: aria-expanded / aria-controls / aria-label
+
 ## Estado actual del proyecto
-Última fase completada: 11 - Reemplazo Nequi → Addi + quick cash chips ✅
+Última fase completada: 12 - Caja completa + sidebar agrupado ✅
 En progreso: 09 - Parametrización (pausada, falta prompt 2 Addi)
 Siguiente: continuar 09 (Addi) + retomar plan en orden
 Fase 14 agregada al roadmap: Switcher multi-store para admin

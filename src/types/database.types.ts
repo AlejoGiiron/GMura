@@ -152,6 +152,17 @@ export interface CashShift {
   updated_at: string
 }
 
+export interface CashExpense {
+  id: string
+  shift_id: string
+  store_id: string
+  amount: number
+  reason: string
+  notes: string | null
+  created_by: string
+  created_at: string
+}
+
 // ── Views ─────────────────────────────────────────────────────────────────────
 
 export interface DailySalesSummary {
@@ -288,6 +299,14 @@ export interface Database {
         Row: CashShift
         Insert: Omit<CashShift, 'id' | 'opened_at'> & { id?: string; opened_at?: string }
         Update: Partial<Omit<CashShift, 'id'>>
+      }
+      cash_expenses: {
+        Row: CashExpense
+        Insert: Omit<CashExpense, 'id' | 'created_at'> & {
+          id?: string
+          created_at?: string
+        }
+        Update: Partial<Omit<CashExpense, 'id'>>
       }
     }
     Views: {
