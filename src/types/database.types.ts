@@ -1,6 +1,6 @@
 export type UserRole = 'admin' | 'seller'
 export type OrderStatus = 'completed' | 'cancelled' | 'returned'
-export type PaymentMethod = 'cash' | 'card' | 'transfer' | 'nequi'
+export type PaymentMethod = 'cash' | 'card' | 'transfer' | 'addi'
 export type StockMovementType = 'sale' | 'return' | 'adjustment' | 'purchase'
 export type ReturnType = 'return' | 'exchange'
 export type ReturnStatus = 'pending' | 'completed'

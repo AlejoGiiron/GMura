@@ -3,31 +3,30 @@ import { CreditCard, Plus, Trash2, Upload } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useStoreConfig, resolveConfig } from '@/hooks/useConfig'
 import { useConfigMutations } from '@/hooks/useConfigMutations'
-
-const PAYMENT_OPTIONS: { value: string; label: string }[] = [
-  { value: 'cash', label: 'Efectivo' },
-  { value: 'card', label: 'Tarjeta' },
-  { value: 'transfer', label: 'Transferencia' },
-  { value: 'nequi', label: 'Nequi' },
-]
+import {
+  PAYMENT_METHODS,
+  PAYMENT_METHOD_KEYS,
+  migrateLegacyPaymentMethods,
+} from '@/lib/paymentMethods'
+import type { PaymentMethod } from '@/types/database.types'
 
 export default function CajaSection() {
   const { data: store, isLoading } = useStoreConfig()
-  const { updateStoreConfig, uploadNequiQR } = useConfigMutations()
+  const { updateStoreConfig, uploadPaymentQR } = useConfigMutations()
   const fileRef = useRef<HTMLInputElement>(null)
 
   const [reasons, setReasons] = useState<string[]>([])
   const [newReason, setNewReason] = useState('')
-  const [paymentMethods, setPaymentMethods] = useState<string[]>([])
-  const [nequiQrUrl, setNequiQrUrl] = useState<string | null>(null)
+  const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([])
+  const [paymentQrUrl, setPaymentQrUrl] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
     if (!store) return
     const cfg = resolveConfig(store.config)
     setReasons(cfg.adjustment_reasons)
-    setPaymentMethods(cfg.payment_methods)
-    setNequiQrUrl(cfg.nequi_qr_url)
+    setPaymentMethods(migrateLegacyPaymentMethods(cfg.payment_methods))
+    setPaymentQrUrl(cfg.payment_qr_url)
   }, [store])
 
   function addReason() {
@@ -41,13 +40,13 @@ export default function CajaSection() {
     setNewReason('')
   }
 
-  function togglePayment(value: string) {
+  function togglePayment(value: PaymentMethod) {
     setPaymentMethods((prev) =>
       prev.includes(value) ? prev.filter((m) => m !== value) : [...prev, value],
     )
   }
 
-  async function handleNequiQR(e: React.ChangeEvent<HTMLInputElement>) {
+  async function handlePaymentQR(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
     if (!file.type.startsWith('image/')) {
@@ -55,10 +54,10 @@ export default function CajaSection() {
       return
     }
     try {
-      const url = await uploadNequiQR.mutateAsync(file)
-      setNequiQrUrl(url)
-      await updateStoreConfig.mutateAsync({ nequi_qr_url: url })
-      toast.success('QR de Nequi actualizado')
+      const url = await uploadPaymentQR.mutateAsync(file)
+      setPaymentQrUrl(url)
+      await updateStoreConfig.mutateAsync({ payment_qr_url: url })
+      toast.success('QR de pagos actualizado')
     } catch (err) {
       toast.error((err as Error).message)
     } finally {
@@ -102,7 +101,7 @@ export default function CajaSection() {
         </div>
         <div>
           <h2 className="text-sm font-semibold text-[#1a1a1a]">Configuración de caja</h2>
-          <p className="text-xs text-[#737373]">Ajustes, métodos de pago y QR Nequi</p>
+          <p className="text-xs text-[#737373]">Ajustes, métodos de pago y QR para pagos</p>
         </div>
       </div>
 
@@ -153,7 +152,9 @@ export default function CajaSection() {
             Métodos de pago habilitados
           </p>
           <div className="grid grid-cols-2 gap-2">
-            {PAYMENT_OPTIONS.map(({ value, label }) => {
+            {PAYMENT_METHOD_KEYS.map((value) => {
+              const meta = PAYMENT_METHODS[value]
+              const Icon = meta.icon
               const checked = paymentMethods.includes(value)
               return (
                 <label
@@ -170,24 +171,25 @@ export default function CajaSection() {
                     onChange={() => togglePayment(value)}
                     className="h-4 w-4 accent-violet-500"
                   />
-                  <span className="text-sm font-medium text-[#1a1a1a]">{label}</span>
+                  <Icon size={14} style={{ color: meta.hex }} />
+                  <span className="text-sm font-medium text-[#1a1a1a]">{meta.label}</span>
                 </label>
               )
             })}
           </div>
         </div>
 
-        {/* Nequi QR */}
-        {paymentMethods.includes('nequi') && (
+        {/* Payment QR (sirve para Transferencia) */}
+        {paymentMethods.includes('transfer') && (
           <div className="px-5 py-5">
             <p className="mb-3 text-[11px] font-semibold uppercase tracking-[.05em] text-[#737373]">
-              QR de Nequi
+              QR para pagos
             </p>
             <div className="flex items-start gap-4">
-              {nequiQrUrl ? (
+              {paymentQrUrl ? (
                 <img
-                  src={nequiQrUrl}
-                  alt="QR Nequi"
+                  src={paymentQrUrl}
+                  alt="QR para pagos"
                   className="h-24 w-24 rounded-lg border border-[#ebe9e6] object-contain"
                 />
               ) : (
@@ -201,18 +203,18 @@ export default function CajaSection() {
                   type="file"
                   accept="image/*"
                   className="hidden"
-                  onChange={(e) => void handleNequiQR(e)}
+                  onChange={(e) => void handlePaymentQR(e)}
                 />
                 <button
                   onClick={() => fileRef.current?.click()}
-                  disabled={uploadNequiQR.isPending}
+                  disabled={uploadPaymentQR.isPending}
                   className="flex h-8 items-center gap-1.5 rounded-lg border border-[#ebe9e6] bg-white px-3 text-xs font-medium text-[#525252] hover:bg-slate-50 disabled:opacity-50"
                 >
                   <Upload size={12} />
-                  {nequiQrUrl ? 'Cambiar QR' : 'Subir QR'}
+                  {paymentQrUrl ? 'Cambiar QR' : 'Subir QR'}
                 </button>
                 <p className="mt-1.5 text-[11px] text-[#a8a29e]">
-                  Se muestra al cobrar con Nequi
+                  Se muestra al cobrar con Transferencia
                 </p>
               </div>
             </div>

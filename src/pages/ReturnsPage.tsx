@@ -39,14 +39,14 @@ const PAYMENT_METHODS: { id: PaymentMethod; label: string }[] = [
   { id: 'cash', label: 'Efectivo' },
   { id: 'card', label: 'Tarjeta' },
   { id: 'transfer', label: 'Transferencia' },
-  { id: 'nequi', label: 'Nequi' },
+  { id: 'addi', label: 'Addi' },
 ]
 
 const METHOD_LABEL: Record<PaymentMethod, string> = {
   cash: 'Efectivo',
   card: 'Tarjeta',
   transfer: 'Transferencia',
-  nequi: 'Nequi',
+  addi: 'Addi',
 }
 
 // ── Stepper ───────────────────────────────────────────────────────────────────

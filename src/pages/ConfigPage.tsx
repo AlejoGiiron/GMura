@@ -68,7 +68,7 @@ export default function ConfigPage() {
             {active === 'tienda' && 'Nombre, logo y datos de contacto de la tienda'}
             {active === 'usuarios' && 'Gestiona el equipo y sus permisos de acceso'}
             {active === 'productos' && 'Tallas, colores, marcas y límite de devoluciones'}
-            {active === 'caja' && 'Métodos de pago, motivos de ajuste y QR de Nequi'}
+            {active === 'caja' && 'Métodos de pago, motivos de ajuste y QR para pagos'}
             {active === 'etiquetas' && 'Formato y campos para etiquetas de precio'}
           </p>
         </div>

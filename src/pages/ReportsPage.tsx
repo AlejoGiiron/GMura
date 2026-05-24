@@ -24,14 +24,14 @@ const PAYMENT_COLORS: Record<PaymentMethod, string> = {
   cash:     '#10b981',
   card:     '#8b5cf6',
   transfer: '#3b82f6',
-  nequi:    '#ec4899',
+  addi:     '#ec4899',
 }
 
 const PAYMENT_LABELS: Record<PaymentMethod, string> = {
   cash:     'Efectivo',
   card:     'Tarjeta',
   transfer: 'Transferencia',
-  nequi:    'Nequi',
+  addi:     'Addi',
 }
 
 const PERIOD_OPTIONS = [
@@ -54,7 +54,7 @@ type DailyBarRow = {
   cash:     number
   card:     number
   transfer: number
-  nequi:    number
+  addi:     number
 }
 
 type PaymentSlice  = { name: string; value: number; color: string }
@@ -96,7 +96,7 @@ function pivotDailySales(rows: DailySalesSummary[]): DailyBarRow[] {
   for (const r of rows) {
     const entry = map.get(r.sale_date) ?? {
       label: fmtLabel(r.sale_date), rawDate: r.sale_date,
-      cash: 0, card: 0, transfer: 0, nequi: 0,
+      cash: 0, card: 0, transfer: 0, addi: 0,
     }
     entry[r.payment_method] = (entry[r.payment_method] ?? 0) + Number(r.total_sum)
     map.set(r.sale_date, entry)
@@ -573,7 +573,7 @@ export default function ReportsPage() {
                       formatter={(v: string) => <span style={{ fontSize: 11, color: '#737373' }}>{v}</span>} />
                     <Bar dataKey="cash"     name="Efectivo"       stackId="a" fill={PAYMENT_COLORS.cash}     radius={[0,0,0,0]} />
                     <Bar dataKey="transfer" name="Transferencia"   stackId="a" fill={PAYMENT_COLORS.transfer} radius={[0,0,0,0]} />
-                    <Bar dataKey="nequi"    name="Nequi"           stackId="a" fill={PAYMENT_COLORS.nequi}    radius={[0,0,0,0]} />
+                    <Bar dataKey="addi"     name="Addi"            stackId="a" fill={PAYMENT_COLORS.addi}     radius={[0,0,0,0]} />
                     <Bar dataKey="card"     name="Tarjeta"         stackId="a" fill={PAYMENT_COLORS.card}     radius={[4,4,0,0]} />
                   </BarChart>
                 </ResponsiveContainer>

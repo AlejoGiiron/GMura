@@ -3,6 +3,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from './useAuth'
 import type { Store, Profile } from '@/types/database.types'
 import type { StoreConfig } from '@/types/config.types'
+import { migrateLegacyPaymentMethods } from '@/lib/paymentMethods'
 
 export const DEFAULT_CONFIG: StoreConfig = {
   timezone: 'America/Bogota',
@@ -25,15 +26,20 @@ export const DEFAULT_CONFIG: StoreConfig = {
   brands: [],
   return_days_limit: 30,
   adjustment_reasons: ['Ingreso de mercancía', 'Ajuste por conteo', 'Merma', 'Otro'],
-  payment_methods: ['cash', 'card', 'transfer', 'nequi'],
-  nequi_qr_url: null,
+  payment_methods: ['cash', 'card', 'transfer', 'addi'],
+  payment_qr_url: null,
   label_format: '38x25',
   label_fields: { sku: true, name: true, size_color: true, price: true },
 }
 
 export function resolveConfig(raw: Record<string, unknown> | null | undefined): StoreConfig {
   if (!raw) return { ...DEFAULT_CONFIG }
-  const r = raw as Partial<StoreConfig>
+  const r = raw as Partial<StoreConfig> & { nequi_qr_url?: string | null }
+  const legacyMethods = Array.isArray(r.payment_methods)
+    ? migrateLegacyPaymentMethods(r.payment_methods)
+    : DEFAULT_CONFIG.payment_methods
+  const legacyQrUrl =
+    r.payment_qr_url !== undefined ? r.payment_qr_url : (r.nequi_qr_url ?? null)
   return {
     ...DEFAULT_CONFIG,
     ...r,
@@ -43,9 +49,8 @@ export function resolveConfig(raw: Record<string, unknown> | null | undefined): 
     adjustment_reasons: Array.isArray(r.adjustment_reasons)
       ? r.adjustment_reasons
       : DEFAULT_CONFIG.adjustment_reasons,
-    payment_methods: Array.isArray(r.payment_methods)
-      ? r.payment_methods
-      : DEFAULT_CONFIG.payment_methods,
+    payment_methods: legacyMethods,
+    payment_qr_url: legacyQrUrl,
     label_fields: r.label_fields
       ? { ...DEFAULT_CONFIG.label_fields, ...r.label_fields }
       : DEFAULT_CONFIG.label_fields,
