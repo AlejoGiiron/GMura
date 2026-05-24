@@ -226,8 +226,40 @@ Reemplazo de Nequi por Addi en métodos de pago (feature/11-payment-methods) ✅
     al próximo $10k (ajuste fino) y al próximo $100k (un billete más).
     Filtra ≤ total, dedupe via Set; click reemplaza el valor del input
 
+Sistema de gastos de caja durante el turno (feature/12-caja-completa) ✅
+  - Migración 007_cash_expenses: tabla cash_expenses con shift_id /
+    store_id / amount numeric(12,2) > 0 / reason / notes / created_by /
+    created_at. ON DELETE CASCADE desde cash_shifts y stores. RLS:
+    SELECT/INSERT por store_id, DELETE solo admin. Inmutable (sin UPDATE)
+    para trazabilidad
+  - CashExpense type + tabla en Database['public']['Tables'] de
+    database.types.ts
+  - StoreConfig.expense_reasons (string[]) + defaults
+    ['Mercado', 'Servicios', 'Domicilio', 'Imprevisto', 'Otro'] en
+    DEFAULT_CONFIG; resolveConfig usa defaults cuando es undefined o array
+    vacío
+  - useShiftExpenses(shiftId): lista de gastos del turno DESC.
+    useExpenseCountByReason(reason): conteo via head:true para validar
+    borrado desde Config
+  - useRegisterExpense: valida auth + turno abierto + amount > 0 + reason
+    no vacío; INSERT con shift_id del useCurrentShift; invalida
+    ['shift-expenses', shiftId]; toast con monto y motivo
+  - CajaSection: nueva sección "Motivos de egreso" con add/remove inline,
+    validación case-insensitive de duplicados, mínimo 2 motivos,
+    ConfirmDeleteReasonModal que muestra cuántos gastos quedarían
+    "huérfanos" (no rompe históricos, solo deshabilita para nuevos)
+  - ExpenseModal en CashShiftModals.tsx: input monto con prefijo $,
+    motivos como pills clickables (violeta cuando activo), textarea
+    notas opcional (max 200 chars), Esc para cerrar, Enter para enviar
+  - Header: botón "Gasto" (icono Receipt) entre badge de turno y "Cerrar
+    turno", abre ExpenseModal
+  - CloseShiftModal: nueva sección "Gastos del turno" antes del cuadre
+    (oculta si no hay), recálculo Esperado = apertura + ventas - egresos
+    con líneas separadas y colores (emerald +, rojo -), modal con
+    max-h-[90vh] + overflow para listas largas
+
 ## Estado actual del proyecto
-Última fase completada: 11 - Reemplazo Nequi → Addi + quick cash chips ✅
+Última fase completada: 12 - Sistema de gastos de caja ✅
 En progreso: 09 - Parametrización (pausada, falta prompt 2 Addi)
 Siguiente: continuar 09 (Addi) + retomar plan en orden
 Fase 14 agregada al roadmap: Switcher multi-store para admin
