@@ -18,6 +18,7 @@ import {
   ChevronDown,
   Camera,
   Wallet,
+  Bookmark,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useCartStore, cartTotals } from '@/stores/cartStore'
@@ -46,6 +47,12 @@ import {
   migrateLegacyPaymentMethods,
 } from '@/lib/paymentMethods'
 import type { Customer, PaymentMethod, Order } from '@/types/database.types'
+import {
+  NewLayawayModal,
+  type DraftItem,
+  type NewLayawayPrefill,
+} from '@/components/layaways/NewLayawayModal'
+import { useNavigate } from 'react-router-dom'
 
 // ── Variant Picker Modal ─────────────────────────────────────────────────────
 
@@ -218,6 +225,7 @@ interface PaymentModalProps {
   enabledMethods: PaymentMethod[]
   paymentQrUrl: string | null
   onConfirm: (method: PaymentMethod, cashReceived?: number) => void
+  onLayaway: () => void
   onClose: () => void
   isPending: boolean
 }
@@ -227,6 +235,7 @@ function PaymentModal({
   enabledMethods,
   paymentQrUrl,
   onConfirm,
+  onLayaway,
   onClose,
   isPending,
 }: PaymentModalProps) {
@@ -375,6 +384,23 @@ function PaymentModal({
               <CheckCircle size={16} /> Confirmar pago
             </>
           )}
+        </button>
+
+        <div className="mt-3 flex items-center gap-2">
+          <span className="h-px flex-1 bg-slate-200" />
+          <span className="text-[10.5px] font-semibold uppercase tracking-wider text-slate-400">
+            o
+          </span>
+          <span className="h-px flex-1 bg-slate-200" />
+        </div>
+
+        <button
+          type="button"
+          onClick={onLayaway}
+          disabled={isPending}
+          className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl border border-violet-200 bg-violet-50 py-3 text-sm font-semibold text-violet-700 hover:bg-violet-100 disabled:opacity-50"
+        >
+          <Bookmark size={15} /> Crear separado
         </button>
       </div>
     </div>
@@ -783,10 +809,19 @@ function CustomerSearchInput({ selected, onSelect }: CustomerSearchInputProps) {
 
 // ── Cart Panel ────────────────────────────────────────────────────────────────
 
-function CartPanel({ onCheckout }: { onCheckout: () => void }) {
+interface CartPanelProps {
+  onCheckout: () => void
+  selectedCustomer: Customer | null
+  setSelectedCustomer: (c: Customer | null) => void
+}
+
+function CartPanel({
+  onCheckout,
+  selectedCustomer,
+  setSelectedCustomer,
+}: CartPanelProps) {
   const store = useCartStore()
   const { items, discount, customer_id } = store
-  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null)
   const { subtotal, discountAmt, total } = cartTotals(items, discount)
 
   const handleSelectCustomer = useCallback(
@@ -794,12 +829,12 @@ function CartPanel({ onCheckout }: { onCheckout: () => void }) {
       setSelectedCustomer(c)
       store.setCustomer(c?.id ?? null)
     },
-    [store],
+    [store, setSelectedCustomer],
   )
 
   useEffect(() => {
     if (!customer_id) setSelectedCustomer(null)
-  }, [customer_id])
+  }, [customer_id, setSelectedCustomer])
 
   return (
     <div className="flex h-full flex-col">
@@ -967,6 +1002,7 @@ function CartPanel({ onCheckout }: { onCheckout: () => void }) {
 type CompletedSale = { order: Order; items: CartItem[]; discount: Discount }
 
 export default function POSPage() {
+  const navigate = useNavigate()
   const [query, setQuery] = useState('')
   const [activeCat, setActiveCat] = useState('all')
   const [pickerProduct, setPickerProduct] = useState<POSProduct | null>(null)
@@ -974,6 +1010,10 @@ export default function POSPage() {
   const [completedSale, setCompletedSale] = useState<CompletedSale | null>(null)
   const [showCamera, setShowCamera] = useState(false)
   const [showOpenShift, setShowOpenShift] = useState(false)
+  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null)
+  const [layawayPrefill, setLayawayPrefill] = useState<NewLayawayPrefill | null>(
+    null,
+  )
   const searchRef = useRef<HTMLInputElement>(null)
 
   const { data: searchResults = [], isLoading } = usePOSSearch(query)
@@ -1112,6 +1152,34 @@ export default function POSPage() {
     searchRef.current?.focus()
   }, [clear])
 
+  function handleLayawayFromPOS() {
+    if (!selectedCustomer) {
+      toast.error('Selecciona un cliente antes de crear un separado')
+      return
+    }
+    if (items.length === 0) return
+    const draftItems: DraftItem[] = items.map((it) => ({
+      variant_id: it.variant_id,
+      product_id: it.product_id,
+      name: it.name,
+      size: it.size,
+      color: it.color,
+      unit_price: it.unit_price,
+      qty: it.qty,
+      available: Math.max(it.stock_qty, it.qty),
+    }))
+    setShowPayment(false)
+    setLayawayPrefill({ customer: selectedCustomer, items: draftItems })
+  }
+
+  function handleLayawayCreated(layawayId: string) {
+    setLayawayPrefill(null)
+    clear()
+    toast.success('Separado creado — abriendo detalle')
+    navigate('/separados')
+    void layawayId
+  }
+
   // Bloqueo: sin turno abierto no se permite vender
   if (!loadingShift && !currentShift) {
     return (
@@ -1240,7 +1308,11 @@ export default function POSPage() {
 
       {/* Right — Cart */}
       <section className="flex w-[340px] shrink-0 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white">
-        <CartPanel onCheckout={() => setShowPayment(true)} />
+        <CartPanel
+          onCheckout={() => setShowPayment(true)}
+          selectedCustomer={selectedCustomer}
+          setSelectedCustomer={setSelectedCustomer}
+        />
       </section>
 
       {/* Modals */}
@@ -1258,8 +1330,17 @@ export default function POSPage() {
           enabledMethods={migrateLegacyPaymentMethods(config.payment_methods)}
           paymentQrUrl={config.payment_qr_url}
           onConfirm={handleConfirmPayment}
+          onLayaway={handleLayawayFromPOS}
           onClose={() => setShowPayment(false)}
           isPending={createOrder.isPending}
+        />
+      )}
+
+      {layawayPrefill && (
+        <NewLayawayModal
+          prefill={layawayPrefill}
+          onClose={() => setLayawayPrefill(null)}
+          onCreated={handleLayawayCreated}
         />
       )}
 

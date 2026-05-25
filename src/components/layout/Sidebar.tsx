@@ -16,8 +16,10 @@ import {
   Settings,
   ChevronDown,
   LogOut,
+  Bookmark,
 } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
+import { useActiveLayawaysCount } from '@/hooks/useLayaways'
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 
@@ -27,6 +29,17 @@ interface NavItem {
   icon: LucideIcon
   adminOnly?: boolean
   end?: boolean
+  Badge?: React.FC
+}
+
+function ActiveLayawaysBadge() {
+  const { data: count = 0 } = useActiveLayawaysCount()
+  if (count <= 0) return null
+  return (
+    <span className="ml-auto inline-flex min-w-[18px] items-center justify-center rounded-full bg-violet-500 px-1.5 text-[10px] font-semibold text-white">
+      {count > 99 ? '99+' : count}
+    </span>
+  )
 }
 
 interface NavGroup {
@@ -47,6 +60,12 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { label: 'Ventas', path: '/ventas', icon: Store, end: true },
       { label: 'Historial', path: '/ventas/historial', icon: History },
+      {
+        label: 'Separados',
+        path: '/separados',
+        icon: Bookmark,
+        Badge: ActiveLayawaysBadge,
+      },
       { label: 'Devoluciones', path: '/devoluciones', icon: Undo2 },
     ],
   },
@@ -182,6 +201,7 @@ function CollapsibleGroup({
           <div className="ml-7 mt-0.5 flex flex-col gap-0.5">
             {group.items.map((item) => {
               const ItemIcon = item.icon
+              const Badge = item.Badge
               return (
                 <NavLink
                   key={item.path}
@@ -196,7 +216,8 @@ function CollapsibleGroup({
                   }
                 >
                   <ItemIcon className="h-3.5 w-3.5 shrink-0" />
-                  {item.label}
+                  <span className="flex-1">{item.label}</span>
+                  {Badge && <Badge />}
                 </NavLink>
               )
             })}
