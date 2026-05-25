@@ -5,6 +5,7 @@ export type StockMovementType = 'sale' | 'return' | 'adjustment' | 'purchase'
 export type ReturnType = 'return' | 'exchange'
 export type ReturnStatus = 'pending' | 'completed'
 export type ReturnAction = 'refund' | 'exchange'
+export type LayawayStatus = 'active' | 'completed' | 'cancelled' | 'expired'
 
 export interface Profile {
   id: string
@@ -63,6 +64,7 @@ export interface Variant {
   price: number
   cost_price: number | null
   stock_qty: number
+  reserved_qty: number
   min_stock: number
   is_active: boolean
   created_at: string
@@ -160,6 +162,45 @@ export interface CashExpense {
   reason: string
   notes: string | null
   created_by: string
+  created_at: string
+}
+
+export interface Layaway {
+  id: string
+  layaway_number: number
+  store_id: string
+  customer_id: string
+  created_by: string
+  status: LayawayStatus
+  total: number
+  paid_amount: number
+  expires_at: string
+  completed_at: string | null
+  cancelled_at: string | null
+  cancellation_reason: string | null
+  converted_order_id: string | null
+  notes: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface LayawayItem {
+  id: string
+  layaway_id: string
+  variant_id: string
+  product_id: string
+  qty: number
+  unit_price: number
+}
+
+export interface LayawayPayment {
+  id: string
+  layaway_id: string
+  store_id: string
+  amount: number
+  payment_method: PaymentMethod
+  created_by: string
+  notes: string | null
   created_at: string
 }
 
@@ -307,6 +348,47 @@ export interface Database {
           created_at?: string
         }
         Update: Partial<Omit<CashExpense, 'id'>>
+      }
+      layaways: {
+        Row: Layaway
+        Insert: Omit<
+          Layaway,
+          | 'id'
+          | 'layaway_number'
+          | 'status'
+          | 'paid_amount'
+          | 'completed_at'
+          | 'cancelled_at'
+          | 'cancellation_reason'
+          | 'converted_order_id'
+          | 'created_at'
+          | 'updated_at'
+        > & {
+          id?: string
+          layaway_number?: number
+          status?: LayawayStatus
+          paid_amount?: number
+          completed_at?: string | null
+          cancelled_at?: string | null
+          cancellation_reason?: string | null
+          converted_order_id?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: Partial<Omit<Layaway, 'id'>>
+      }
+      layaway_items: {
+        Row: LayawayItem
+        Insert: Omit<LayawayItem, 'id'> & { id?: string }
+        Update: Partial<Omit<LayawayItem, 'id'>>
+      }
+      layaway_payments: {
+        Row: LayawayPayment
+        Insert: Omit<LayawayPayment, 'id' | 'created_at'> & {
+          id?: string
+          created_at?: string
+        }
+        Update: Partial<Omit<LayawayPayment, 'id'>>
       }
     }
     Views: {
