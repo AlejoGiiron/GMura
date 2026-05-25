@@ -13,6 +13,10 @@ export type VariantRow = Variant & {
     category_id: string | null
     categories: { id: string; name: string } | null
   }
+  /** Disponible = stock_qty - reserved_qty (precalculado en cliente). */
+  available: number
+  /** Estado de stock calculado sobre `available`, no sobre stock_qty físico. */
+  stock_state: 'out' | 'low' | 'ok'
 }
 
 export type MovementRow = StockMovement & {
@@ -54,7 +58,16 @@ export function useStockLevels() {
         .order('created_at' as never, { ascending: false })
 
       if (error) throw error
-      return (data ?? []) as unknown as VariantRow[]
+
+      type Raw = Omit<VariantRow, 'available' | 'stock_state'>
+      const rows = (data ?? []) as unknown as Raw[]
+      return rows.map<VariantRow>((v) => {
+        const available = Math.max(0, (v.stock_qty ?? 0) - (v.reserved_qty ?? 0))
+        const min = v.min_stock ?? 0
+        const stock_state: 'out' | 'low' | 'ok' =
+          available === 0 ? 'out' : available <= min ? 'low' : 'ok'
+        return { ...v, available, stock_state }
+      })
     },
     enabled: !!storeId,
     staleTime: 30_000,

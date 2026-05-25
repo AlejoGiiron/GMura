@@ -12,6 +12,7 @@ import CustomersPage from '@/pages/CustomersPage'
 import ReportsPage from '@/pages/ReportsPage'
 import ConfigPage from '@/pages/ConfigPage'
 import CashShiftsHistoryPage from '@/pages/CashShiftsHistoryPage'
+import LayawaysPage from '@/pages/LayawaysPage'
 
 export default function App() {
   return (
@@ -29,6 +30,7 @@ export default function App() {
           <Route index element={<Navigate to="/ventas" replace />} />
           <Route path="ventas" element={<POSPage />} />
           <Route path="ventas/historial" element={<SalesHistoryPage />} />
+          <Route path="separados" element={<LayawaysPage />} />
           <Route
             path="productos"
             element={

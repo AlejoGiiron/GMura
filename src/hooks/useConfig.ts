@@ -31,6 +31,9 @@ export const DEFAULT_CONFIG: StoreConfig = {
   payment_qr_url: null,
   label_format: '38x25',
   label_fields: { sku: true, name: true, size_color: true, price: true },
+  layaway_initial_payment_mode: 'none',
+  layaway_initial_payment_value: 0,
+  layaway_default_days: 30,
 }
 
 export function resolveConfig(raw: Record<string, unknown> | null | undefined): StoreConfig {

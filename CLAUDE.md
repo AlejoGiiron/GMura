@@ -303,7 +303,122 @@ Sidebar agrupado en secciones colapsables (feature/12-caja-completa) ✅
     vacíos. Accesibilidad: aria-expanded / aria-controls / aria-label
 
 ## Estado actual del proyecto
-Última fase completada: 12 - Caja completa + sidebar agrupado ✅
+Última fase completada: 13 - Separados (layaway) + integración fina ✅
 En progreso: 09 - Parametrización (pausada, falta prompt 2 Addi)
 Siguiente: continuar 09 (Addi) + retomar plan en orden
 Fase 14 agregada al roadmap: Switcher multi-store para admin
+
+Integración fina de separados (feature/13-separados) ✅
+  - Migración 009_layaway_views: vistas layaway_summary
+    (KPIs por estado) y layaway_expiring_soon (activos que vencen
+    en 7 días, ordenados ASC) con security_invoker = true
+  - LayawaySummary y LayawayExpiringSoon agregados a
+    Database['public']['Views']
+  - useInventory.ts: VariantRow extendido con available
+    (stock_qty - reserved_qty, mínimo 0) y stock_state
+    ('out'|'low'|'ok') calculado sobre available. Todas las
+    comprobaciones de inventario heredan el descuento por
+    separados automáticamente
+  - InventoryPage: tabla con 3 columnas separadas
+    Total/Reservado/Disponible (Reservado en violeta cuando > 0);
+    5 summary cards (Total / Sin disponible / Stock bajo / Con
+    reservas / Valor); filtro de estado agrega "Con reservas";
+    Excel export incluye columnas Reservado y Disponible
+  - VariantsPanel: tabla con 3 cols Total/Reservado/Disponible
+    para variantes activas; cuando available = 0 pero stock > 0
+    muestra badge rojo "Sin disponible" con tooltip aclarando
+    que todo está reservado
+  - usePOSSearch: POSVariant.stock_qty sigue siendo available
+    (cart compatibility); se agregan total_stock_qty y
+    reserved_qty informativos
+  - VariantPickerModal: muestra "X total · Y reservados" en
+    violeta cuando hay reserva; tooltip en botón cuando todo
+    está reservado
+  - useReports.ts: useLayawaysSummary (KPIs por status + tasa
+    conversión completed/closed); useExpiringLayaways
+    (próximos a vencer 7d); useLayawaysForExport (flat para
+    Excel detallado)
+  - ReportsPage: nueva sección "Separados" con 4 KPIs (activos
+    pendientes / por vencer 7d / recaudado / tasa conversión),
+    pie de estados (violeta/verde/gris/rojo), tabla próximos
+    a vencer (días en color rojo<3 / amarillo 3-7 / verde >7,
+    click → /separados?id=X); Excel agrega hojas
+    "Separados — Resumen" y "Separados" (una fila por separado)
+  - LayawayNotifications: campana en Header con badge rojo
+    cuando hay separados venciendo en ≤3 días; dropdown
+    320px con lista navegable; solo se renderiza para roles
+    admin y seller; click en item → /separados?id=X
+  - CustomersPage: tab nuevo "Separados" en el perfil (junto a
+    Compras y Devoluciones) que usa useCustomerLayaways para
+    listar todos los estados con barra de progreso, badge
+    por estado y click → /separados?id=X
+  - LayawaysPage: useSearchParams lee ?id= al cargar y
+    limpia el query param tras consumirlo (replace:true)
+  - Edge Function supabase/functions/expire-layaways: ejecuta
+    la RPC expire_overdue_layaways() y devuelve count;
+    README con deploy (supabase functions deploy) y cron
+    via Dashboard o pg_cron + pg_net (3am Bogotá = 8am UTC)
+  - Fallback en cliente preservado: useExpireOverdueLayaways
+    sigue ejecutándose al montar LayawaysPage como red de
+    seguridad si el cron falla
+
+Sistema de separados completo (feature/13-separados) ✅
+  - Migración 008_layaways: enum layaway_status, variants.reserved_qty,
+    tablas layaways/layaway_items/layaway_payments con triggers
+    (assign_layaway_number, reserve_stock_on_layaway,
+    release_stock_on_layaway_change, fulfill_stock_on_layaway_completion
+    SOLO libera reserved_qty -- el descuento real lo hace
+    deduct_stock_on_sale cuando la UI crea la orden,
+    update_layaway_paid_amount), función SQL expire_overdue_layaways(),
+    índices y RLS por store_id + delete admin
+  - StoreConfig.layaway_initial_payment_mode ('none'|'fixed'|'percent') +
+    layaway_initial_payment_value + layaway_default_days (default 30)
+  - src/lib/layawayCalc.ts: calculateRequiredInitialPayment +
+    isLayawayOverdue + daysUntilExpiry
+  - src/hooks/useLayaways.ts: useLayawayList (paginado 50/pág, tabs por
+    status + 'expiring_soon' <7d, búsqueda por #N o nombre/teléfono cliente
+    vía 2-queries con .in), useLayawayDetail (JOIN customer/profile/items/
+    payments + balance_pending), useActiveLayawaysCount (badge sidebar),
+    useLayawayStatusCounts (counts por tab via head:true)
+  - src/hooks/useLayawayMutations.ts: useCreateLayaway (pre-check de
+    stock disponible, rollback DELETE si items insert falla, abono inicial
+    opcional), useAddLayawayPayment (valida saldo), useCancelLayaway
+    (valida active, reason min 5 chars, toast recordatorio de abonos),
+    useCompleteLayaway (INSERT orders + order_items + UPDATE layaway,
+    payment_method = final_payment.method o último abono, rollback DELETE
+    de orden si order_items falla), useExpireOverdueLayaways (RPC)
+  - src/hooks/usePOSSearch.ts: usePOSProducts ahora mapea stock_qty como
+    "available real" (stock_qty - reserved_qty); todas las validaciones
+    de stock en POS heredan automáticamente el descuento por separados
+  - LayawaysPage layout 35/65 con tabs filtrables, lista de cards con
+    avatar #N + barra progreso + días restantes coloreados, detalle con
+    DetailHeader (CopyableCell #N, badge status), ProgressCard, ItemsCard,
+    PaymentsCard, DetailActions adaptativo por status, expiración
+    automática vía useExpireOverdueLayaways al montar
+  - NewLayawayModal: wizard 3 pasos (cliente con CustomerStep inline +
+    QuickCreateInline, items con búsqueda + VariantPicker + lista
+    editable, confirmar con abono inicial y método). Acepta prefill
+    desde POS (cliente + items del carrito). Tras crear: vista previa
+    LayawayReceipt + "Imprimir y continuar" o "Continuar sin imprimir"
+  - AddPaymentModal: pills de monto rápido (saldo completo), checkbox
+    "Completar venta con este pago" cuando monto = saldo (llama
+    useCompleteLayaway con final_payment en lugar de useAddPayment)
+  - CompleteLayawayModal: solo cuando paid >= total; advertencia de
+    descuento de stock y resumen de ítems
+  - CancelLayawayModal: motivo requerido (min 5 chars), avisos
+    destacados de liberación de stock y abonos no reembolsados
+  - LayawayReceipt: ticket 80mm con secciones SEPARADO #N / Cliente+Tel /
+    Fecha+Vence+Creado por / ÍTEMS con T:talla C:color / ABONOS por
+    método / Saldo destacado / "Cobra antes de" fecha grande /
+    IMPORTANTE; useLayawayReceiptPrintStyle + LayawayReceiptPrint
+    (oculto en pantalla, visible en print) siguiendo patrón de
+    CashShiftReceipt
+  - POSPage: handleLayawayFromPOS valida selectedCustomer + items y
+    abre NewLayawayModal con prefill; PaymentModal con botón violeta
+    secundario "Crear separado" + divider "o"; al crear, navega a
+    /separados y limpia carrito
+  - Sidebar: entrada "Separados" (Bookmark icon) en grupo "Operación"
+    antes de Devoluciones; ActiveLayawaysBadge integrado al NavItem
+    via slot opcional Badge?: React.FC (badge violeta con count o 99+)
+  - Router: ruta /separados dentro de ProtectedRoute + AppLayout
+    (visible para admin y seller)

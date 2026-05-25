@@ -10,7 +10,14 @@ export interface POSVariant {
   size: string | null
   color: string | null
   price: number
+  // Cantidad realmente disponible para venta = stock_qty - reserved_qty.
+  // Exponemos este valor como stock_qty al POS para que ninguna comprobación
+  // de stock ignore las reservas de separados.
   stock_qty: number
+  // Stock físico total (incluye lo reservado). Informativo: lo usa el
+  // VariantPickerModal para mostrar "X total, Y reservado".
+  total_stock_qty: number
+  reserved_qty: number
   barcode: string | null
   sku: string | null
   is_active: boolean
@@ -25,13 +32,25 @@ export interface POSProduct {
   variants: POSVariant[]
 }
 
+interface RawVariant {
+  id: string
+  size: string | null
+  color: string | null
+  price: number
+  stock_qty: number
+  reserved_qty: number
+  barcode: string | null
+  sku: string | null
+  is_active: boolean
+}
+
 interface RawProduct {
   id: string
   name: string
   brand: string | null
   image_url: string | null
   categories: { id: string; name: string; color: string | null } | null
-  variants: POSVariant[]
+  variants: RawVariant[]
 }
 
 export function usePOSProducts() {
@@ -44,7 +63,7 @@ export function usePOSProducts() {
       const { data, error } = await supabase
         .from('products')
         .select(
-          'id, name, brand, image_url, categories(id, name, color), variants(id, size, color, price, stock_qty, barcode, sku, is_active)',
+          'id, name, brand, image_url, categories(id, name, color), variants(id, size, color, price, stock_qty, reserved_qty, barcode, sku, is_active)',
         )
         .eq('store_id' as never, storeId)
         .eq('is_active' as never, true)
@@ -58,7 +77,21 @@ export function usePOSProducts() {
           brand: r.brand,
           image_url: r.image_url,
           category: r.categories,
-          variants: (r.variants ?? []).filter((v) => v.is_active),
+          variants: (r.variants ?? [])
+            .filter((v) => v.is_active)
+            .map<POSVariant>((v) => ({
+              id: v.id,
+              size: v.size,
+              color: v.color,
+              price: v.price,
+              // Disponible real = stock físico - reservado por separados activos.
+              stock_qty: Math.max(0, (v.stock_qty ?? 0) - (v.reserved_qty ?? 0)),
+              total_stock_qty: v.stock_qty ?? 0,
+              reserved_qty: v.reserved_qty ?? 0,
+              barcode: v.barcode,
+              sku: v.sku,
+              is_active: v.is_active,
+            })),
         }
       })
     },
