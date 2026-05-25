@@ -9,6 +9,9 @@ import type {
   InventoryStatus,
   ReturnsSummary,
   PaymentMethod,
+  LayawaySummary,
+  LayawayExpiringSoon,
+  LayawayStatus,
 } from '@/types/database.types'
 
 const STALE_5_MIN = 5 * 60 * 1_000
@@ -165,6 +168,177 @@ export type InventoryReport = {
   outOfStockCount: number
   lowStockCount:   number
   items:           InventoryStatus[]
+}
+
+// ── useLayawaysSummary ────────────────────────────────────────────────────────
+
+export type LayawayKpis = {
+  activeCount: number
+  activeAmount: number          // total - paid de activos (comprometido pendiente)
+  completedCount: number
+  cancelledCount: number
+  expiredCount: number
+  totalPaid: number             // recaudado en activos
+  conversionRate: number        // completed / (completed + cancelled + expired)
+  byStatus: Record<LayawayStatus, LayawaySummary | null>
+}
+
+export function useLayawaysSummary() {
+  const { profile } = useAuth()
+  const storeId = profile?.store_id ?? ''
+
+  return useQuery({
+    queryKey: ['reports', 'layaways-summary', storeId],
+    queryFn: async (): Promise<LayawayKpis> => {
+      const { data, error } = await supabase
+        .from('layaway_summary' as never)
+        .select('*')
+
+      if (error) {
+        toast.error('Error cargando resumen de separados')
+        throw error
+      }
+
+      const rows = (data ?? []) as unknown as LayawaySummary[]
+      const byStatus: Record<LayawayStatus, LayawaySummary | null> = {
+        active: null,
+        completed: null,
+        cancelled: null,
+        expired: null,
+      }
+      for (const r of rows) byStatus[r.status] = r
+
+      const active    = byStatus.active
+      const completed = byStatus.completed
+      const cancelled = byStatus.cancelled
+      const expired   = byStatus.expired
+
+      const closed = (completed?.layaway_count ?? 0)
+                   + (cancelled?.layaway_count ?? 0)
+                   + (expired?.layaway_count   ?? 0)
+      const conversionRate = closed > 0
+        ? ((completed?.layaway_count ?? 0) / closed) * 100
+        : 0
+
+      return {
+        activeCount:    active?.layaway_count    ?? 0,
+        activeAmount:   Number(active?.pending_amount ?? 0),
+        completedCount: completed?.layaway_count ?? 0,
+        cancelledCount: cancelled?.layaway_count ?? 0,
+        expiredCount:   expired?.layaway_count   ?? 0,
+        totalPaid:      Number(active?.paid_amount ?? 0),
+        conversionRate,
+        byStatus,
+      }
+    },
+    enabled: !!storeId,
+    staleTime: STALE_5_MIN,
+  })
+}
+
+// ── useExpiringLayaways ───────────────────────────────────────────────────────
+
+export function useExpiringLayaways() {
+  const { profile } = useAuth()
+  const storeId = profile?.store_id ?? ''
+
+  return useQuery({
+    queryKey: ['reports', 'layaways-expiring', storeId],
+    queryFn: async (): Promise<LayawayExpiringSoon[]> => {
+      const { data, error } = await supabase
+        .from('layaway_expiring_soon' as never)
+        .select('*')
+        .order('expires_at' as never, { ascending: true })
+
+      if (error) {
+        toast.error('Error cargando separados próximos a vencer')
+        throw error
+      }
+      return (data ?? []) as unknown as LayawayExpiringSoon[]
+    },
+    enabled: !!storeId,
+    staleTime: STALE_5_MIN,
+  })
+}
+
+// ── useLayawaysForExport ──────────────────────────────────────────────────────
+// Lista plana para la hoja 6 del Excel: una fila por separado.
+
+export type LayawayExportRow = {
+  id: string
+  layaway_number: number
+  created_at: string
+  customer_name: string
+  customer_phone: string | null
+  items_count: number
+  total: number
+  paid_amount: number
+  pending: number
+  status: LayawayStatus
+  expires_at: string
+  completed_at: string | null
+  cancelled_at: string | null
+}
+
+interface RawExportLayaway {
+  id: string
+  layaway_number: number
+  created_at: string
+  total: number
+  paid_amount: number
+  status: LayawayStatus
+  expires_at: string
+  completed_at: string | null
+  cancelled_at: string | null
+  customers: { full_name: string; phone: string | null } | null
+  layaway_items: { id: string }[]
+}
+
+export function useLayawaysForExport() {
+  const { profile } = useAuth()
+  const storeId = profile?.store_id ?? ''
+
+  return useQuery({
+    queryKey: ['reports', 'layaways-export', storeId],
+    queryFn: async (): Promise<LayawayExportRow[]> => {
+      const { data, error } = await supabase
+        .from('layaways')
+        .select(`
+          id, layaway_number, created_at, total, paid_amount, status,
+          expires_at, completed_at, cancelled_at,
+          customers(full_name, phone),
+          layaway_items(id)
+        `)
+        .eq('store_id' as never, storeId)
+        .order('created_at' as never, { ascending: false })
+        .limit(5000)
+
+      if (error) {
+        toast.error('Error preparando export de separados')
+        throw error
+      }
+      return (data ?? []).map((row) => {
+        const r = row as unknown as RawExportLayaway
+        return {
+          id: r.id,
+          layaway_number: r.layaway_number,
+          created_at: r.created_at,
+          customer_name: r.customers?.full_name ?? '',
+          customer_phone: r.customers?.phone ?? null,
+          items_count: (r.layaway_items ?? []).length,
+          total: Number(r.total) || 0,
+          paid_amount: Number(r.paid_amount) || 0,
+          pending: Math.max(0, Number(r.total) - Number(r.paid_amount)),
+          status: r.status,
+          expires_at: r.expires_at,
+          completed_at: r.completed_at,
+          cancelled_at: r.cancelled_at,
+        }
+      })
+    },
+    enabled: !!storeId,
+    staleTime: STALE_5_MIN,
+  })
 }
 
 export function useInventoryReport() {

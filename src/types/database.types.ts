@@ -264,6 +264,29 @@ export interface ReturnsSummary {
   refund_amount: number
 }
 
+export interface LayawaySummary {
+  store_id: string
+  status: LayawayStatus
+  layaway_count: number
+  total_amount: number
+  paid_amount: number
+  pending_amount: number
+}
+
+export interface LayawayExpiringSoon {
+  id: string
+  layaway_number: number
+  store_id: string
+  customer_id: string
+  customer_name: string
+  customer_phone: string | null
+  total: number
+  paid_amount: number
+  pending_amount: number
+  expires_at: string
+  days_until_expiry: number
+}
+
 // ── Database schema ───────────────────────────────────────────────────────────
 
 export interface Database {
@@ -392,10 +415,12 @@ export interface Database {
       }
     }
     Views: {
-      daily_sales_summary: { Row: DailySalesSummary }
-      product_performance:  { Row: ProductPerformance }
-      inventory_status:     { Row: InventoryStatus }
-      returns_summary:      { Row: ReturnsSummary }
+      daily_sales_summary:    { Row: DailySalesSummary }
+      product_performance:    { Row: ProductPerformance }
+      inventory_status:       { Row: InventoryStatus }
+      returns_summary:        { Row: ReturnsSummary }
+      layaway_summary:        { Row: LayawaySummary }
+      layaway_expiring_soon:  { Row: LayawayExpiringSoon }
     }
     Functions: Record<string, never>
     Enums: Record<string, never>

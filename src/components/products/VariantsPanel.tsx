@@ -397,22 +397,32 @@ export default function VariantsPanel({ product, onClose }: VariantsPanelProps) 
                   <thead>
                     <tr className="border-b border-slate-100">
                       <th className="w-8 pb-2.5 text-left" />
-                      {['Talla', 'Color', 'SKU', 'Precio', 'Stock', ''].map((h) => (
+                      {[
+                        { label: 'Talla', align: 'left' },
+                        { label: 'Color', align: 'left' },
+                        { label: 'SKU', align: 'left' },
+                        { label: 'Precio', align: 'right' },
+                        { label: 'Total', align: 'right' },
+                        { label: 'Reservado', align: 'right' },
+                        { label: 'Disponible', align: 'right' },
+                        { label: '', align: 'right' },
+                      ].map((h) => (
                         <th
-                          key={h}
-                          className={`pb-2.5 text-[11px] font-semibold uppercase tracking-wider text-slate-400 ${
-                            h === 'Precio' || h === 'Stock' ? 'text-right' : 'text-left'
-                          }`}
+                          key={h.label || '_actions'}
+                          className={`pb-2.5 text-[11px] font-semibold uppercase tracking-wider text-slate-400 text-${h.align}`}
                         >
-                          {h}
+                          {h.label}
                         </th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
                     {activeVariants.map((v) => {
-                      const isLow = v.stock_qty > 0 && v.stock_qty <= v.min_stock
-                      const isOut = v.stock_qty === 0
+                      const reserved = v.reserved_qty ?? 0
+                      const available = Math.max(0, v.stock_qty - reserved)
+                      const isLow = available > 0 && available <= v.min_stock
+                      const isOut = available === 0
+                      const allReserved = isOut && v.stock_qty > 0
                       const isSelected = selectedIds.has(v.id)
                       return (
                         <tr
@@ -448,18 +458,35 @@ export default function VariantsPanel({ product, onClose }: VariantsPanelProps) 
                           <td className="py-2.5 text-right font-mono text-sm">
                             {fmtCOP(v.price)}
                           </td>
+                          <td className="py-2.5 text-right font-mono text-sm tabular-nums text-slate-500">
+                            {v.stock_qty}
+                          </td>
+                          <td
+                            className={`py-2.5 text-right font-mono text-sm tabular-nums ${
+                              reserved > 0 ? 'text-violet-600' : 'text-slate-300'
+                            }`}
+                          >
+                            {reserved > 0 ? reserved : '—'}
+                          </td>
                           <td className="py-2.5 text-right">
                             <span
                               className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold ${
-                                isOut
+                                allReserved
                                   ? 'bg-red-50 text-red-700'
-                                  : isLow
-                                    ? 'bg-amber-50 text-amber-700'
-                                    : 'bg-emerald-50 text-emerald-700'
+                                  : isOut
+                                    ? 'bg-red-50 text-red-700'
+                                    : isLow
+                                      ? 'bg-amber-50 text-amber-700'
+                                      : 'bg-emerald-50 text-emerald-700'
                               }`}
+                              title={
+                                allReserved
+                                  ? `Total ${v.stock_qty}, todo reservado en separados`
+                                  : undefined
+                              }
                             >
                               {(isOut || isLow) && <AlertTriangle size={10} />}
-                              {v.stock_qty}
+                              {allReserved ? 'Sin disponible' : available}
                             </span>
                           </td>
                           <td className="py-2.5 text-right">

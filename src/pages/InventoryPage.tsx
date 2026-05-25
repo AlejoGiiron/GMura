@@ -18,8 +18,10 @@ import { useInventoryMutations } from '@/hooks/useInventoryMutations'
 import { useCategories } from '@/hooks/useProducts'
 import { useDebounce } from '@/hooks/useDebounce'
 import { fmtCOP } from '@/lib/formatters'
-import { getColorHex, stockState } from '@/lib/products'
+import { getColorHex } from '@/lib/products'
 import type { StockMovementType } from '@/types/database.types'
+
+type StockStateValue = 'out' | 'low' | 'ok'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -35,13 +37,12 @@ function fmtDateTime(iso: string): string {
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
-function StockBadge({ qty, minStock }: { qty: number; minStock: number }) {
-  const state = stockState(qty, minStock)
+function StockBadge({ state }: { state: StockStateValue }) {
   if (state === 'out')
     return (
       <span className="inline-flex items-center gap-1 rounded-full border border-red-200 bg-red-50 px-2.5 py-0.5 text-[11px] font-semibold text-red-600">
         <span className="h-1.5 w-1.5 rounded-full bg-red-500" />
-        Sin stock
+        Sin disponible
       </span>
     )
   if (state === 'low')
@@ -429,7 +430,9 @@ export default function InventoryPage() {
   // Stock tab filters
   const [categoryFilter, setCategoryFilter] = useState('')
   const [brandFilter, setBrandFilter] = useState('')
-  const [statusFilter, setStatusFilter] = useState<'all' | 'out' | 'low' | 'ok'>('all')
+  const [statusFilter, setStatusFilter] = useState<'all' | 'out' | 'low' | 'ok' | 'reserved'>(
+    'all',
+  )
   const [search, setSearch] = useState('')
   const debouncedSearch = useDebounce(search)
 
@@ -452,11 +455,16 @@ export default function InventoryPage() {
     [profiles],
   )
 
-  // Derived summary stats (always from full unfiltered data)
-  const outOfStock = allVariants.filter((v) => v.stock_qty === 0).length
+  // Derived summary stats (siempre sobre el dataset completo, sin filtros).
+  // "Sin disponible" y "Stock bajo" usan available (stock - reservado), no
+  // stock_qty físico, para reflejar lo realmente vendible.
+  const outOfStock = allVariants.filter((v) => v.available === 0).length
   const lowStock = allVariants.filter(
-    (v) => v.stock_qty > 0 && v.stock_qty <= v.min_stock,
+    (v) => v.available > 0 && v.available <= v.min_stock,
   ).length
+  const reservedCount = allVariants.filter((v) => v.reserved_qty > 0).length
+  // El valor de inventario se calcula sobre el stock físico real (las unidades
+  // reservadas siguen siendo capital inmovilizado de la tienda).
   const totalValue = allVariants.reduce(
     (sum, v) => sum + v.stock_qty * (v.cost_price ?? 0),
     0,
@@ -476,8 +484,10 @@ export default function InventoryPage() {
     return allVariants.filter((v) => {
       if (categoryFilter && v.products.category_id !== categoryFilter) return false
       if (brandFilter && v.products.brand !== brandFilter) return false
-      if (statusFilter !== 'all') {
-        if (stockState(v.stock_qty, v.min_stock) !== statusFilter) return false
+      if (statusFilter === 'reserved') {
+        if (v.reserved_qty <= 0) return false
+      } else if (statusFilter !== 'all') {
+        if (v.stock_state !== statusFilter) return false
       }
       if (debouncedSearch) {
         const q = debouncedSearch.toLowerCase()
@@ -503,9 +513,11 @@ export default function InventoryPage() {
       { header: 'Color', key: 'color', width: 16 },
       { header: 'SKU', key: 'sku', width: 18 },
       { header: 'Código de barras', key: 'barcode', width: 22 },
-      { header: 'Stock actual', key: 'stock_qty', width: 14 },
+      { header: 'Total físico', key: 'stock_qty', width: 14 },
+      { header: 'Reservado', key: 'reserved_qty', width: 14 },
+      { header: 'Disponible', key: 'available', width: 14 },
       { header: 'Stock mínimo', key: 'min_stock', width: 14 },
-      { header: 'Estado', key: 'status', width: 14 },
+      { header: 'Estado', key: 'status', width: 16 },
       { header: 'Precio costo', key: 'cost_price', width: 18 },
       { header: 'Precio venta', key: 'price', width: 18 },
     ]
@@ -519,7 +531,7 @@ export default function InventoryPage() {
     }
 
     allVariants.forEach((v) => {
-      const state = stockState(v.stock_qty, v.min_stock)
+      const state = v.stock_state
       const row = ws.addRow({
         product: v.products.name,
         brand: v.products.brand ?? '',
@@ -528,8 +540,11 @@ export default function InventoryPage() {
         sku: v.sku ?? '',
         barcode: v.barcode ?? '',
         stock_qty: v.stock_qty,
+        reserved_qty: v.reserved_qty,
+        available: v.available,
         min_stock: v.min_stock,
-        status: state === 'out' ? 'Sin stock' : state === 'low' ? 'Stock bajo' : 'Normal',
+        status:
+          state === 'out' ? 'Sin disponible' : state === 'low' ? 'Stock bajo' : 'Normal',
         cost_price: v.cost_price ?? 0,
         price: v.price,
       })
@@ -618,7 +633,7 @@ export default function InventoryPage() {
       <div className="space-y-5 p-6" style={{ background: '#f8f7f5', minHeight: 'calc(100vh - 128px)' }}>
 
         {/* Summary cards */}
-        <div className="grid grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
           <SummaryCard
             label="Total variantes"
             value={allVariants.length}
@@ -626,7 +641,7 @@ export default function InventoryPage() {
             tone="normal"
           />
           <SummaryCard
-            label="Sin stock"
+            label="Sin disponible"
             value={outOfStock}
             icon={AlertCircle}
             tone={outOfStock > 0 ? 'red' : 'green'}
@@ -636,6 +651,12 @@ export default function InventoryPage() {
             value={lowStock}
             icon={AlertTriangle}
             tone={lowStock > 0 ? 'yellow' : 'green'}
+          />
+          <SummaryCard
+            label="Con reservas"
+            value={reservedCount}
+            icon={Package}
+            tone={reservedCount > 0 ? 'normal' : 'green'}
           />
           <SummaryCard
             label="Valor inventario"
@@ -687,12 +708,17 @@ export default function InventoryPage() {
               <select
                 className={selectClass}
                 value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value as 'all' | 'out' | 'low' | 'ok')}
+                onChange={(e) =>
+                  setStatusFilter(
+                    e.target.value as 'all' | 'out' | 'low' | 'ok' | 'reserved',
+                  )
+                }
               >
                 <option value="all">Todos los estados</option>
-                <option value="out">Sin stock</option>
+                <option value="out">Sin disponible</option>
                 <option value="low">Stock bajo</option>
                 <option value="ok">Normal</option>
+                <option value="reserved">Con reservas</option>
               </select>
 
               <button
@@ -735,21 +761,29 @@ export default function InventoryPage() {
                   <thead className="sticky top-0 z-10">
                     <tr className="border-b border-[#ebe9e6] bg-stone-50">
                       {[
-                        'Producto', 'Marca', 'Variante', 'SKU',
-                        'Código de barras', 'Stock', 'Mín.', 'Estado',
+                        { label: 'Producto', align: 'left' },
+                        { label: 'Marca', align: 'left' },
+                        { label: 'Variante', align: 'left' },
+                        { label: 'SKU', align: 'left' },
+                        { label: 'Código de barras', align: 'left' },
+                        { label: 'Total', align: 'right' },
+                        { label: 'Reservado', align: 'right' },
+                        { label: 'Disponible', align: 'right' },
+                        { label: 'Mín.', align: 'right' },
+                        { label: 'Estado', align: 'left' },
                       ].map((h) => (
                         <th
-                          key={h}
-                          className="whitespace-nowrap px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[.05em] text-[#737373]"
+                          key={h.label}
+                          className={`whitespace-nowrap px-4 py-3 text-${h.align} text-[11px] font-semibold uppercase tracking-[.05em] text-[#737373]`}
                         >
-                          {h}
+                          {h.label}
                         </th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
                     {filtered.map((v) => {
-                      const state = stockState(v.stock_qty, v.min_stock)
+                      const state = v.stock_state
                       return (
                         <tr
                           key={v.id}
@@ -800,14 +834,24 @@ export default function InventoryPage() {
                           <td className="px-4 py-3 font-mono text-xs text-[#525252]">
                             {v.barcode ?? <span className="text-[#a8a29e]">—</span>}
                           </td>
-                          <td className="px-4 py-3 text-right font-mono text-sm font-bold tabular-nums text-[#1a1a1a]">
+                          <td className="px-4 py-3 text-right font-mono text-sm tabular-nums text-[#525252]">
                             {v.stock_qty}
+                          </td>
+                          <td
+                            className={`px-4 py-3 text-right font-mono text-sm tabular-nums ${
+                              v.reserved_qty > 0 ? 'text-violet-600' : 'text-[#a8a29e]'
+                            }`}
+                          >
+                            {v.reserved_qty > 0 ? v.reserved_qty : '—'}
+                          </td>
+                          <td className="px-4 py-3 text-right font-mono text-sm font-bold tabular-nums text-[#1a1a1a]">
+                            {v.available}
                           </td>
                           <td className="px-4 py-3 text-right font-mono text-sm tabular-nums text-[#737373]">
                             {v.min_stock}
                           </td>
                           <td className="px-4 py-3">
-                            <StockBadge qty={v.stock_qty} minStock={v.min_stock} />
+                            <StockBadge state={state} />
                           </td>
                         </tr>
                       )

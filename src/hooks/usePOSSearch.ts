@@ -11,9 +11,13 @@ export interface POSVariant {
   color: string | null
   price: number
   // Cantidad realmente disponible para venta = stock_qty - reserved_qty.
-  // Exponemos solo este valor al POS para que ninguna comprobación de stock
-  // ignore las reservas de separados.
+  // Exponemos este valor como stock_qty al POS para que ninguna comprobación
+  // de stock ignore las reservas de separados.
   stock_qty: number
+  // Stock físico total (incluye lo reservado). Informativo: lo usa el
+  // VariantPickerModal para mostrar "X total, Y reservado".
+  total_stock_qty: number
+  reserved_qty: number
   barcode: string | null
   sku: string | null
   is_active: boolean
@@ -82,6 +86,8 @@ export function usePOSProducts() {
               price: v.price,
               // Disponible real = stock físico - reservado por separados activos.
               stock_qty: Math.max(0, (v.stock_qty ?? 0) - (v.reserved_qty ?? 0)),
+              total_stock_qty: v.stock_qty ?? 0,
+              reserved_qty: v.reserved_qty ?? 0,
               barcode: v.barcode,
               sku: v.sku,
               is_active: v.is_active,

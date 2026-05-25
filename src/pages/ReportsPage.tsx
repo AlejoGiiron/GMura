@@ -11,12 +11,24 @@ import {
 import {
   Banknote, ShoppingCart, Tag, Package, RotateCcw, Archive,
   TrendingUp, TrendingDown, Download, ArrowUpRight,
-  ChevronLeft, ChevronRight, BarChart2,
+  ChevronLeft, ChevronRight, BarChart2, Bookmark, Clock,
+  CheckCircle,
 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { fmtCOP } from '@/lib/formatters'
-import { useReports, useInventoryReport } from '@/hooks/useReports'
-import type { DailySalesSummary, PaymentMethod, ProductPerformance } from '@/types/database.types'
+import {
+  useReports,
+  useInventoryReport,
+  useLayawaysSummary,
+  useExpiringLayaways,
+  useLayawaysForExport,
+} from '@/hooks/useReports'
+import type {
+  DailySalesSummary,
+  PaymentMethod,
+  ProductPerformance,
+  LayawayStatus,
+} from '@/types/database.types'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -32,6 +44,20 @@ const PAYMENT_LABELS: Record<PaymentMethod, string> = {
   card:     'Tarjeta',
   transfer: 'Transferencia',
   addi:     'Addi',
+}
+
+const LAYAWAY_STATUS_COLORS: Record<LayawayStatus, string> = {
+  active:    '#8b5cf6',
+  completed: '#16a34a',
+  cancelled: '#94a3b8',
+  expired:   '#dc2626',
+}
+
+const LAYAWAY_STATUS_LABELS: Record<LayawayStatus, string> = {
+  active:    'Activo',
+  completed: 'Completado',
+  cancelled: 'Cancelado',
+  expired:   'Vencido',
 }
 
 const PERIOD_OPTIONS = [
@@ -260,6 +286,9 @@ export default function ReportsPage() {
   const { dailySales, productPerformance, returnsSummary, isLoading } = useReports({ from, to })
   const { dailySales: prevSales } = useReports({ from: prevFrom, to: prevTo })
   const { data: invReport, isLoading: invLoading } = useInventoryReport()
+  const { data: layawayKpis, isLoading: layawayLoading } = useLayawaysSummary()
+  const { data: expiringList = [], isLoading: expiringLoading } = useExpiringLayaways()
+  const { data: layawayExportRows = [] } = useLayawaysForExport()
 
   // Variants table state
   const [sortKey, setSortKey] = useState<SortKey>('units_sold')
@@ -436,6 +465,64 @@ export default function ReportsPage() {
             ? { type: 'pattern' as const, pattern: 'solid' as const, fgColor: { argb: 'FFFEF3C7' } }
             : null
       if (fill) row.eachCell((cell) => { cell.fill = fill })
+    }
+
+    // Hoja extra — Resumen de separados (por estado)
+    if (layawayKpis) {
+      const wsL = wb.addWorksheet('Separados — Resumen')
+      wsL.columns = [
+        { header: 'Estado',          key: 'estado',   width: 16 },
+        { header: 'Cantidad',        key: 'count',    width: 12 },
+        { header: 'Monto total',     key: 'total',    width: 18 },
+        { header: 'Pagado',          key: 'paid',     width: 18 },
+        { header: 'Pendiente',       key: 'pending',  width: 18 },
+      ]
+      styleHeader(wsL)
+      const statuses = ['active', 'completed', 'cancelled', 'expired'] as LayawayStatus[]
+      for (const s of statuses) {
+        const r = layawayKpis.byStatus[s]
+        wsL.addRow({
+          estado: LAYAWAY_STATUS_LABELS[s],
+          count: r?.layaway_count ?? 0,
+          total: Number(r?.total_amount ?? 0),
+          paid: Number(r?.paid_amount ?? 0),
+          pending: Number(r?.pending_amount ?? 0),
+        })
+      }
+    }
+
+    // Hoja 6 — Separados (detalle por fila)
+    const ws6 = wb.addWorksheet('Separados')
+    ws6.columns = [
+      { header: '#',                key: 'number',       width: 8  },
+      { header: 'Fecha creación',   key: 'created',      width: 18 },
+      { header: 'Cliente',          key: 'customer',     width: 30 },
+      { header: 'Teléfono',         key: 'phone',        width: 16 },
+      { header: 'Ítems',            key: 'items',        width: 8  },
+      { header: 'Total',            key: 'total',        width: 16 },
+      { header: 'Pagado',           key: 'paid',         width: 16 },
+      { header: 'Pendiente',        key: 'pending',      width: 16 },
+      { header: 'Estado',           key: 'status',       width: 14 },
+      { header: 'Vencimiento',      key: 'expires',      width: 18 },
+      { header: 'Completado',       key: 'completed',    width: 18 },
+      { header: 'Cancelado',        key: 'cancelled',    width: 18 },
+    ]
+    styleHeader(ws6)
+    for (const r of layawayExportRows) {
+      ws6.addRow({
+        number: r.layaway_number,
+        created: format(new Date(r.created_at), 'yyyy-MM-dd HH:mm'),
+        customer: r.customer_name,
+        phone: r.customer_phone ?? '',
+        items: r.items_count,
+        total: r.total,
+        paid: r.paid_amount,
+        pending: r.pending,
+        status: LAYAWAY_STATUS_LABELS[r.status],
+        expires: format(new Date(r.expires_at), 'yyyy-MM-dd HH:mm'),
+        completed: r.completed_at ? format(new Date(r.completed_at), 'yyyy-MM-dd HH:mm') : '',
+        cancelled: r.cancelled_at ? format(new Date(r.cancelled_at), 'yyyy-MM-dd HH:mm') : '',
+      })
     }
 
     // Hoja 4 — Devoluciones
@@ -769,6 +856,189 @@ export default function ReportsPage() {
               )}
             </>
           )}
+        </div>
+
+        {/* ── Layaways section ──────────────────────────────────────────────── */}
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h2
+              className="tracking-[-0.02em]"
+              style={{ fontFamily: 'Bricolage Grotesque, sans-serif', fontSize: 18, fontWeight: 600, color: '#1a1a1a' }}
+            >
+              Separados
+            </h2>
+            <button
+              onClick={() => navigate('/separados')}
+              className="flex items-center gap-1 text-xs font-medium text-[#8b5cf6] hover:underline"
+            >
+              Ir al módulo <ArrowUpRight size={12} />
+            </button>
+          </div>
+
+          {/* KPIs */}
+          <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+            {layawayLoading
+              ? Array.from({ length: 4 }).map((_, i) => <SkeletonCard key={i} />)
+              : (
+                <>
+                  <KpiCard
+                    label="Separados activos"
+                    value={fmtCOP(layawayKpis?.activeAmount ?? 0)}
+                    icon={Bookmark}
+                    mono
+                    tone="normal"
+                  />
+                  <KpiCard
+                    label="Por completar (7d)"
+                    value={expiringList.length}
+                    icon={Clock}
+                    tone={expiringList.length > 0 ? 'yellow' : 'normal'}
+                  />
+                  <KpiCard
+                    label="Monto recaudado"
+                    value={fmtCOP(layawayKpis?.totalPaid ?? 0)}
+                    icon={Banknote}
+                    mono
+                    tone="green"
+                  />
+                  <KpiCard
+                    label="Tasa conversión"
+                    value={`${(layawayKpis?.conversionRate ?? 0).toFixed(1)}%`}
+                    icon={CheckCircle}
+                    tone={
+                      (layawayKpis?.conversionRate ?? 0) >= 70
+                        ? 'green'
+                        : (layawayKpis?.conversionRate ?? 0) >= 40
+                          ? 'normal'
+                          : 'yellow'
+                    }
+                  />
+                </>
+              )}
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+            {/* Pie de estados */}
+            <SectionCard title="Estados de separados">
+              {layawayLoading ? (
+                <SkeletonChart height={200} />
+              ) : (() => {
+                const data = (
+                  ['active', 'completed', 'cancelled', 'expired'] as LayawayStatus[]
+                )
+                  .map((s) => ({
+                    name: LAYAWAY_STATUS_LABELS[s],
+                    value: layawayKpis?.byStatus[s]?.layaway_count ?? 0,
+                    color: LAYAWAY_STATUS_COLORS[s],
+                  }))
+                  .filter((d) => d.value > 0)
+
+                if (data.length === 0) {
+                  return <EmptyChart message="Sin separados registrados" />
+                }
+                const total = data.reduce((s, d) => s + d.value, 0)
+                return (
+                  <div className="space-y-3">
+                    <ResponsiveContainer width="100%" height={160}>
+                      <PieChart>
+                        <Pie data={data} cx="50%" cy="50%" innerRadius={45} outerRadius={72} paddingAngle={2} dataKey="value">
+                          {data.map((d) => <Cell key={d.name} fill={d.color} />)}
+                        </Pie>
+                        <Tooltip formatter={(v) => [Number(v ?? 0), 'separados']} />
+                      </PieChart>
+                    </ResponsiveContainer>
+                    <div className="space-y-1.5">
+                      {data.map((d) => {
+                        const pctVal = total > 0 ? (d.value / total) * 100 : 0
+                        return (
+                          <div key={d.name} className="flex items-center justify-between text-xs">
+                            <div className="flex items-center gap-2">
+                              <span className="h-2 w-2 rounded-full" style={{ background: d.color }} />
+                              <span className="text-[#525252]">{d.name}</span>
+                            </div>
+                            <div className="text-right">
+                              <span className="font-mono font-semibold text-[#1a1a1a]">{d.value}</span>
+                              <span className="ml-1 text-[10px] text-[#a8a29e]">({pctVal.toFixed(0)}%)</span>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )
+              })()}
+            </SectionCard>
+
+            {/* Tabla próximos a vencer */}
+            <div className="lg:col-span-2">
+              <SectionCard
+                title="Próximos a vencer"
+                subtitle="Separados activos en los próximos 7 días"
+              >
+                {expiringLoading ? (
+                  <div className="space-y-px">
+                    {Array.from({ length: 4 }).map((_, i) => (
+                      <div key={i} className="h-11 animate-pulse rounded-lg bg-slate-100" />
+                    ))}
+                  </div>
+                ) : expiringList.length === 0 ? (
+                  <p className="py-6 text-center text-sm text-slate-400">
+                    Ningún separado vence en los próximos 7 días.
+                  </p>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead>
+                        <tr className="border-b border-[#ebe9e6] bg-[#fafaf9]">
+                          {['Cliente', '#', 'Total', 'Pagado', 'Pendiente', 'Días'].map((h) => (
+                            <th key={h} className={thCls}>{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {expiringList.map((l) => {
+                          const days = l.days_until_expiry
+                          const daysColor =
+                            days < 3 ? 'text-red-600' : days <= 7 ? 'text-amber-600' : 'text-emerald-600'
+                          return (
+                            <tr
+                              key={l.id}
+                              onClick={() => navigate(`/separados?id=${l.id}`)}
+                              className="cursor-pointer border-b border-[#f5f4f1] last:border-0 hover:bg-[#fafaf9]"
+                            >
+                              <td className="px-4 py-3 text-sm font-medium text-[#1a1a1a]">
+                                {l.customer_name}
+                                {l.customer_phone && (
+                                  <span className="ml-2 text-[11px] text-[#a8a29e]">
+                                    {l.customer_phone}
+                                  </span>
+                                )}
+                              </td>
+                              <td className="px-4 py-3 font-mono text-sm font-semibold text-[#525252]">
+                                #{l.layaway_number}
+                              </td>
+                              <td className="px-4 py-3 text-right font-mono text-sm tabular-nums">
+                                {fmtCOP(Number(l.total))}
+                              </td>
+                              <td className="px-4 py-3 text-right font-mono text-sm tabular-nums text-emerald-700">
+                                {fmtCOP(Number(l.paid_amount))}
+                              </td>
+                              <td className="px-4 py-3 text-right font-mono text-sm font-semibold tabular-nums text-[#1a1a1a]">
+                                {fmtCOP(Number(l.pending_amount))}
+                              </td>
+                              <td className={`px-4 py-3 text-right font-mono text-sm font-bold tabular-nums ${daysColor}`}>
+                                {days <= 0 ? 'Hoy' : `${days}d`}
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </SectionCard>
+            </div>
+          </div>
         </div>
 
         {/* ── Inventory section ────────────────────────────────────────────── */}

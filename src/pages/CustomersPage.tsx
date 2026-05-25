@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
+import { useNavigate } from 'react-router-dom'
 import {
   Users,
   Search,
@@ -16,12 +17,21 @@ import {
   ShoppingBag,
   FileText,
   User,
+  Bookmark,
+  Clock,
+  CheckCircle,
+  Ban,
+  AlertTriangle,
 } from 'lucide-react'
 import { z } from 'zod'
 import {
   useCustomerList,
   useCustomerProfile,
 } from '@/hooks/useCustomers'
+import {
+  useCustomerLayaways,
+  type CustomerLayawayRow,
+} from '@/hooks/useLayaways'
 import {
   useCreateCustomer,
   useUpdateCustomer,
@@ -33,7 +43,12 @@ import type {
   CustomerOrder,
   CustomerReturn,
 } from '@/hooks/useCustomers'
-import type { PaymentMethod, OrderStatus, ReturnType } from '@/types/database.types'
+import type {
+  PaymentMethod,
+  OrderStatus,
+  ReturnType,
+  LayawayStatus,
+} from '@/types/database.types'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -510,7 +525,94 @@ function ReturnRow({ ret }: { ret: CustomerReturn }) {
 
 // ── ProfileView ───────────────────────────────────────────────────────────────
 
-type ProfileTab = 'orders' | 'returns'
+type ProfileTab = 'orders' | 'returns' | 'layaways'
+
+// ── Layaways tab helpers ──────────────────────────────────────────────────────
+
+const LAYAWAY_STATUS_META: Record<
+  LayawayStatus,
+  { label: string; classes: string; icon: React.ElementType }
+> = {
+  active:    { label: 'Activo',     classes: 'bg-violet-50 border border-violet-200 text-violet-700',   icon: Clock },
+  completed: { label: 'Completado', classes: 'bg-emerald-50 border border-emerald-200 text-emerald-700', icon: CheckCircle },
+  cancelled: { label: 'Cancelado',  classes: 'bg-stone-50 border border-stone-200 text-stone-600',      icon: Ban },
+  expired:   { label: 'Vencido',    classes: 'bg-red-50 border border-red-200 text-red-700',            icon: AlertTriangle },
+}
+
+function LayawayRow({ row }: { row: CustomerLayawayRow }) {
+  const navigate = useNavigate()
+  const meta = LAYAWAY_STATUS_META[row.status]
+  const Icon = meta.icon
+  const pct = row.total > 0
+    ? Math.min(100, Math.round((row.paid_amount / row.total) * 100))
+    : 0
+  return (
+    <button
+      onClick={() => navigate(`/separados?id=${row.id}`)}
+      className="flex w-full items-center gap-3 border-b border-[#f5f4f1] px-6 py-3 text-left transition-colors last:border-0 hover:bg-[#fafaf9]"
+    >
+      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-violet-50 font-mono text-[11px] font-bold text-violet-700">
+        #{row.layaway_number}
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2">
+          <span className="font-mono text-sm font-semibold text-[#1a1a1a]">
+            {fmtCOP(row.total)}
+          </span>
+          <span
+            className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10.5px] font-semibold ${meta.classes}`}
+          >
+            <Icon size={10} /> {meta.label}
+          </span>
+        </div>
+        <p className="mt-0.5 text-[11.5px] text-[#737373]">
+          {fmtDateShort(row.created_at)} · {row.items_count} ítem
+          {row.items_count !== 1 ? 's' : ''} · vence{' '}
+          {fmtDate(row.expires_at)}
+        </p>
+        <div className="mt-1 flex items-center gap-2">
+          <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-[#f5f4f1]">
+            <div
+              className="h-full rounded-full bg-violet-500"
+              style={{ width: `${pct}%` }}
+            />
+          </div>
+          <span className="font-mono text-[11px] text-[#525252]">
+            {fmtCOP(row.paid_amount)} / {fmtCOP(row.total)}
+          </span>
+        </div>
+      </div>
+      <ChevronRight size={14} className="shrink-0 text-[#a8a29e]" />
+    </button>
+  )
+}
+
+function LayawaysTabContent({ customerId }: { customerId: string }) {
+  const { data: rows = [], isLoading } = useCustomerLayaways(customerId)
+
+  if (isLoading) {
+    return (
+      <div className="space-y-px p-4">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <div key={i} className="h-14 animate-pulse rounded-lg bg-slate-100" />
+        ))}
+      </div>
+    )
+  }
+
+  if (rows.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center gap-3 py-12 text-center">
+        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#f5f4f1]">
+          <Bookmark size={20} className="text-[#a8a29e]" />
+        </div>
+        <p className="text-sm text-[#737373]">Sin separados registrados</p>
+      </div>
+    )
+  }
+
+  return <div>{rows.map((row) => <LayawayRow key={row.id} row={row} />)}</div>
+}
 
 function ProfileView({
   profile,
@@ -609,10 +711,11 @@ function ProfileView({
       <div className="flex border-b border-[#ebe9e6] bg-white px-6">
         {(
           [
-            { id: 'orders', label: 'Compras', icon: ShoppingBag },
-            { id: 'returns', label: 'Devoluciones', icon: RotateCcw },
-          ] as { id: ProfileTab; label: string; icon: React.ElementType }[]
-        ).map(({ id, label, icon: Icon }) => (
+            { id: 'orders',    label: 'Compras',      icon: ShoppingBag, count: profile.orders.length  },
+            { id: 'returns',   label: 'Devoluciones', icon: RotateCcw,   count: profile.returns.length },
+            { id: 'layaways',  label: 'Separados',    icon: Bookmark,    count: null                    },
+          ] as { id: ProfileTab; label: string; icon: React.ElementType; count: number | null }[]
+        ).map(({ id, label, icon: Icon, count }) => (
           <button
             key={id}
             onClick={() => setTab(id)}
@@ -624,13 +727,15 @@ function ProfileView({
           >
             <Icon size={14} />
             {label}
-            <span
-              className={`ml-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${
-                tab === id ? 'bg-[#8b5cf61a] text-[#8b5cf6]' : 'bg-[#f5f4f1] text-[#a8a29e]'
-              }`}
-            >
-              {id === 'orders' ? profile.orders.length : profile.returns.length}
-            </span>
+            {count !== null && (
+              <span
+                className={`ml-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${
+                  tab === id ? 'bg-[#8b5cf61a] text-[#8b5cf6]' : 'bg-[#f5f4f1] text-[#a8a29e]'
+                }`}
+              >
+                {count}
+              </span>
+            )}
           </button>
         ))}
       </div>
@@ -664,6 +769,12 @@ function ProfileView({
             ) : (
               profile.returns.map((ret) => <ReturnRow key={ret.id} ret={ret} />)
             )}
+          </div>
+        )}
+
+        {tab === 'layaways' && (
+          <div className="rounded-none border-b border-[#ebe9e6] bg-white">
+            <LayawaysTabContent customerId={profile.id} />
           </div>
         )}
 

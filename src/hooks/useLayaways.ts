@@ -325,6 +325,73 @@ export function useLayawayDetail(id: string | null) {
   })
 }
 
+// ── useCustomerLayaways ───────────────────────────────────────────────────────
+// Lista (todos los estados) de los separados de un cliente. Útil para el
+// tab "Separados" del detalle de cliente en CustomersPage.
+
+export interface CustomerLayawayRow {
+  id: string
+  layaway_number: number
+  status: LayawayStatus
+  total: number
+  paid_amount: number
+  pending_amount: number
+  created_at: string
+  expires_at: string
+  items_count: number
+}
+
+interface RawCustomerLayaway {
+  id: string
+  layaway_number: number
+  status: LayawayStatus
+  total: number
+  paid_amount: number
+  created_at: string
+  expires_at: string
+  layaway_items: { id: string }[]
+}
+
+export function useCustomerLayaways(customerId: string | null) {
+  const { profile } = useAuth()
+  const storeId = profile?.store_id ?? ''
+
+  return useQuery<CustomerLayawayRow[]>({
+    queryKey: ['layaways', 'by-customer', customerId],
+    queryFn: async () => {
+      if (!customerId) return []
+      const { data, error } = await supabase
+        .from('layaways')
+        .select(`
+          id, layaway_number, status, total, paid_amount, created_at, expires_at,
+          layaway_items(id)
+        `)
+        .eq('store_id' as never, storeId)
+        .eq('customer_id' as never, customerId)
+        .order('created_at' as never, { ascending: false })
+      if (error) throw error
+      return (data ?? []).map((row) => {
+        const r = row as unknown as RawCustomerLayaway
+        const total = Number(r.total) || 0
+        const paid = Number(r.paid_amount) || 0
+        return {
+          id: r.id,
+          layaway_number: r.layaway_number,
+          status: r.status,
+          total,
+          paid_amount: paid,
+          pending_amount: Math.max(0, total - paid),
+          created_at: r.created_at,
+          expires_at: r.expires_at,
+          items_count: (r.layaway_items ?? []).length,
+        }
+      })
+    },
+    enabled: !!customerId && !!storeId,
+    staleTime: 30_000,
+  })
+}
+
 // ── useActiveLayawaysCount ────────────────────────────────────────────────────
 
 export function useActiveLayawaysCount() {

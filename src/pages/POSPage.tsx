@@ -74,7 +74,10 @@ function VariantPickerModal({ product, onAdd, onClose }: VariantPickerProps) {
       (sizes.length === 0 || v.size === selectedSize) &&
       (colors.length === 0 || v.color === selectedColor),
   )
-  const stockQty = matched?.stock_qty ?? 0
+  const available = matched?.stock_qty ?? 0
+  const totalStock = matched?.total_stock_qty ?? 0
+  const reserved = matched?.reserved_qty ?? 0
+  const allReserved = available === 0 && totalStock > 0
 
   return (
     <div
@@ -169,19 +172,31 @@ function VariantPickerModal({ product, onAdd, onClose }: VariantPickerProps) {
         )}
 
         <div className="flex items-center justify-between border-t border-slate-100 pt-4">
-          <span
-            className={`text-sm font-medium ${
-              stockQty > 2
-                ? 'text-green-600'
-                : stockQty > 0
-                  ? 'text-orange-500'
-                  : 'text-red-500'
-            }`}
-          >
-            {stockQty > 0
-              ? `${stockQty} disponible${stockQty !== 1 ? 's' : ''}`
-              : 'Sin stock'}
-          </span>
+          <div className="flex flex-col">
+            <span
+              className={`text-sm font-medium ${
+                available > 2
+                  ? 'text-green-600'
+                  : available > 0
+                    ? 'text-orange-500'
+                    : 'text-red-500'
+              }`}
+            >
+              {available > 0
+                ? `${available} disponible${available !== 1 ? 's' : ''}`
+                : allReserved
+                  ? 'Sin disponible'
+                  : 'Sin stock'}
+            </span>
+            {reserved > 0 && (
+              <span
+                className="text-[11px] text-violet-600"
+                title={`Stock físico ${totalStock}, ${reserved} reservados en separados`}
+              >
+                {totalStock} total · {reserved} reservados
+              </span>
+            )}
+          </div>
           {matched && (
             <span className="font-mono text-base font-semibold text-slate-900">
               {fmtCOP(matched.price)}
@@ -190,8 +205,13 @@ function VariantPickerModal({ product, onAdd, onClose }: VariantPickerProps) {
         </div>
 
         <button
-          disabled={!matched || stockQty === 0}
+          disabled={!matched || available === 0}
           onClick={() => matched && onAdd(matched)}
+          title={
+            allReserved
+              ? `Sin stock disponible. Hay ${reserved} reservados en separados.`
+              : undefined
+          }
           className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-violet-600 py-3 text-sm font-semibold text-white transition-opacity disabled:cursor-not-allowed disabled:opacity-40 hover:bg-violet-700"
         >
           <Plus size={16} /> Agregar al carrito

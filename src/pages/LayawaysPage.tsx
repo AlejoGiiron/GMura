@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
   Bookmark,
   Plus,
@@ -592,12 +592,27 @@ function DetailPanel({
 // ── Página principal ──────────────────────────────────────────────────────────
 
 export default function LayawaysPage() {
+  const [searchParams, setSearchParams] = useSearchParams()
+  const initialIdFromUrl = searchParams.get('id')
+
   const [filters, setFilters] = useState<LayawayListFilters>({
     status: 'all',
     search: '',
     page: 0,
   })
-  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [selectedId, setSelectedId] = useState<string | null>(initialIdFromUrl)
+
+  // Si el id viene en la URL (ej.: desde Reportes o la campana del header),
+  // consumirlo y limpiar el query param para no re-aplicarlo después.
+  useEffect(() => {
+    if (initialIdFromUrl) {
+      setSelectedId(initialIdFromUrl)
+      const next = new URLSearchParams(searchParams)
+      next.delete('id')
+      setSearchParams(next, { replace: true })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialIdFromUrl])
   const [showNew, setShowNew] = useState(false)
   const [showPay, setShowPay] = useState(false)
   const [showComplete, setShowComplete] = useState(false)

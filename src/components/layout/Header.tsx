@@ -7,6 +7,7 @@ import {
   CloseShiftModal,
   ExpenseModal,
 } from './CashShiftModals'
+import { LayawayNotifications } from './LayawayNotifications'
 
 function getBogoTime(): string {
   return new Intl.DateTimeFormat('es-CO', {
@@ -41,6 +42,8 @@ export default function Header() {
 
   const roleLabel = profile?.role === 'admin' ? 'Administrador' : 'Vendedor'
   const initial = profile?.full_name?.charAt(0).toUpperCase() ?? '?'
+  const showLayawayBell =
+    profile?.role === 'admin' || profile?.role === 'seller'
 
   return (
     <>
@@ -62,6 +65,13 @@ export default function Header() {
             <Clock size={13} />
             <span className="tabular-nums">{time}</span>
           </div>
+
+          {showLayawayBell && (
+            <>
+              <span className="h-5 w-px bg-gray-200" />
+              <LayawayNotifications />
+            </>
+          )}
 
           <span className="h-5 w-px bg-gray-200" />
 
