@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react'
+import { useState, useMemo, useCallback, useRef } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import {
   Search,
@@ -41,6 +41,11 @@ import type {
   OrderStatus,
   PaymentMethod,
 } from '@/types/database.types'
+import { useStoreConfig } from '@/hooks/useConfig'
+import {
+  SaleReceiptPrint,
+  type SaleReceiptData,
+} from '@/components/sales/SaleReceipt'
 
 // ── Constantes ────────────────────────────────────────────────────────────────
 
@@ -215,6 +220,45 @@ function SummaryCard({
 function SaleDetailRow({ detail }: { detail: SaleDetail }) {
   const navigate = useNavigate()
   const canReturn = detail.status !== 'cancelled'
+  const { data: storeData } = useStoreConfig()
+  const storeName =
+    (storeData as unknown as { name?: string } | undefined)?.name ?? 'G-Mura'
+  const printedAtRef = useRef(new Date())
+
+  const receiptData: SaleReceiptData = useMemo(
+    () => ({
+      order_number: detail.order_number,
+      created_at: detail.created_at,
+      subtotal: detail.subtotal,
+      discount: detail.discount,
+      total: detail.total,
+      payment_method: detail.payment_method,
+      cash_received: detail.cash_received,
+      customer: detail.customer
+        ? {
+            full_name: detail.customer.full_name,
+            phone: detail.customer.phone,
+          }
+        : null,
+      items: detail.items.map((it) => ({
+        variant_id: it.variant_id,
+        product_name: it.product_name,
+        size: it.size,
+        color: it.color,
+        qty: it.qty,
+        unit_price: it.unit_price,
+      })),
+    }),
+    [detail],
+  )
+
+  function handleReprint() {
+    try {
+      window.print()
+    } catch {
+      toast.error('No se pudo abrir el diálogo de impresión')
+    }
+  }
 
   return (
     <div className="border-t border-[#f5f4f1] bg-[#fafaf9] px-6 py-5">
@@ -389,7 +433,7 @@ function SaleDetailRow({ detail }: { detail: SaleDetail }) {
 
           <div className="flex flex-col gap-2">
             <button
-              onClick={() => window.print()}
+              onClick={handleReprint}
               className="flex h-9 items-center justify-center gap-2 rounded-lg border border-[#ebe9e6] bg-white text-sm font-medium text-[#525252] hover:bg-[#f5f4f1]"
             >
               <Printer size={13} /> Reimprimir ticket
@@ -405,6 +449,12 @@ function SaleDetailRow({ detail }: { detail: SaleDetail }) {
           </div>
         </div>
       </div>
+
+      <SaleReceiptPrint
+        sale={receiptData}
+        storeName={storeName}
+        printedAt={printedAtRef.current}
+      />
     </div>
   )
 }

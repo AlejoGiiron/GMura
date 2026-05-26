@@ -303,10 +303,9 @@ Sidebar agrupado en secciones colapsables (feature/12-caja-completa) ✅
     vacíos. Accesibilidad: aria-expanded / aria-controls / aria-label
 
 ## Estado actual del proyecto
-Última fase completada: 13 - Separados (layaway) + integración fina ✅
-En progreso: 09 - Parametrización (pausada, falta prompt 2 Addi)
-Siguiente: continuar 09 (Addi) + retomar plan en orden
-Fase 14 agregada al roadmap: Switcher multi-store para admin
+Última fase completada: 13 - Separados (v2.0 en staging)
+En progreso: 13.1 - Hotfix feedback v2.0
+Siguiente: 14 - Proveedores
 
 Integración fina de separados (feature/13-separados) ✅
   - Migración 009_layaway_views: vistas layaway_summary

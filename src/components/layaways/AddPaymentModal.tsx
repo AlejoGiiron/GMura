@@ -107,10 +107,11 @@ export function AddPaymentModal({
       onClick={() => !pending && onClose()}
     >
       <div
-        className="w-full max-w-md rounded-[14px] bg-white p-7 shadow-[0_20px_60px_rgba(0,0,0,0.3)]"
+        className="flex max-h-[90vh] w-full max-w-md flex-col rounded-[14px] bg-white shadow-[0_20px_60px_rgba(0,0,0,0.3)]"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="mb-5 flex items-start justify-between">
+        {/* Header sticky */}
+        <div className="flex flex-shrink-0 items-start justify-between border-b border-[#f5f4f1] px-6 py-4">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-full bg-violet-100">
               <Wallet size={18} className="text-violet-600" />
@@ -141,105 +142,109 @@ export function AddPaymentModal({
           </button>
         </div>
 
-        <div className="mb-5 rounded-lg border border-[#ebe9e6] bg-[#fafaf9] px-4 py-3">
-          <p className="text-[11px] font-semibold uppercase tracking-[.05em] text-[#737373]">
-            Saldo pendiente
-          </p>
-          <p className="mt-0.5 font-mono text-2xl font-bold text-[#1a1a1a]">
-            {fmtCOP(balancePending)}
-          </p>
-        </div>
-
-        <div className="mb-4">
-          <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[.05em] text-[#737373]">
-            Monto del abono
-          </label>
-          <div className="flex items-center gap-2 rounded-lg border border-[#ebe9e6] px-3 focus-within:border-violet-400 focus-within:ring-2 focus-within:ring-violet-100">
-            <span className="text-sm text-[#737373]">$</span>
-            <input
-              autoFocus
-              value={amount}
-              onChange={(e) => setAmount(e.target.value.replace(/\D/g, ''))}
-              placeholder="0"
-              inputMode="numeric"
-              className="h-10 flex-1 bg-transparent font-mono text-base outline-none"
-            />
-            <span className="text-xs text-[#a8a29e]">COP</span>
-          </div>
-          <div className="mt-2 flex flex-wrap gap-1.5">
-            <button
-              type="button"
-              onClick={() => setAmount(String(balancePending))}
-              className="rounded-lg border border-[#ebe9e6] bg-white px-2.5 py-1 text-xs font-semibold text-[#525252] hover:border-violet-300 hover:bg-violet-50"
-            >
-              Saldo completo ({fmtCOP(balancePending)})
-            </button>
-          </div>
-          {parsed > balancePending && (
-            <p className="mt-1.5 text-[11px] text-red-600">
-              El abono no puede superar el saldo pendiente.
+        {/* Contenido scrollable */}
+        <div className="flex-1 overflow-y-auto px-6 py-5">
+          <div className="mb-5 rounded-lg border border-[#ebe9e6] bg-[#fafaf9] px-4 py-3">
+            <p className="text-[11px] font-semibold uppercase tracking-[.05em] text-[#737373]">
+              Saldo pendiente
             </p>
+            <p className="mt-0.5 font-mono text-2xl font-bold text-[#1a1a1a]">
+              {fmtCOP(balancePending)}
+            </p>
+          </div>
+
+          <div className="mb-4">
+            <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[.05em] text-[#737373]">
+              Monto del abono
+            </label>
+            <div className="flex items-center gap-2 rounded-lg border border-[#ebe9e6] px-3 focus-within:border-violet-400 focus-within:ring-2 focus-within:ring-violet-100">
+              <span className="text-sm text-[#737373]">$</span>
+              <input
+                autoFocus
+                value={amount}
+                onChange={(e) => setAmount(e.target.value.replace(/\D/g, ''))}
+                placeholder="0"
+                inputMode="numeric"
+                className="h-10 flex-1 bg-transparent font-mono text-base outline-none"
+              />
+              <span className="text-xs text-[#a8a29e]">COP</span>
+            </div>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              <button
+                type="button"
+                onClick={() => setAmount(String(balancePending))}
+                className="rounded-lg border border-[#ebe9e6] bg-white px-2.5 py-1 text-xs font-semibold text-[#525252] hover:border-violet-300 hover:bg-violet-50"
+              >
+                Saldo completo ({fmtCOP(balancePending)})
+              </button>
+            </div>
+            {parsed > balancePending && (
+              <p className="mt-1.5 text-[11px] text-red-600">
+                El abono no puede superar el saldo pendiente.
+              </p>
+            )}
+          </div>
+
+          <div className="mb-4">
+            <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[.05em] text-[#737373]">
+              Método de pago
+            </label>
+            <div className="grid grid-cols-2 gap-2">
+              {visibleMethods.map((id) => {
+                const meta = PAYMENT_METHODS[id]
+                const Icon = meta.icon
+                const active = method === id
+                return (
+                  <button
+                    key={id}
+                    type="button"
+                    onClick={() => setMethod(id)}
+                    className={`flex items-center gap-2 rounded-lg border px-3 py-2.5 text-sm font-medium transition-colors ${
+                      active
+                        ? 'border-violet-600 bg-violet-50 text-violet-700'
+                        : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'
+                    }`}
+                  >
+                    <Icon size={15} style={{ color: active ? undefined : meta.hex }} />
+                    {meta.label}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+
+          <div className="mb-4">
+            <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[.05em] text-[#737373]">
+              Notas (opcional)
+            </label>
+            <textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value.slice(0, 200))}
+              rows={2}
+              placeholder="Detalles del abono…"
+              className="w-full resize-none rounded-lg border border-[#ebe9e6] px-3 py-2 text-sm outline-none placeholder:text-[#a8a29e] focus:border-violet-400 focus:ring-2 focus:ring-violet-100"
+            />
+          </div>
+
+          {willPayoff && (
+            <label className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-violet-200 bg-violet-50 p-3 text-[12.5px] text-violet-900">
+              <input
+                type="checkbox"
+                checked={completeOnPayoff}
+                onChange={(e) => setCompleteOnPayoff(e.target.checked)}
+                className="mt-0.5 h-4 w-4 accent-violet-600"
+              />
+              <span>
+                <strong>Completar venta con este pago.</strong> Al confirmar se
+                creará la orden, se descontará el stock y se entregarán los
+                productos al cliente.
+              </span>
+            </label>
           )}
         </div>
 
-        <div className="mb-4">
-          <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[.05em] text-[#737373]">
-            Método de pago
-          </label>
-          <div className="grid grid-cols-2 gap-2">
-            {visibleMethods.map((id) => {
-              const meta = PAYMENT_METHODS[id]
-              const Icon = meta.icon
-              const active = method === id
-              return (
-                <button
-                  key={id}
-                  type="button"
-                  onClick={() => setMethod(id)}
-                  className={`flex items-center gap-2 rounded-lg border px-3 py-2.5 text-sm font-medium transition-colors ${
-                    active
-                      ? 'border-violet-600 bg-violet-50 text-violet-700'
-                      : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'
-                  }`}
-                >
-                  <Icon size={15} style={{ color: active ? undefined : meta.hex }} />
-                  {meta.label}
-                </button>
-              )
-            })}
-          </div>
-        </div>
-
-        <div className="mb-4">
-          <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[.05em] text-[#737373]">
-            Notas (opcional)
-          </label>
-          <textarea
-            value={notes}
-            onChange={(e) => setNotes(e.target.value.slice(0, 200))}
-            rows={2}
-            placeholder="Detalles del abono…"
-            className="w-full resize-none rounded-lg border border-[#ebe9e6] px-3 py-2 text-sm outline-none placeholder:text-[#a8a29e] focus:border-violet-400 focus:ring-2 focus:ring-violet-100"
-          />
-        </div>
-
-        {willPayoff && (
-          <label className="mb-5 flex cursor-pointer items-start gap-2.5 rounded-lg border border-violet-200 bg-violet-50 p-3 text-[12.5px] text-violet-900">
-            <input
-              type="checkbox"
-              checked={completeOnPayoff}
-              onChange={(e) => setCompleteOnPayoff(e.target.checked)}
-              className="mt-0.5 h-4 w-4 accent-violet-600"
-            />
-            <span>
-              <strong>Completar venta con este pago.</strong> Al confirmar se
-              creará la orden, se descontará el stock y se entregarán los
-              productos al cliente.
-            </span>
-          </label>
-        )}
-
-        <div className="flex gap-3">
+        {/* Footer sticky */}
+        <div className="flex flex-shrink-0 gap-3 border-t border-[#f5f4f1] px-6 py-4">
           <button
             onClick={onClose}
             disabled={pending}

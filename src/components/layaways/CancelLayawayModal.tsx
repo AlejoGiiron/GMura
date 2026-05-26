@@ -47,10 +47,11 @@ export function CancelLayawayModal({
       onClick={() => !cancel.isPending && onClose()}
     >
       <div
-        className="w-full max-w-md rounded-[14px] bg-white p-7 shadow-[0_20px_60px_rgba(0,0,0,0.3)]"
+        className="flex max-h-[90vh] w-full max-w-md flex-col rounded-[14px] bg-white shadow-[0_20px_60px_rgba(0,0,0,0.3)]"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="mb-5 flex items-start justify-between">
+        {/* Header sticky */}
+        <div className="flex flex-shrink-0 items-start justify-between border-b border-[#f5f4f1] px-6 py-4">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-full bg-red-100">
               <AlertTriangle size={18} className="text-red-600" />
@@ -81,36 +82,40 @@ export function CancelLayawayModal({
           </button>
         </div>
 
-        <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-[12.5px] text-amber-900">
-          El stock reservado se liberará automáticamente.
-        </div>
-
-        {paidAmount > 0 && (
-          <div className="mb-4 rounded-lg border border-red-200 bg-red-50 p-3 text-[12.5px] text-red-900">
-            Los abonos por <strong>{fmtCOP(paidAmount)}</strong> NO se
-            reembolsan automáticamente. Si el cliente reclama el dinero, el
-            reembolso debe gestionarse manualmente.
+        {/* Contenido scrollable */}
+        <div className="flex-1 overflow-y-auto px-6 py-5">
+          <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-[12.5px] text-amber-900">
+            El stock reservado se liberará automáticamente.
           </div>
-        )}
 
-        <div className="mb-5">
-          <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[.05em] text-[#737373]">
-            Motivo de cancelación
-          </label>
-          <textarea
-            autoFocus
-            value={reason}
-            onChange={(e) => setReason(e.target.value.slice(0, 300))}
-            placeholder="Ej.: el cliente no volvió tras 30 días…"
-            rows={3}
-            className="w-full resize-none rounded-lg border border-[#ebe9e6] px-3 py-2 text-sm outline-none placeholder:text-[#a8a29e] focus:border-violet-400 focus:ring-2 focus:ring-violet-100"
-          />
-          <p className="mt-1 text-[10px] text-[#a8a29e]">
-            Mínimo 5 caracteres · {reason.length}/300
-          </p>
+          {paidAmount > 0 && (
+            <div className="mb-4 rounded-lg border border-red-200 bg-red-50 p-3 text-[12.5px] text-red-900">
+              Los abonos por <strong>{fmtCOP(paidAmount)}</strong> NO se
+              reembolsan automáticamente. Si el cliente reclama el dinero, el
+              reembolso debe gestionarse manualmente.
+            </div>
+          )}
+
+          <div>
+            <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[.05em] text-[#737373]">
+              Motivo de cancelación
+            </label>
+            <textarea
+              autoFocus
+              value={reason}
+              onChange={(e) => setReason(e.target.value.slice(0, 300))}
+              placeholder="Ej.: el cliente no volvió tras 30 días…"
+              rows={3}
+              className="w-full resize-none rounded-lg border border-[#ebe9e6] px-3 py-2 text-sm outline-none placeholder:text-[#a8a29e] focus:border-violet-400 focus:ring-2 focus:ring-violet-100"
+            />
+            <p className="mt-1 text-[10px] text-[#a8a29e]">
+              Mínimo 5 caracteres · {reason.length}/300
+            </p>
+          </div>
         </div>
 
-        <div className="flex gap-3">
+        {/* Footer sticky */}
+        <div className="flex flex-shrink-0 gap-3 border-t border-[#f5f4f1] px-6 py-4">
           <button
             onClick={onClose}
             disabled={cancel.isPending}

@@ -52,6 +52,11 @@ import {
   type DraftItem,
   type NewLayawayPrefill,
 } from '@/components/layaways/NewLayawayModal'
+import {
+  SaleReceipt,
+  SaleReceiptPrint,
+  type SaleReceiptData,
+} from '@/components/sales/SaleReceipt'
 import { useNavigate } from 'react-router-dom'
 
 // ── Variant Picker Modal ─────────────────────────────────────────────────────
@@ -433,100 +438,113 @@ interface TicketModalProps {
   order: Order
   items: CartItem[]
   discount: Discount
+  customer: Customer | null
+  storeName: string
   onClose: () => void
 }
 
-const METHOD_LABEL: Record<PaymentMethod, string> = {
-  cash: 'Efectivo',
-  card: 'Tarjeta',
-  transfer: 'Transferencia',
-  addi: 'Addi',
-}
-
-function TicketModal({ order, items, discount, onClose }: TicketModalProps) {
+function TicketModal({
+  order,
+  items,
+  discount,
+  customer,
+  storeName,
+  onClose,
+}: TicketModalProps) {
   const { subtotal, discountAmt } = cartTotals(items, discount)
+  const printedAtRef = useRef(new Date())
+
+  const sale: SaleReceiptData = {
+    order_number: order.order_number,
+    created_at: order.created_at,
+    subtotal,
+    discount: discountAmt,
+    total: order.total,
+    payment_method: order.payment_method,
+    cash_received: order.cash_received,
+    customer: customer
+      ? { full_name: customer.full_name, phone: customer.phone }
+      : null,
+    items: items.map((it) => ({
+      variant_id: it.variant_id,
+      product_name: it.name,
+      size: it.size,
+      color: it.color,
+      qty: it.qty,
+      unit_price: it.unit_price,
+    })),
+  }
+
+  function handlePrint() {
+    try {
+      window.print()
+    } catch {
+      toast.error('No se pudo abrir el diálogo de impresión')
+    }
+  }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="w-full max-w-xs rounded-2xl bg-white p-6 shadow-xl">
-        <div className="mb-4 text-center">
-          <p className="text-lg font-bold text-slate-900">G-Mura</p>
-          <p className="text-xs text-slate-500">
-            {new Date(order.created_at).toLocaleString('es-CO', {
-              timeZone: 'America/Bogota',
-              dateStyle: 'short',
-              timeStyle: 'short',
-            })}
-          </p>
-          <p className="mt-1 text-xs text-slate-400">
-            Venta #{order.order_number}
-          </p>
-        </div>
-
-        <div className="mb-3 border-t border-dashed border-slate-200 pt-3 text-sm">
-          {items.map((item) => (
-            <div key={item.variant_id} className="mb-1.5 flex justify-between gap-2">
-              <span className="text-slate-700">
-                {item.name}
-                {item.size ? ` T.${item.size}` : ''}
-                {item.color ? ` ${item.color}` : ''} × {item.qty}
-              </span>
-              <span className="shrink-0 font-mono text-slate-900">
-                {fmtCOP(item.unit_price * item.qty)}
-              </span>
+    <>
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+        <div className="flex max-h-[90vh] w-full max-w-sm flex-col rounded-2xl bg-white shadow-xl">
+          <div className="flex items-center justify-between border-b border-[#f5f4f1] px-5 py-4">
+            <div className="flex items-center gap-2.5">
+              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-emerald-100">
+                <CheckCircle size={17} className="text-emerald-700" />
+              </div>
+              <div>
+                <p className="text-[15px] font-semibold text-[#1a1a1a]">
+                  Venta confirmada
+                </p>
+                <p className="text-[11px] text-[#737373]">
+                  #{order.order_number}
+                </p>
+              </div>
             </div>
-          ))}
-        </div>
-
-        <div className="space-y-1 border-t border-dashed border-slate-200 pt-3 text-sm">
-          <div className="flex justify-between text-slate-500">
-            <span>Subtotal</span>
-            <span className="font-mono">{fmtCOP(subtotal)}</span>
+            <button
+              onClick={onClose}
+              className="flex h-7 w-7 items-center justify-center rounded-[7px] bg-[#f5f4f1] hover:bg-[#ebe9e6]"
+            >
+              <X size={14} className="text-[#525252]" />
+            </button>
           </div>
-          {discountAmt > 0 && (
-            <div className="flex justify-between text-green-600">
-              <span>Descuento</span>
-              <span className="font-mono">-{fmtCOP(discountAmt)}</span>
+
+          <div className="flex-1 overflow-y-auto bg-[#fafaf9] px-5 py-4">
+            <p className="mb-2.5 text-[10.5px] font-semibold uppercase tracking-[.06em] text-[#737373]">
+              Vista previa del ticket
+            </p>
+            <div className="mx-auto w-fit rounded-xl border border-[#ebe9e6] bg-white shadow-sm">
+              <SaleReceipt
+                sale={sale}
+                storeName={storeName}
+                printedAt={printedAtRef.current}
+              />
             </div>
-          )}
-          <div className="flex justify-between border-t border-slate-200 pt-1 font-bold text-slate-900">
-            <span>Total</span>
-            <span className="font-mono">{fmtCOP(order.total)}</span>
           </div>
-          <div className="flex justify-between text-slate-500">
-            <span>{METHOD_LABEL[order.payment_method]}</span>
-            {order.cash_received != null && (
-              <span className="font-mono">{fmtCOP(order.cash_received)}</span>
-            )}
+
+          <div className="flex gap-2 border-t border-[#f5f4f1] px-5 py-4">
+            <button
+              onClick={handlePrint}
+              className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-slate-200 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            >
+              <Printer size={14} /> Imprimir
+            </button>
+            <button
+              onClick={onClose}
+              className="flex-1 rounded-xl bg-violet-600 py-2.5 text-sm font-semibold text-white hover:bg-violet-700"
+            >
+              Nueva venta
+            </button>
           </div>
-          {order.cash_received != null && order.cash_received > order.total && (
-            <div className="flex justify-between text-slate-700">
-              <span>Cambio</span>
-              <span className="font-mono">
-                {fmtCOP(order.cash_received - order.total)}
-              </span>
-            </div>
-          )}
-        </div>
-
-        <p className="mt-4 text-center text-xs text-slate-400">¡Gracias por tu compra!</p>
-
-        <div className="mt-5 flex gap-2">
-          <button
-            onClick={() => window.print()}
-            className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-slate-200 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
-          >
-            <Printer size={14} /> Imprimir
-          </button>
-          <button
-            onClick={onClose}
-            className="flex-1 rounded-xl bg-violet-600 py-2.5 text-sm font-semibold text-white hover:bg-violet-700"
-          >
-            Nueva venta
-          </button>
         </div>
       </div>
-    </div>
+
+      <SaleReceiptPrint
+        sale={sale}
+        storeName={storeName}
+        printedAt={printedAtRef.current}
+      />
+    </>
   )
 }
 
@@ -1019,7 +1037,12 @@ function CartPanel({
 
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
-type CompletedSale = { order: Order; items: CartItem[]; discount: Discount }
+type CompletedSale = {
+  order: Order
+  items: CartItem[]
+  discount: Discount
+  customer: Customer | null
+}
 
 export default function POSPage() {
   const navigate = useNavigate()
@@ -1154,7 +1177,11 @@ export default function POSPage() {
   }
 
   const handleConfirmPayment = (method: PaymentMethod, cashReceived?: number) => {
-    const snapshot = { items: [...items], discount: { ...discount } }
+    const snapshot = {
+      items: [...items],
+      discount: { ...discount },
+      customer: selectedCustomer,
+    }
     createOrder.mutate(
       { items, discount, customer_id, payment_method: method, cash_received: cashReceived },
       {
@@ -1369,6 +1396,11 @@ export default function POSPage() {
           order={completedSale.order}
           items={completedSale.items}
           discount={completedSale.discount}
+          customer={completedSale.customer}
+          storeName={
+            (storeData as unknown as { name?: string } | undefined)?.name ??
+            'G-Mura'
+          }
           onClose={handleTicketClose}
         />
       )}
