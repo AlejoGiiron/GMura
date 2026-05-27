@@ -172,6 +172,8 @@ export interface Layaway {
   customer_id: string
   created_by: string
   status: LayawayStatus
+  subtotal: number
+  discount: number
   total: number
   paid_amount: number
   expires_at: string
@@ -380,6 +382,7 @@ export interface Database {
           | 'layaway_number'
           | 'status'
           | 'paid_amount'
+          | 'discount'
           | 'completed_at'
           | 'cancelled_at'
           | 'cancellation_reason'
@@ -391,6 +394,7 @@ export interface Database {
           layaway_number?: number
           status?: LayawayStatus
           paid_amount?: number
+          discount?: number
           completed_at?: string | null
           cancelled_at?: string | null
           cancellation_reason?: string | null

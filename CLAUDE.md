@@ -307,6 +307,89 @@ Sidebar agrupado en secciones colapsables (feature/12-caja-completa) ✅
 En progreso: 13.1 - Hotfix feedback v2.0
 Siguiente: 14 - Proveedores
 
+Hotfix feedback v2.0 — separados en cuadre + descuento + 90 días (hotfix/feedback-v20-separados-caja) ✅
+  - Migración 010_layaway_discount: agrega layaways.subtotal y
+    layaways.discount (default 0, CHECK >= 0) + constraint de coherencia
+    total = subtotal - discount (tolerancia 0.5). Backfill subtotal = total
+    para layaways existentes
+  - StoreConfig extendido con layaway_discount_mode ('none'|'fixed'|'percent')
+    y layaway_discount_value. DEFAULT_CONFIG: discount_mode='none', value=0,
+    default_days=90 (antes 30 — feedback del cliente)
+  - Layaway type extendido con subtotal y discount; Insert type lo deja
+    opcional. useCompleteLayaway mapea la.subtotal/discount al INSERT de la
+    orden para preservar el desglose
+  - src/lib/layawayCalc.ts: calculateMaxDiscount(subtotal, config) con cap
+    al subtotal; soporta modos fixed (Math.round del valor) y percent
+    (clamp 0-100)
+  - useCreateLayaway acepta input.discount y input.max_discount; valida
+    discount <= max y discount <= subtotal; inserta subtotal + discount +
+    total = subtotal - discount
+  - NewLayawayModal ConfirmStep refactorizado:
+    · Card de "Resumen" con desglose Subtotal / Descuento / Total
+    · Sección "Descuento aplicado" visible solo si config !== 'none'
+      con cap por max y botón "Aplicar máximo" / "Quitar descuento"
+    · Card destacado violeta "Abono mínimo requerido: $XXX" antes del
+      input (feedback del cliente)
+    · Botón "Mínimo" en el input de abono inicial
+    · canSubmit valida discount <= max y muestra toast.error
+      "Abono mínimo requerido: $XXX" en handleSubmit si falla
+  - CajaSection: nueva sección "Separados" con
+    · Modo de abono inicial (pills none/fixed/percent + input)
+    · Descuento aplicable (pills none/fixed/percent + input)
+    · Días vencimiento default (input numérico, max 180, default 90)
+    Todos persistidos vía updateStoreConfig.mutateAsync
+  - useShiftClosing reescrito para integrar abonos de separados al cuadre:
+    · Fetch layaways.converted_order_id con completed_at en la ventana
+      del turno → excluye esas órdenes del salesByMethod (evita doble cuenta)
+    · Fetch layaway_payments del turno (por created_by + ventana) con
+      JOIN layaways(layaway_number) para el detalle
+    · SalesByMethod ahora incluye regularTotal y layawayTotal por método;
+      total = orders.total + abonos.amount del método
+    · cashSales = ventas efectivo + abonos efectivo
+    · totalSales = regularSalesTotal + layawayPaymentsTotal
+    · avgTicket sobre transacciones combinadas (orders + abonos)
+    · Devuelve layawayPayments, layawayPaymentsTotal, regularSalesTotal
+  - useShiftHistory aplica la misma lógica para que la columna "Esperado"
+    en el historial coincida con el recibo impreso: excluye orders
+    convertidas de layaways y suma layaway_payments cash al cashByShift
+  - CashShiftReceipt:
+    · "VENTAS POR MÉTODO" ahora muestra cada método combinado y debajo
+      la línea "Ventas directas: $X" + "Abonos de separados: $Y"
+      (solo si lpTotal > 0) antes del "Total ventas"
+    · Nueva sección "ABONOS DE SEPARADOS" con detalle [HH:mm] #N método
+      por abono + total, oculta si no hay abonos
+    · Label cambiado de "Órdenes" a "Transacciones" para reflejar la
+      mezcla orders + abonos
+  - CloseShiftModal pasa layawayPayments, layawayPaymentsTotal y
+    regularSalesTotal al CashShiftReceipt y CashShiftReceiptPrint
+
+Hotfix feedback v2.0 — impresión aislada + scroll en modales (hotfix/feedback-v20-separados-caja) ✅
+  - src/components/sales/SaleReceipt.tsx (nuevo): SaleReceipt (80mm
+    térmico), SaleReceiptPrint (contenedor oculto con id único) y
+    useSaleReceiptPrintStyle (inyecta @media print una sola vez con
+    guard por id, cleanup en unmount). Mismo patrón que CashShiftReceipt
+    y LayawayReceipt
+  - SalesHistoryPage: SaleDetailRow mapea SaleDetail → SaleReceiptData
+    y monta SaleReceiptPrint dentro de la fila expandida; botón
+    "Reimprimir ticket" llama window.print() en try/catch con toast
+    de error. Ahora el preview de impresión muestra solo el ticket
+    aislado (sidebar, header y tabla quedan visibility: hidden)
+  - POSPage TicketModal refactorizado para usar SaleReceipt como
+    vista previa + SaleReceiptPrint en paralelo; recibe customer y
+    storeName, snapshot incluye selectedCustomer al momento del pago
+    para que el recibo muestre cliente y teléfono. Modal con
+    max-h-[90vh] + flex flex-col + body overflow-y-auto
+  - AddPaymentModal refactorizado a flex max-h-[90vh] flex-col con
+    header sticky (border-b + flex-shrink-0), body central
+    overflow-y-auto y footer sticky (border-t + flex-shrink-0). El
+    contenido scrollea correctamente en viewports pequeños
+  - CancelLayawayModal mismo refactor; el motivo de cancelación queda
+    visible mientras los avisos amber/red de la parte superior
+    scrollean si hace falta
+  - NewLayawayModal y CompleteLayawayModal ya tenían el patrón
+    (max-h-[92vh] + flex-col + body overflow-y-auto), no requirieron
+    cambios
+
 Integración fina de separados (feature/13-separados) ✅
   - Migración 009_layaway_views: vistas layaway_summary
     (KPIs por estado) y layaway_expiring_soon (activos que vencen

@@ -22,6 +22,8 @@ export interface CreateLayawayInput {
   customer_id: string
   items: NewLayawayItem[]
   expires_at: string // ISO
+  discount?: number
+  max_discount?: number
   initial_payment?: {
     amount: number
     method: PaymentMethod
@@ -94,12 +96,30 @@ export function useCreateLayaway() {
           throw new Error('El precio no puede ser negativo')
         }
       }
-      const total = input.items.reduce(
+      const subtotal = input.items.reduce(
         (s, it) => s + it.qty * it.unit_price,
         0,
       )
-      if (total <= 0) {
+      if (subtotal <= 0) {
         throw new Error('El total del separado debe ser mayor a cero')
+      }
+
+      const rawDiscount = input.discount ?? 0
+      if (rawDiscount < 0) {
+        throw new Error('El descuento no puede ser negativo')
+      }
+      if (rawDiscount > subtotal) {
+        throw new Error('El descuento no puede superar el subtotal')
+      }
+      if (typeof input.max_discount === 'number' && rawDiscount > input.max_discount) {
+        throw new Error(
+          `Descuento máximo permitido: ${fmtCOP(input.max_discount)}`,
+        )
+      }
+      const discount = Math.round(rawDiscount)
+      const total = subtotal - discount
+      if (total <= 0) {
+        throw new Error('El total con descuento debe ser mayor a cero')
       }
 
       // Pre-check de stock disponible (defensa en profundidad; el trigger
@@ -154,6 +174,8 @@ export function useCreateLayaway() {
           store_id: storeId,
           customer_id: input.customer_id,
           created_by: userId,
+          subtotal,
+          discount,
           total,
           expires_at: input.expires_at,
           notes: input.notes?.trim() ? input.notes.trim() : null,
@@ -449,6 +471,8 @@ export function useCompleteLayaway() {
         ('cash' as PaymentMethod)
 
       // 5. INSERT orden
+      const orderSubtotal = Number(la.subtotal ?? la.total)
+      const orderDiscount = Number(la.discount ?? 0)
       const { data: orderRow, error: orderErr } = await supabase
         .from('orders')
         .insert({
@@ -456,8 +480,8 @@ export function useCompleteLayaway() {
           customer_id: la.customer_id,
           created_by: userId,
           status: 'completed',
-          subtotal: la.total,
-          discount: 0,
+          subtotal: orderSubtotal,
+          discount: orderDiscount,
           total: la.total,
           payment_method: lastMethod,
           cash_received: null,
