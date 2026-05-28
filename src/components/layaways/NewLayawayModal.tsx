@@ -23,7 +23,10 @@ import {
   type NewLayawayItem,
 } from '@/hooks/useLayawayMutations'
 import { useLayawayDetail } from '@/hooks/useLayaways'
-import { calculateRequiredInitialPayment } from '@/lib/layawayCalc'
+import {
+  calculateMaxDiscount,
+  calculateRequiredInitialPayment,
+} from '@/lib/layawayCalc'
 import {
   usePOSSearch,
   type POSProduct,
@@ -659,17 +662,12 @@ function ItemsStep({
 
 // ── Confirm step ──────────────────────────────────────────────────────────────
 
-function ConfirmStep({
-  total,
-  required,
-  amount,
-  setAmount,
-  method,
-  setMethod,
-  notes,
-  setNotes,
-  enabledMethods,
-}: {
+interface ConfirmStepProps {
+  subtotal: number
+  discount: string
+  setDiscount: (v: string) => void
+  maxDiscount: number
+  showDiscount: boolean
   total: number
   required: number
   amount: string
@@ -679,34 +677,134 @@ function ConfirmStep({
   notes: string
   setNotes: (v: string) => void
   enabledMethods: PaymentMethod[]
-}) {
-  const parsed = parseCOP(amount)
+}
+
+function ConfirmStep({
+  subtotal,
+  discount,
+  setDiscount,
+  maxDiscount,
+  showDiscount,
+  total,
+  required,
+  amount,
+  setAmount,
+  method,
+  setMethod,
+  notes,
+  setNotes,
+  enabledMethods,
+}: ConfirmStepProps) {
+  const parsedAmount = parseCOP(amount)
+  const parsedDiscount = parseCOP(discount)
   const visibleMethods = PAYMENT_METHOD_KEYS.filter((m) =>
     enabledMethods.includes(m),
   )
 
   return (
     <div className="flex flex-col gap-5">
+      {/* Desglose subtotal / descuento / total */}
       <div className="rounded-xl border border-[#ebe9e6] bg-[#fafaf9] px-4 py-3">
-        <div className="flex items-baseline justify-between">
-          <p className="text-[11px] font-semibold uppercase tracking-[.05em] text-[#737373]">
-            Total del separado
-          </p>
-          <p className="font-mono text-2xl font-bold text-[#1a1a1a]">
-            {fmtCOP(total)}
-          </p>
+        <p className="mb-2 text-[11px] font-semibold uppercase tracking-[.05em] text-[#737373]">
+          Resumen
+        </p>
+        <div className="space-y-1 text-sm">
+          <div className="flex justify-between text-[#525252]">
+            <span>Subtotal</span>
+            <span className="font-mono">{fmtCOP(subtotal)}</span>
+          </div>
+          {parsedDiscount > 0 && (
+            <div className="flex justify-between text-green-700">
+              <span>Descuento</span>
+              <span className="font-mono">-{fmtCOP(parsedDiscount)}</span>
+            </div>
+          )}
+          <div className="flex items-baseline justify-between border-t border-[#ebe9e6] pt-1.5">
+            <span className="text-[11px] font-semibold uppercase tracking-[.05em] text-[#737373]">
+              Total
+            </span>
+            <span className="font-mono text-2xl font-bold text-[#1a1a1a]">
+              {fmtCOP(total)}
+            </span>
+          </div>
         </div>
       </div>
+
+      {/* Descuento (solo si está habilitado en config) */}
+      {showDiscount && (
+        <div>
+          <div className="mb-1.5 flex items-end justify-between">
+            <label className="text-[11px] font-semibold uppercase tracking-[.05em] text-[#737373]">
+              Descuento aplicado
+            </label>
+            <span className="text-[11px] text-[#737373]">
+              Máximo permitido:{' '}
+              <strong className="text-[#1a1a1a]">{fmtCOP(maxDiscount)}</strong>
+            </span>
+          </div>
+          <div className="flex items-center gap-2 rounded-lg border border-[#ebe9e6] px-3 focus-within:border-violet-400 focus-within:ring-2 focus-within:ring-violet-100">
+            <span className="text-sm text-[#737373]">$</span>
+            <input
+              value={discount}
+              onChange={(e) => setDiscount(e.target.value.replace(/\D/g, ''))}
+              placeholder="0"
+              inputMode="numeric"
+              className="h-10 flex-1 bg-transparent font-mono text-base outline-none"
+            />
+            <span className="text-xs text-[#a8a29e]">COP</span>
+          </div>
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {maxDiscount > 0 && (
+              <button
+                type="button"
+                onClick={() => setDiscount(String(maxDiscount))}
+                className="rounded-lg border border-[#ebe9e6] bg-white px-2.5 py-1 text-xs font-semibold text-[#525252] hover:border-violet-300 hover:bg-violet-50"
+              >
+                Aplicar máximo ({fmtCOP(maxDiscount)})
+              </button>
+            )}
+            {parsedDiscount > 0 && (
+              <button
+                type="button"
+                onClick={() => setDiscount('')}
+                className="rounded-lg border border-[#ebe9e6] bg-white px-2.5 py-1 text-xs font-semibold text-[#525252] hover:border-red-300 hover:bg-red-50"
+              >
+                Quitar descuento
+              </button>
+            )}
+          </div>
+          {parsedDiscount > maxDiscount && (
+            <p className="mt-1.5 text-[11px] text-red-600">
+              No puede superar el máximo configurado ({fmtCOP(maxDiscount)}).
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* Card destacado: abono mínimo */}
+      {required > 0 && (
+        <div className="rounded-xl border border-violet-200 bg-violet-50 px-4 py-3">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-[.05em] text-violet-700">
+                Abono mínimo requerido
+              </p>
+              <p className="mt-0.5 text-[12px] text-violet-900">
+                Para crear este separado debes cobrar al menos esta suma hoy.
+              </p>
+            </div>
+            <p className="font-mono text-xl font-bold text-violet-900">
+              {fmtCOP(required)}
+            </p>
+          </div>
+        </div>
+      )}
 
       <div>
         <div className="mb-1.5 flex items-end justify-between">
           <label className="text-[11px] font-semibold uppercase tracking-[.05em] text-[#737373]">
             Abono inicial
           </label>
-          <span className="text-[11px] text-[#737373]">
-            Requerido por configuración:{' '}
-            <strong className="text-[#1a1a1a]">{fmtCOP(required)}</strong>
-          </span>
         </div>
         <div className="flex items-center gap-2 rounded-lg border border-[#ebe9e6] px-3 focus-within:border-violet-400 focus-within:ring-2 focus-within:ring-violet-100">
           <span className="text-sm text-[#737373]">$</span>
@@ -726,7 +824,7 @@ function ConfirmStep({
               onClick={() => setAmount(String(required))}
               className="rounded-lg border border-[#ebe9e6] bg-white px-2.5 py-1 text-xs font-semibold text-[#525252] hover:border-violet-300 hover:bg-violet-50"
             >
-              Requerido ({fmtCOP(required)})
+              Mínimo ({fmtCOP(required)})
             </button>
           )}
           <button
@@ -737,19 +835,19 @@ function ConfirmStep({
             Total ({fmtCOP(total)})
           </button>
         </div>
-        {parsed > 0 && parsed < required && (
+        {parsedAmount > 0 && parsedAmount < required && (
           <p className="mt-1.5 text-[11px] text-red-600">
             El abono debe ser al menos {fmtCOP(required)}.
           </p>
         )}
-        {parsed > total && (
+        {parsedAmount > total && (
           <p className="mt-1.5 text-[11px] text-red-600">
             El abono no puede superar el total.
           </p>
         )}
       </div>
 
-      {parsed > 0 && (
+      {parsedAmount > 0 && (
         <div>
           <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[.05em] text-[#737373]">
             Método de pago
@@ -844,7 +942,7 @@ export function NewLayawayModal({ prefill, onClose, onCreated }: Props) {
   const defaultDays =
     typeof config.layaway_default_days === 'number'
       ? config.layaway_default_days
-      : 30
+      : 90
 
   const [step, setStep] = useState<0 | 1 | 2>(0)
   const [customer, setCustomer] = useState<Customer | null>(prefill?.customer ?? null)
@@ -854,6 +952,7 @@ export function NewLayawayModal({ prefill, onClose, onCreated }: Props) {
   )
   const [notes, setNotes] = useState('')
   const [amount, setAmount] = useState('')
+  const [discount, setDiscount] = useState('')
   const [method, setMethod] = useState<PaymentMethod>(
     enabledMethods.includes('cash') ? 'cash' : (enabledMethods[0] ?? 'cash'),
   )
@@ -863,11 +962,19 @@ export function NewLayawayModal({ prefill, onClose, onCreated }: Props) {
   const create = useCreateLayaway()
   const createdDetail = useLayawayDetail(createdLayawayId)
 
-  const total = items.reduce((s, it) => s + it.unit_price * it.qty, 0)
+  const subtotal = items.reduce((s, it) => s + it.unit_price * it.qty, 0)
+  const maxDiscount = useMemo(
+    () => calculateMaxDiscount(subtotal, config),
+    [subtotal, config],
+  )
+  const rawDiscount = parseCOP(discount)
+  const parsedDiscount = Math.min(rawDiscount, maxDiscount)
+  const total = Math.max(0, subtotal - parsedDiscount)
   const requiredInitial = useMemo(
     () => calculateRequiredInitialPayment(total, config),
     [total, config],
   )
+  const showDiscount = config.layaway_discount_mode !== 'none' && maxDiscount > 0
 
   // Pre-fill amount con el requerido cuando se llega al paso 3
   useEffect(() => {
@@ -927,15 +1034,23 @@ export function NewLayawayModal({ prefill, onClose, onCreated }: Props) {
     step === 2
 
   const parsedAmount = parseCOP(amount)
+  const discountOk = rawDiscount <= maxDiscount && rawDiscount >= 0
   const canSubmit =
     step === 2 &&
     parsedAmount >= requiredInitial &&
     parsedAmount <= total &&
+    total > 0 &&
+    discountOk &&
     !create.isPending
 
   function handleSubmit() {
     if (!customer) return
-    if (!canSubmit) return
+    if (!canSubmit) {
+      if (parsedAmount < requiredInitial) {
+        toast.error(`Abono mínimo requerido: ${fmtCOP(requiredInitial)}`)
+      }
+      return
+    }
     create.mutate(
       {
         customer_id: customer.id,
@@ -947,6 +1062,8 @@ export function NewLayawayModal({ prefill, onClose, onCreated }: Props) {
         })),
         expires_at: new Date(expiresAt + 'T23:59:59-05:00').toISOString(),
         notes,
+        discount: parsedDiscount,
+        max_discount: maxDiscount,
         initial_payment:
           parsedAmount > 0
             ? { amount: parsedAmount, method }
@@ -1150,6 +1267,11 @@ export function NewLayawayModal({ prefill, onClose, onCreated }: Props) {
 
           {step === 2 && (
             <ConfirmStep
+              subtotal={subtotal}
+              discount={discount}
+              setDiscount={setDiscount}
+              maxDiscount={maxDiscount}
+              showDiscount={showDiscount}
               total={total}
               required={requiredInitial}
               amount={amount}

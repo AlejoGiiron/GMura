@@ -13,6 +13,7 @@ export interface LabelFields {
 export type LabelFormat = '38x25' | '50x30' | '58x40'
 
 export type LayawayInitialPaymentMode = 'none' | 'fixed' | 'percent'
+export type LayawayDiscountMode = 'none' | 'fixed' | 'percent'
 
 export interface StoreConfig {
   timezone: string
@@ -30,4 +31,6 @@ export interface StoreConfig {
   layaway_initial_payment_mode: LayawayInitialPaymentMode
   layaway_initial_payment_value: number
   layaway_default_days: number
+  layaway_discount_mode: LayawayDiscountMode
+  layaway_discount_value: number
 }

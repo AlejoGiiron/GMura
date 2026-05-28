@@ -461,6 +461,9 @@ export function CloseShiftModal({ shift, onClose }: CloseShiftModalProps) {
                   storeName={closing.storeName}
                   userName={closing.userName}
                   printedAt={printedAtRef.current}
+                  layawayPayments={closing.layawayPayments}
+                  layawayPaymentsTotal={closing.layawayPaymentsTotal}
+                  regularSalesTotal={closing.regularSalesTotal}
                 />
               </div>
             )}
@@ -504,6 +507,9 @@ export function CloseShiftModal({ shift, onClose }: CloseShiftModalProps) {
           storeName={closing.storeName}
           userName={closing.userName}
           printedAt={printedAtRef.current}
+          layawayPayments={closing.layawayPayments}
+          layawayPaymentsTotal={closing.layawayPaymentsTotal}
+          regularSalesTotal={closing.regularSalesTotal}
         />
       )}
     </>

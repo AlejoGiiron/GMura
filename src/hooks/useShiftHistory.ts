@@ -129,7 +129,7 @@ export function useShiftHistory(filters: ShiftHistoryFilters) {
 
       const { data: ordersRaw, error: ordersErr } = await supabase
         .from('orders')
-        .select('total, created_at, created_by')
+        .select('id, total, created_at, created_by')
         .eq('store_id' as never, storeId)
         .eq('payment_method' as never, 'cash')
         .eq('status' as never, 'completed')
@@ -139,20 +139,60 @@ export function useShiftHistory(filters: ShiftHistoryFilters) {
 
       if (ordersErr) throw ordersErr
 
+      // Excluir órdenes generadas al completar separados: cada abono ya
+      // contó como ingreso del turno donde se cobró.
+      const { data: convRaw, error: convErr } = await supabase
+        .from('layaways')
+        .select('converted_order_id')
+        .eq('store_id' as never, storeId)
+        .not('converted_order_id' as never, 'is', null)
+        .gte('completed_at' as never, earliest)
+        .lte('completed_at' as never, latest)
+      if (convErr) throw convErr
+      const excludedOrderIds = new Set(
+        ((convRaw ?? []) as unknown as { converted_order_id: string | null }[])
+          .map((r) => r.converted_order_id)
+          .filter((id): id is string => !!id),
+      )
+
       const cashByShift = new Map<string, number>()
       for (const o of (ordersRaw ?? []) as unknown as {
+        id: string
         total: number | string
         created_at: string
         created_by: string
       }[]) {
-        // Asignamos la orden al primer turno que contenga su timestamp
-        // (por opened_by + ventana). En el peor caso es lineal en turnos
-        // pero el page size es 50.
+        if (excludedOrderIds.has(o.id)) continue
         for (const s of shiftsRaw) {
           if (s.opened_by !== o.created_by) continue
           if (o.created_at < s.opened_at) continue
           if (s.closed_at && o.created_at > s.closed_at) continue
           cashByShift.set(s.id, (cashByShift.get(s.id) ?? 0) + Number(o.total))
+          break
+        }
+      }
+
+      // Sumar abonos de separados en efectivo al cashByShift.
+      const { data: paymentsRaw, error: paymentsErr } = await supabase
+        .from('layaway_payments')
+        .select('amount, payment_method, created_at, created_by')
+        .eq('store_id' as never, storeId)
+        .eq('payment_method' as never, 'cash')
+        .in('created_by' as never, userIds)
+        .gte('created_at' as never, earliest)
+        .lte('created_at' as never, latest)
+      if (paymentsErr) throw paymentsErr
+
+      for (const p of (paymentsRaw ?? []) as unknown as {
+        amount: number | string
+        created_at: string
+        created_by: string
+      }[]) {
+        for (const s of shiftsRaw) {
+          if (s.opened_by !== p.created_by) continue
+          if (p.created_at < s.opened_at) continue
+          if (s.closed_at && p.created_at > s.closed_at) continue
+          cashByShift.set(s.id, (cashByShift.get(s.id) ?? 0) + Number(p.amount))
           break
         }
       }

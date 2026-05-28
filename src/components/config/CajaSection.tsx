@@ -1,5 +1,13 @@
 import { useState, useEffect, useRef } from 'react'
-import { CreditCard, Plus, Trash2, Upload, AlertTriangle, Receipt } from 'lucide-react'
+import {
+  CreditCard,
+  Plus,
+  Trash2,
+  Upload,
+  AlertTriangle,
+  Receipt,
+  Bookmark,
+} from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useStoreConfig, resolveConfig } from '@/hooks/useConfig'
 import { useConfigMutations } from '@/hooks/useConfigMutations'
@@ -10,6 +18,12 @@ import {
 } from '@/lib/paymentMethods'
 import { useExpenseCountByReason } from '@/hooks/useCashExpenses'
 import type { PaymentMethod } from '@/types/database.types'
+import type {
+  LayawayDiscountMode,
+  LayawayInitialPaymentMode,
+} from '@/types/config.types'
+
+const MAX_LAYAWAY_DAYS = 180
 
 // ── Confirm delete reason modal ───────────────────────────────────────────────
 
@@ -100,6 +114,13 @@ export default function CajaSection() {
   const [expenseReasons, setExpenseReasons] = useState<string[]>([])
   const [newExpenseReason, setNewExpenseReason] = useState('')
   const [deletingExpenseReason, setDeletingExpenseReason] = useState<string | null>(null)
+  const [layawayInitialMode, setLayawayInitialMode] =
+    useState<LayawayInitialPaymentMode>('none')
+  const [layawayInitialValue, setLayawayInitialValue] = useState('')
+  const [layawayDiscountMode, setLayawayDiscountMode] =
+    useState<LayawayDiscountMode>('none')
+  const [layawayDiscountValue, setLayawayDiscountValue] = useState('')
+  const [layawayDefaultDays, setLayawayDefaultDays] = useState('')
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
@@ -109,6 +130,11 @@ export default function CajaSection() {
     setPaymentMethods(migrateLegacyPaymentMethods(cfg.payment_methods))
     setPaymentQrUrl(cfg.payment_qr_url)
     setExpenseReasons(cfg.expense_reasons)
+    setLayawayInitialMode(cfg.layaway_initial_payment_mode)
+    setLayawayInitialValue(String(cfg.layaway_initial_payment_value ?? 0))
+    setLayawayDiscountMode(cfg.layaway_discount_mode)
+    setLayawayDiscountValue(String(cfg.layaway_discount_value ?? 0))
+    setLayawayDefaultDays(String(cfg.layaway_default_days ?? 90))
   }, [store])
 
   function addReason() {
@@ -174,12 +200,36 @@ export default function CajaSection() {
   }
 
   async function handleSave() {
+    const initialValue = Math.max(0, parseInt(layawayInitialValue || '0', 10) || 0)
+    const discountValue = Math.max(0, parseInt(layawayDiscountValue || '0', 10) || 0)
+    const daysParsed = Math.max(
+      1,
+      Math.min(
+        MAX_LAYAWAY_DAYS,
+        parseInt(layawayDefaultDays || '0', 10) || 0,
+      ),
+    )
+
+    if (layawayInitialMode === 'percent' && initialValue > 100) {
+      toast.error('El porcentaje de abono inicial no puede superar 100')
+      return
+    }
+    if (layawayDiscountMode === 'percent' && discountValue > 100) {
+      toast.error('El porcentaje de descuento no puede superar 100')
+      return
+    }
+
     setSaving(true)
     try {
       await updateStoreConfig.mutateAsync({
         adjustment_reasons: reasons,
         payment_methods: paymentMethods,
         expense_reasons: expenseReasons,
+        layaway_initial_payment_mode: layawayInitialMode,
+        layaway_initial_payment_value: initialValue,
+        layaway_discount_mode: layawayDiscountMode,
+        layaway_discount_value: discountValue,
+        layaway_default_days: daysParsed,
       })
       toast.success('Configuración de caja guardada')
     } catch {
@@ -329,6 +379,142 @@ export default function CajaSection() {
               <Plus size={13} />
               Agregar
             </button>
+          </div>
+        </div>
+
+        {/* Layaways / Separados */}
+        <div className="px-5 py-5">
+          <div className="mb-3 flex items-center gap-2">
+            <Bookmark size={13} className="text-[#737373]" />
+            <p className="text-[11px] font-semibold uppercase tracking-[.05em] text-[#737373]">
+              Separados
+            </p>
+          </div>
+
+          {/* Modo de abono inicial */}
+          <div className="mb-4">
+            <label className="mb-1.5 block text-xs font-medium text-[#525252]">
+              Modo de abono inicial
+            </label>
+            <div className="flex flex-wrap gap-1.5">
+              {(['none', 'fixed', 'percent'] as const).map((mode) => {
+                const active = layawayInitialMode === mode
+                const label =
+                  mode === 'none'
+                    ? 'Ninguno'
+                    : mode === 'fixed'
+                      ? 'Monto fijo'
+                      : 'Porcentaje'
+                return (
+                  <button
+                    key={mode}
+                    type="button"
+                    onClick={() => setLayawayInitialMode(mode)}
+                    className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
+                      active
+                        ? 'border-violet-600 bg-violet-600 text-white'
+                        : 'border-[#ebe9e6] bg-white text-[#525252] hover:border-violet-300 hover:bg-violet-50'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                )
+              })}
+            </div>
+            {layawayInitialMode !== 'none' && (
+              <div className="mt-2 flex items-center gap-2 rounded-lg border border-[#ebe9e6] px-3 focus-within:border-violet-400 focus-within:ring-2 focus-within:ring-violet-100">
+                <input
+                  value={layawayInitialValue}
+                  onChange={(e) =>
+                    setLayawayInitialValue(e.target.value.replace(/\D/g, ''))
+                  }
+                  placeholder="0"
+                  inputMode="numeric"
+                  className="h-9 flex-1 bg-transparent font-mono text-sm outline-none"
+                />
+                <span className="text-xs text-[#a8a29e]">
+                  {layawayInitialMode === 'percent' ? '%' : 'COP'}
+                </span>
+              </div>
+            )}
+            <p className="mt-1 text-[11px] text-[#a8a29e]">
+              Cobro mínimo al crear el separado. 0 = no exige abono inicial.
+            </p>
+          </div>
+
+          {/* Descuento aplicable */}
+          <div className="mb-4">
+            <label className="mb-1.5 block text-xs font-medium text-[#525252]">
+              Descuento aplicable
+            </label>
+            <div className="flex flex-wrap gap-1.5">
+              {(['none', 'fixed', 'percent'] as const).map((mode) => {
+                const active = layawayDiscountMode === mode
+                const label =
+                  mode === 'none'
+                    ? 'Ninguno'
+                    : mode === 'fixed'
+                      ? 'Monto fijo'
+                      : 'Porcentaje'
+                return (
+                  <button
+                    key={mode}
+                    type="button"
+                    onClick={() => setLayawayDiscountMode(mode)}
+                    className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
+                      active
+                        ? 'border-violet-600 bg-violet-600 text-white'
+                        : 'border-[#ebe9e6] bg-white text-[#525252] hover:border-violet-300 hover:bg-violet-50'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                )
+              })}
+            </div>
+            {layawayDiscountMode !== 'none' && (
+              <div className="mt-2 flex items-center gap-2 rounded-lg border border-[#ebe9e6] px-3 focus-within:border-violet-400 focus-within:ring-2 focus-within:ring-violet-100">
+                <input
+                  value={layawayDiscountValue}
+                  onChange={(e) =>
+                    setLayawayDiscountValue(e.target.value.replace(/\D/g, ''))
+                  }
+                  placeholder="0"
+                  inputMode="numeric"
+                  className="h-9 flex-1 bg-transparent font-mono text-sm outline-none"
+                />
+                <span className="text-xs text-[#a8a29e]">
+                  {layawayDiscountMode === 'percent' ? '%' : 'COP'}
+                </span>
+              </div>
+            )}
+            <p className="mt-1 text-[11px] text-[#a8a29e]">
+              Descuento máximo que el vendedor puede aplicar al crear un
+              separado. 0 = sin descuento.
+            </p>
+          </div>
+
+          {/* Días vencimiento */}
+          <div>
+            <label className="mb-1.5 block text-xs font-medium text-[#525252]">
+              Días de vencimiento por defecto
+            </label>
+            <div className="flex items-center gap-2 rounded-lg border border-[#ebe9e6] px-3 focus-within:border-violet-400 focus-within:ring-2 focus-within:ring-violet-100">
+              <input
+                value={layawayDefaultDays}
+                onChange={(e) =>
+                  setLayawayDefaultDays(e.target.value.replace(/\D/g, ''))
+                }
+                placeholder="90"
+                inputMode="numeric"
+                className="h-9 flex-1 bg-transparent font-mono text-sm outline-none"
+              />
+              <span className="text-xs text-[#a8a29e]">días</span>
+            </div>
+            <p className="mt-1 text-[11px] text-[#a8a29e]">
+              Plazo máximo desde la fecha de creación. Máximo {MAX_LAYAWAY_DAYS}{' '}
+              días.
+            </p>
           </div>
         </div>
 

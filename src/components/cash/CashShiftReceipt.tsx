@@ -14,6 +14,16 @@ export interface SalesByMethodRow {
   method: PaymentMethod
   count: number
   total: number
+  regularTotal?: number
+  layawayTotal?: number
+}
+
+export interface LayawayPaymentReceiptRow {
+  id: string
+  layaway_number: number
+  amount: number
+  payment_method: PaymentMethod
+  created_at: string
 }
 
 export interface CashShiftReceiptProps {
@@ -31,6 +41,9 @@ export interface CashShiftReceiptProps {
   storeName: string
   userName: string
   printedAt: Date
+  layawayPayments?: LayawayPaymentReceiptRow[]
+  layawayPaymentsTotal?: number
+  regularSalesTotal?: number
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -130,7 +143,11 @@ export function CashShiftReceipt(props: CashShiftReceiptProps) {
     storeName,
     userName,
     printedAt,
+    layawayPayments,
+    layawayPaymentsTotal,
   } = props
+  const lpTotal = layawayPaymentsTotal ?? 0
+  const lpRows = layawayPayments ?? []
 
   const closedAt = shift.closed_at ? new Date(shift.closed_at) : printedAt
   const duration = fmtDuration(shift.opened_at, closedAt)
@@ -196,7 +213,7 @@ export function CashShiftReceipt(props: CashShiftReceiptProps) {
 
       <div style={monoLight}>{DIVIDER}</div>
 
-      {/* Ventas por método */}
+      {/* Ventas por método (incluye abonos de separados) */}
       <div style={sectionStyle}>
         <div style={{ fontWeight: 700, marginBottom: 2 }}>VENTAS POR MÉTODO</div>
         {salesByMethod.length === 0 ? (
@@ -217,19 +234,57 @@ export function CashShiftReceipt(props: CashShiftReceiptProps) {
           ))
         )}
         <div style={monoLight}>{SUBDIV}</div>
+        {lpTotal > 0 && (
+          <>
+            <Line>
+              <span style={monoLight}>Ventas directas:</span>
+              <span>{fmtCOP(totalSales - lpTotal)}</span>
+            </Line>
+            <Line>
+              <span style={monoLight}>Abonos de separados:</span>
+              <span>{fmtCOP(lpTotal)}</span>
+            </Line>
+          </>
+        )}
         <Line>
           <span style={{ fontWeight: 700 }}>Total ventas:</span>
           <span style={{ fontWeight: 700 }}>{fmtCOP(totalSales)}</span>
         </Line>
         <Line>
-          <span style={monoLight}>Órdenes:</span>
-          <span>{orderCount}</span>
+          <span style={monoLight}>Transacciones:</span>
+          <span>{orderCount + lpRows.length}</span>
         </Line>
         <Line>
           <span style={monoLight}>Ticket prom:</span>
           <span>{fmtCOP(Math.round(avgTicket))}</span>
         </Line>
       </div>
+
+      {/* Abonos de separados (detalle por abono) */}
+      {lpRows.length > 0 && (
+        <>
+          <div style={monoLight}>{DIVIDER}</div>
+          <div style={sectionStyle}>
+            <div style={{ fontWeight: 700, marginBottom: 2 }}>
+              ABONOS DE SEPARADOS
+            </div>
+            {lpRows.map((p) => (
+              <Line key={p.id}>
+                <span style={monoLight}>
+                  [{fmtHHmm(p.created_at)}] #{p.layaway_number}{' '}
+                  {PAYMENT_METHODS[p.payment_method].label}:
+                </span>
+                <span>{fmtCOP(Number(p.amount))}</span>
+              </Line>
+            ))}
+            <div style={monoLight}>{SUBDIV}</div>
+            <Line>
+              <span style={{ fontWeight: 700 }}>Total abonos:</span>
+              <span style={{ fontWeight: 700 }}>{fmtCOP(lpTotal)}</span>
+            </Line>
+          </div>
+        </>
+      )}
 
       {/* Egresos */}
       {expenses.length > 0 && (
