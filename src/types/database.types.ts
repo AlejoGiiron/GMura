@@ -14,9 +14,24 @@ export interface Profile {
   full_name: string
   role: UserRole
   store_id: string
+  current_store_id: string | null
   is_active: boolean
   created_at: string
   updated_at: string
+}
+
+export interface UserStore {
+  id: string
+  user_id: string
+  store_id: string
+  created_at: string
+}
+
+// Fila devuelta por la función RPC get_my_stores().
+export interface MyStore {
+  store_id: string
+  store_name: string
+  is_current: boolean
 }
 
 export interface Store {
@@ -378,8 +393,19 @@ export interface Database {
     Tables: {
       profiles: {
         Row: Profile
-        Insert: Omit<Profile, 'created_at'> & { created_at?: string }
+        Insert: Omit<Profile, 'created_at' | 'current_store_id'> & {
+          created_at?: string
+          current_store_id?: string | null
+        }
         Update: Partial<Omit<Profile, 'id'>>
+      }
+      user_stores: {
+        Row: UserStore
+        Insert: Omit<UserStore, 'id' | 'created_at'> & {
+          id?: string
+          created_at?: string
+        }
+        Update: Partial<Omit<UserStore, 'id'>>
       }
       stores: {
         Row: Store

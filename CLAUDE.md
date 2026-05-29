@@ -318,9 +318,30 @@ Sidebar agrupado en secciones colapsables (feature/12-caja-completa) ✅
 - Configuración (tienda, usuarios, productos, caja, etiquetas)
 
 ## Estado actual del proyecto
-Última fase completada: 14 - Proveedores y compras (feature/14-proveedores)
-En progreso: 14.1 - Reportes de compras (UI lista; pendiente aplicar migración 012)
-Siguiente: QA del módulo de proveedores
+Última fase completada: 15 - Multi-store (schema + switcher)
+En progreso: —
+Siguiente: — (última fase del roadmap)
+
+Nota: las migraciones 011_suppliers y 012_purchase_views quedan pendientes de
+aplicar en Supabase + verificar triggers/vistas antes del despliegue.
+Migración 013_multistore ya aplicada y verificada. Pendiente aplicar
+014_user_stores_admin_select (habilita la gestión de accesos en Config).
+
+Multi-store — switcher y gestión de accesos (feature/15-multistore) ✅
+  - get_my_store_id() ahora devuelve la tienda ACTIVA (current_store_id) →
+    todo el RLS opera sobre la tienda seleccionada; switcher = solo admins
+    con >1 tienda en user_stores; vendedores siguen con una sola
+  - AuthContext: refreshProfile() para recargar el perfil tras el switch
+  - useStores: useMyStores (RPC get_my_stores), useSwitchStore (RPC
+    switch_active_store + invalidateQueries() global + refreshProfile + toast)
+  - useUserStores: useUserStoreAccess / useGrantStoreAccess / useRevokeStoreAccess
+  - StoreSwitcher en Header: texto estático si una sola tienda; dropdown con
+    check violeta + spinner si varias; confirma antes de cambiar si hay turno
+    abierto (sigue abierto) o carrito en curso (se limpia)
+  - UsersSection: panel "Tiendas con acceso" por usuario admin (checkboxes
+    sobre las tiendas del admin actual; la tienda base no se puede quitar)
+  - Migración 014_user_stores_admin_select: política admin SELECT en
+    user_stores (necesaria para leer accesos de otros usuarios en Config)
 
 Reportes de compras e integración final (feature/14-proveedores) ✅
   - Migración 012_purchase_views: vistas purchase_summary (compras por mes y
