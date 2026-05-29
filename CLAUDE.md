@@ -302,10 +302,88 @@ Sidebar agrupado en secciones colapsables (feature/12-caja-completa) ✅
   - filterByRole filtra grupos y items por adminOnly; descarta grupos
     vacíos. Accesibilidad: aria-expanded / aria-controls / aria-label
 
+## Módulos disponibles
+- POS / Ventas, Historial de ventas, Separados (layaways), Devoluciones
+- Productos / Variantes, Inventario (con reservado por separados)
+- Clientes (CRM), Reportes (ventas, inventario, separados, **compras**)
+- Caja (turnos, gastos, cuadre imprimible, historial)
+- **Proveedores y compras**: CRUD de proveedores, facturas de compra con
+  ítems, pagos y cuentas por pagar
+  · Las compras INCREMENTAN stock vía trigger (stock_movements type='purchase');
+    cada ítem puede actualizar cost_price de la variante si update_cost=true
+  · Los pagos a proveedor EN EFECTIVO durante un turno abierto generan un
+    cash_expense automático (trigger) → afectan el cuadre de caja como egreso
+    "Pago a proveedor: X". useShiftClosing ya los cuenta en totalExpenses sin
+    doble conteo (el pago no es una orden ni un abono de separado)
+- Configuración (tienda, usuarios, productos, caja, etiquetas)
+
 ## Estado actual del proyecto
-Última fase completada: 13 - Separados (v2.0 en staging)
-En progreso: 13.1 - Hotfix feedback v2.0
-Siguiente: 14 - Proveedores
+Última fase completada: 14 - Proveedores y compras (feature/14-proveedores)
+En progreso: 14.1 - Reportes de compras (UI lista; pendiente aplicar migración 012)
+Siguiente: QA del módulo de proveedores
+
+Reportes de compras e integración final (feature/14-proveedores) ✅
+  - Migración 012_purchase_views: vistas purchase_summary (compras por mes y
+    proveedor, excluye canceladas) y supplier_balance (saldo consolidado por
+    proveedor, activos e inactivos — una deuda es deuda) con security_invoker = true
+  - Tipos PurchaseSummary + SupplierBalance en Database['public']['Views']
+  - useReports ampliado: usePurchaseReport (byMonth/bySupplier + totales +
+    avgDaysToPay desde supplier_payments), useSupplierBalances (totales
+    consolidados), useInvoicesForExport (filas planas para Excel)
+  - ReportsPage sección "Compras": 4 KPIs (comprado/pagado/pendiente/días
+    de pago), BarChart compras mensuales, PieChart top 5 proveedores + "Otros",
+    LineChart compras vs ventas, tablas Top proveedores y Cuentas por pagar
+    (click → /proveedores?supplier=id). Excel: hojas "Compras" y "Saldos
+    proveedores"
+  - SuppliersPage Cuentas por pagar: cards desde supplier_balance (total
+    adeudado violeta, proveedores con saldo) + banner rojo de vencidas;
+    deep-link ?tab=payables y ?supplier=id (preselección de proveedor)
+  - Header: SupplierNotifications admin-only (campana FileText) con facturas
+    vencidas o por vencer ≤3 días → /proveedores?tab=payables
+  - Integración de caja verificada: pagos efectivo a proveedor ya entran al
+    cuadre vía cash_expense, sin cambios en useShiftClosing
+  - Pendiente: aplicar migración 012 en Supabase y verificar vistas
+
+Módulo de proveedores y compras — schema (feature/14-proveedores) ✅
+  - Migración 011_suppliers: enum invoice_status (pending/partial/paid/cancelled);
+    tablas suppliers, purchase_invoices (UNIQUE store+supplier+invoice_number),
+    purchase_invoice_items (update_cost), supplier_payments (shift_id nullable)
+  - Trigger increase_stock_on_purchase: +stock_qty y opcional cost_price si
+    update_cost; registra stock_movement type='purchase'
+  - Trigger update_invoice_payment_status: suma paid_amount y recalcula status
+  - Trigger register_supplier_payment_as_expense: pago efectivo en turno abierto
+    crea cash_expense automático para el cuadre
+  - Tipos TS: InvoiceStatus + Supplier/PurchaseInvoice/PurchaseInvoiceItem/
+    SupplierPayment + entradas en Database['public']['Tables']
+
+Módulo de proveedores y compras — UI (feature/14-proveedores) ✅
+  - src/lib/invoices.ts: INVOICE_STATUS_META, daysOverdue/daysUntilDue,
+    addDaysToDate, todayDateString, fmtInvoiceDate (Bogotá)
+  - useSuppliers: useSupplierList (search por name/nit/phone, toggle activos,
+    stats total_purchased/pending/last_invoice), useSupplierDetail (+ facturas)
+  - usePurchaseInvoices: useInvoiceList (paginado 50/pág, filtros proveedor/
+    estado/fechas + keepPreviousData, days_overdue), useInvoiceDetail (items+pagos),
+    usePendingInvoices (cuentas por pagar, due_date ASC), usePurchaseVariantSearch
+    (2 queries, devuelve cost_price para precargar costo)
+  - useSupplierMutations: create/update/toggleActive
+  - useInvoiceMutations: useCreateInvoice (valida, INSERT cabecera+items con
+    rollback DELETE si falla, abono inicial con shift_id de useCurrentShift,
+    captura 23505 → "factura duplicada"), useRegisterPayment (valida saldo),
+    useCancelInvoice (solo paid=0 y sin items). Invalida purchase-invoices,
+    suppliers, variants, products, pos-products, stock-movements, shift-expenses,
+    shift-closing
+  - SuppliersPage: tabs Proveedores (35/65 estilo CustomersPage) / Facturas
+    (filtros + tabla + paginación, fila roja si vencida) / Cuentas por pagar
+    (4 cards resumen + tabla ordenada por días vencidos)
+  - Modales: SupplierModal (crear/editar), NewInvoiceModal (selector proveedor +
+    crear rápido, buscador de variante, crear producto+variante al vuelo vía
+    ProductModal→VariantsPanel con update_cost=true auto, items editables,
+    totales con IVA, pago inicial opcional con aviso de caja), InvoiceDetailModal
+    (items + pagos + progreso + impresión aislada @media print), PaymentModal
+    (saldo, método, aviso efectivo/turno, referencia)
+  - Sidebar: grupo "Compras" admin-only (icono Truck) con Proveedores (Building2)
+    entre Clientes y Análisis; ruta /proveedores admin-only en App.tsx
+  - Pendiente: aplicar migración 011 en Supabase y validar los 4 triggers + QA UI
 
 Hotfix feedback v2.0 — separados en cuadre + descuento + 90 días (hotfix/feedback-v20-separados-caja) ✅
   - Migración 010_layaway_discount: agrega layaways.subtotal y

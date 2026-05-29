@@ -349,6 +349,28 @@ export interface LayawayExpiringSoon {
   days_until_expiry: number
 }
 
+export interface PurchaseSummary {
+  store_id: string
+  supplier_id: string
+  supplier_name: string
+  month: string              // 'YYYY-MM-DD' (primer día del mes)
+  invoice_count: number
+  total_purchased: number
+  total_paid: number
+  total_pending: number
+}
+
+export interface SupplierBalance {
+  supplier_id: string
+  store_id: string
+  supplier_name: string
+  nit: string | null
+  open_invoices: number
+  total_purchased: number
+  pending_amount: number
+  overdue_invoices: number
+}
+
 // ── Database schema ───────────────────────────────────────────────────────────
 
 export interface Database {
@@ -538,6 +560,8 @@ export interface Database {
       returns_summary:        { Row: ReturnsSummary }
       layaway_summary:        { Row: LayawaySummary }
       layaway_expiring_soon:  { Row: LayawayExpiringSoon }
+      purchase_summary:       { Row: PurchaseSummary }
+      supplier_balance:       { Row: SupplierBalance }
     }
     Functions: Record<string, never>
     Enums: Record<string, never>

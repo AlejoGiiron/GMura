@@ -8,6 +8,7 @@ import {
   ExpenseModal,
 } from './CashShiftModals'
 import { LayawayNotifications } from './LayawayNotifications'
+import { SupplierNotifications } from './SupplierNotifications'
 
 function getBogoTime(): string {
   return new Intl.DateTimeFormat('es-CO', {
@@ -42,6 +43,7 @@ export default function Header() {
 
   const roleLabel = profile?.role === 'admin' ? 'Administrador' : 'Vendedor'
   const initial = profile?.full_name?.charAt(0).toUpperCase() ?? '?'
+  const isAdmin = profile?.role === 'admin'
   const showLayawayBell =
     profile?.role === 'admin' || profile?.role === 'seller'
 
@@ -72,6 +74,8 @@ export default function Header() {
               <LayawayNotifications />
             </>
           )}
+
+          {isAdmin && <SupplierNotifications />}
 
           <span className="h-5 w-px bg-gray-200" />
 

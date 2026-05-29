@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import {
   Truck,
   Building2,
@@ -24,6 +25,7 @@ import {
   usePendingInvoices,
   type InvoiceListRow,
 } from '@/hooks/usePurchaseInvoices'
+import { useSupplierBalances } from '@/hooks/useReports'
 import { useToggleSupplierActive } from '@/hooks/useSupplierMutations'
 import { fmtCOP } from '@/lib/formatters'
 import {
@@ -83,7 +85,16 @@ interface PaymentTarget {
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function SuppliersPage() {
-  const [tab, setTab] = useState<Tab>('suppliers')
+  const [searchParams] = useSearchParams()
+  const supplierParam = searchParams.get('supplier')
+  const tabParam = searchParams.get('tab')
+
+  const [tab, setTab] = useState<Tab>(() => {
+    if (tabParam === 'payables' || tabParam === 'invoices' || tabParam === 'suppliers') {
+      return tabParam
+    }
+    return supplierParam ? 'suppliers' : 'suppliers'
+  })
 
   // Modales compartidos
   const [supplierModal, setSupplierModal] = useState<
@@ -152,6 +163,7 @@ export default function SuppliersPage() {
       <div className="min-h-0 flex-1 overflow-hidden" style={{ background: '#f8f7f5' }}>
         {tab === 'suppliers' && (
           <SuppliersTab
+            initialSupplierId={supplierParam}
             onNew={() => setSupplierModal({ mode: 'new' })}
             onEdit={(s) => setSupplierModal({ mode: 'edit', supplier: s })}
             onOpenInvoice={(id) => setDetailInvoiceId(id)}
@@ -202,17 +214,19 @@ export default function SuppliersPage() {
 // ── Tab 1: Proveedores ────────────────────────────────────────────────────────
 
 function SuppliersTab({
+  initialSupplierId,
   onNew,
   onEdit,
   onOpenInvoice,
 }: {
+  initialSupplierId?: string | null
   onNew: () => void
   onEdit: (s: Supplier) => void
   onOpenInvoice: (id: string) => void
 }) {
   const [search, setSearch] = useState('')
   const [showInactive, setShowInactive] = useState(false)
-  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [selectedId, setSelectedId] = useState<string | null>(initialSupplierId ?? null)
 
   const { data: suppliers = [], isLoading } = useSupplierList({
     search,
@@ -766,6 +780,7 @@ function PayablesTab({
   onPay: (t: PaymentTarget) => void
 }) {
   const { data: invoices = [], isLoading } = usePendingInvoices()
+  const { data: balances } = useSupplierBalances()
 
   const sorted = useMemo(
     () =>
@@ -773,32 +788,46 @@ function PayablesTab({
     [invoices],
   )
 
-  const summary = useMemo(() => {
-    let totalDue = 0
+  // Vencidas: monto + count desde las facturas (consistente con la tabla).
+  // Próximas a vencer (7d) también a nivel factura.
+  const invoiceStats = useMemo(() => {
+    let overdueAmount = 0
     let overdueCount = 0
     let dueSoonCount = 0
-    const suppliers = new Set<string>()
     for (const inv of invoices) {
-      totalDue += inv.pending_amount
-      suppliers.add(inv.supplier_id)
       if (inv.days_overdue != null) {
         overdueCount += 1
+        overdueAmount += inv.pending_amount
       } else {
         const until = daysUntilDue(inv.due_date)
         if (until != null && until <= 7) dueSoonCount += 1
       }
     }
-    return { totalDue, overdueCount, dueSoonCount, supplierCount: suppliers.size }
+    return { overdueAmount, overdueCount, dueSoonCount }
   }, [invoices])
+
+  // Totales consolidados desde supplier_balance (server-side, proveedores activos).
+  const totalDue = balances?.totalPending ?? 0
+  const supplierCount = balances?.suppliersWithDebt ?? 0
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
+      {/* Banner de vencidas */}
+      {invoiceStats.overdueCount > 0 && (
+        <div className="flex shrink-0 items-center gap-2 border-b border-red-200 bg-red-50 px-6 py-2.5 text-sm font-medium text-red-700">
+          <AlertTriangle size={15} className="shrink-0" />
+          Tienes {invoiceStats.overdueCount} factura
+          {invoiceStats.overdueCount !== 1 ? 's' : ''} vencida
+          {invoiceStats.overdueCount !== 1 ? 's' : ''} por {fmtCOP(invoiceStats.overdueAmount)}
+        </div>
+      )}
+
       {/* Cards resumen */}
       <div className="grid shrink-0 grid-cols-4 gap-3 border-b border-[#ebe9e6] bg-white px-6 py-4">
-        <SummaryCard label="Total adeudado" value={fmtCOP(summary.totalDue)} tone="#dc2626" big />
-        <SummaryCard label="Vencidas" value={String(summary.overdueCount)} tone="#dc2626" />
-        <SummaryCard label="Por vencer (7 días)" value={String(summary.dueSoonCount)} tone="#d97706" />
-        <SummaryCard label="Proveedores con saldo" value={String(summary.supplierCount)} tone="#1a1a1a" />
+        <SummaryCard label="Total adeudado" value={fmtCOP(totalDue)} tone="#8b5cf6" big />
+        <SummaryCard label="Facturas vencidas" value={String(invoiceStats.overdueCount)} tone="#dc2626" />
+        <SummaryCard label="Por vencer (7 días)" value={String(invoiceStats.dueSoonCount)} tone="#d97706" />
+        <SummaryCard label="Proveedores con saldo" value={String(supplierCount)} tone="#1a1a1a" />
       </div>
 
       {/* Tabla */}
