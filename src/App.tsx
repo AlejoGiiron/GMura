@@ -13,6 +13,7 @@ import ReportsPage from '@/pages/ReportsPage'
 import ConfigPage from '@/pages/ConfigPage'
 import CashShiftsHistoryPage from '@/pages/CashShiftsHistoryPage'
 import LayawaysPage from '@/pages/LayawaysPage'
+import SuppliersPage from '@/pages/SuppliersPage'
 
 export default function App() {
   return (
@@ -41,6 +42,14 @@ export default function App() {
           />
           <Route path="inventario" element={<InventoryPage />} />
           <Route path="devoluciones" element={<ReturnsPage />} />
+          <Route
+            path="proveedores"
+            element={
+              <ProtectedRoute allowedRoles={['admin']}>
+                <SuppliersPage />
+              </ProtectedRoute>
+            }
+          />
           <Route path="clientes" element={<CustomersPage />} />
           <Route
             path="reportes"
