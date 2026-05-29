@@ -318,9 +318,12 @@ Sidebar agrupado en secciones colapsables (feature/12-caja-completa) ✅
 - Configuración (tienda, usuarios, productos, caja, etiquetas)
 
 ## Estado actual del proyecto
-Última fase completada: 14 - Proveedores y compras (feature/14-proveedores)
-En progreso: 14.1 - Reportes de compras (UI lista; pendiente aplicar migración 012)
-Siguiente: QA del módulo de proveedores
+Última fase completada: 14 - Proveedores y compras
+En progreso: 15 - Switcher multi-store
+Siguiente: — (última fase del roadmap)
+
+Nota: las migraciones 011_suppliers y 012_purchase_views quedan pendientes de
+aplicar en Supabase + verificar triggers/vistas antes del despliegue.
 
 Reportes de compras e integración final (feature/14-proveedores) ✅
   - Migración 012_purchase_views: vistas purchase_summary (compras por mes y
