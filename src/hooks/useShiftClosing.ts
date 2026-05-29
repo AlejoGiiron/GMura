@@ -34,7 +34,6 @@ export interface ShiftClosingData {
   totalExpenses: number
   expectedCash: number
   orderCount: number
-  avgTicket: number
   layawayPayments: LayawayPaymentRow[]
   layawayPaymentsTotal: number
   regularSalesTotal: number
@@ -233,9 +232,7 @@ export function useShiftClosing(shiftId: string | null) {
         .sort((a, b) => b.total - a.total)
 
       const totalSales = regularSalesTotal + layawayPaymentsTotal
-      const txCount = filteredOrders.length + layawayPayments.length
       const orderCount = filteredOrders.length
-      const avgTicket = txCount > 0 ? totalSales / txCount : 0
 
       // 5. Egresos del turno
       const { data: expensesRaw, error: expErr } = await supabase
@@ -263,7 +260,6 @@ export function useShiftClosing(shiftId: string | null) {
         totalExpenses,
         expectedCash,
         orderCount,
-        avgTicket,
         layawayPayments,
         layawayPaymentsTotal,
         regularSalesTotal,

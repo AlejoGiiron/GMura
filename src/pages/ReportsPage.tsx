@@ -10,7 +10,7 @@ import {
   LineChart, Line,
 } from 'recharts'
 import {
-  Banknote, ShoppingCart, Tag, Package, RotateCcw, Archive,
+  Banknote, ShoppingCart, Package, RotateCcw, Archive,
   TrendingUp, TrendingDown, Download, ArrowUpRight,
   ChevronLeft, ChevronRight, BarChart2, Bookmark, Clock,
   CheckCircle, Truck, Wallet, AlertTriangle,
@@ -323,21 +323,18 @@ export default function ReportsPage() {
   const kpis = useMemo(() => {
     const totalSales  = dailySales.reduce((s, r) => s + Number(r.total_sum),   0)
     const totalOrders = dailySales.reduce((s, r) => s + r.order_count,         0)
-    const avgTicket   = totalOrders > 0 ? totalSales / totalOrders : 0
     const itemsSold   = dailySales.reduce((s, r) => s + r.items_sold,          0)
     const itemsRet    = returnsSummary.reduce((s, r) => s + r.items_returned,  0)
     const returnRate  = itemsSold > 0 ? (itemsRet / itemsSold) * 100 : 0
 
     const prevTotal  = prevSales.reduce((s, r) => s + Number(r.total_sum), 0)
     const prevOrders = prevSales.reduce((s, r) => s + r.order_count,       0)
-    const prevAvg    = prevOrders > 0 ? prevTotal / prevOrders : 0
     const prevItems  = prevSales.reduce((s, r) => s + r.items_sold,        0)
 
     return {
-      totalSales, totalOrders, avgTicket, itemsSold, returnRate,
+      totalSales, totalOrders, itemsSold, returnRate,
       salesChange:  pct(totalSales,  prevTotal),
       ordersChange: pct(totalOrders, prevOrders),
-      ticketChange: pct(avgTicket,   prevAvg),
       itemsChange:  pct(itemsSold,   prevItems),
     }
   }, [dailySales, prevSales, returnsSummary])
@@ -750,14 +747,13 @@ export default function ReportsPage() {
         </div>
 
         {/* ── KPI cards ────────────────────────────────────────────────────── */}
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
           {isLoading
-            ? Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={i} />)
+            ? Array.from({ length: 5 }).map((_, i) => <SkeletonCard key={i} />)
             : (
               <>
                 <KpiCard label="Ventas totales"     value={fmtCOP(kpis.totalSales)}            icon={Banknote}    mono change={kpis.salesChange} />
                 <KpiCard label="Número de órdenes"  value={kpis.totalOrders}                   icon={ShoppingCart}      change={kpis.ordersChange} />
-                <KpiCard label="Ticket promedio"    value={fmtCOP(kpis.avgTicket)}             icon={Tag}         mono change={kpis.ticketChange} />
                 <KpiCard label="Unidades vendidas"  value={kpis.itemsSold}                     icon={Package}           change={kpis.itemsChange} />
                 <KpiCard
                   label="Tasa de devolución"

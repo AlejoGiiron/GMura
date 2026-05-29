@@ -318,14 +318,42 @@ Sidebar agrupado en secciones colapsables (feature/12-caja-completa) ✅
 - Configuración (tienda, usuarios, productos, caja, etiquetas)
 
 ## Estado actual del proyecto
-Última fase completada: 15 - Multi-store (schema + switcher)
+Última fase completada: 15.1 - Hotfix feedback (tallas gestionables, marca,
+  sin ticket promedio ni descuento %)
 En progreso: —
-Siguiente: — (última fase del roadmap)
 
 Nota: las migraciones 011_suppliers y 012_purchase_views quedan pendientes de
 aplicar en Supabase + verificar triggers/vistas antes del despliegue.
 Migración 013_multistore ya aplicada y verificada. Pendiente aplicar
 014_user_stores_admin_select (habilita la gestión de accesos en Config).
+
+Hotfix feedback v2 — tallas gestionables, marca, sin ticket promedio ni %
+(hotfix/feedback-v2-tallas-caja) ✅
+  - FIX 1 — Tipos de talla gestionables desde Config (sin migración, viven en
+    stores.config.size_types jsonb):
+    · config.types.ts: SizeTypeConfig { id, label, sizes[] } + StoreConfig.size_types
+    · sizeTypes.ts reescrito: DEFAULT_SIZE_TYPES (letter, pants_men, pants_women NEW,
+      shoes_men, shoes_women NEW, baby, kids NEW, unique, custom) como fallback/seed;
+      helpers findSizeType, isCustomSizeType, newSizeTypeId (id opaco st_xxxxxxxx,
+      inmutable para no romper referencias de products.size_type)
+    · useConfig: DEFAULT_CONFIG.size_types + resolveConfig usa defaults si vacío
+    · ProductsSection: nueva sección "Tipos de talla" (SizeTypesManager) con label
+      editable, chips de tallas add/remove, crear/eliminar tipo, reordenar por drag;
+      delete bloqueado si hay productos usándolo (count server-side por size_type)
+    · ProductModal y VariantsPanel leen size_types desde la config; preservan tipos
+      legacy no listados (input libre) al editar
+  - FIX 2 — Marca visible en venta y factura:
+    · CartItem.brand agregado; los 3 addItem (scan, enter, picker) lo pasan;
+      ítem del carrito muestra marca en línea superior uppercase
+    · NewInvoiceModal: resultados de búsqueda muestran la marca primero
+      (PurchaseVariantOption.brand + products(name, brand) en la query)
+  - FIX 3 — Ticket promedio eliminado por completo: useShiftClosing (avgTicket
+    fuera del cálculo y del return), CashShiftReceipt (línea "Ticket prom"),
+    CashShiftModals y CashShiftsHistoryPage (prop), ReportsPage (KPI + grid 6→5)
+    y SalesHistoryPage (card + grid 4→3)
+  - FIX 4 — Descuento en caja solo monto fijo: Discount simplificado a { value }
+    (sin type); cartTotals clampa al subtotal; CartPanel sin toggle %/$, input
+    con prefijo $ y clamp a subtotal en onChange
 
 Multi-store — switcher y gestión de accesos (feature/15-multistore) ✅
   - get_my_store_id() ahora devuelve la tienda ACTIVA (current_store_id) →

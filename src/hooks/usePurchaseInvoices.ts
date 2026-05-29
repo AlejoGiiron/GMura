@@ -84,6 +84,7 @@ export interface PurchaseVariantOption {
   id: string
   product_id: string
   product_name: string
+  brand: string | null
   size: string | null
   color: string | null
   sku: string | null
@@ -374,7 +375,7 @@ interface RawSearchVariant {
   reserved_qty: number
   sku: string | null
   barcode: string | null
-  products: { name: string } | null
+  products: { name: string; brand: string | null } | null
 }
 
 export function usePurchaseVariantSearch(query: string) {
@@ -388,12 +389,13 @@ export function usePurchaseVariantSearch(query: string) {
       if (dq.length < 2) return []
 
       const columns =
-        'id, product_id, size, color, price, cost_price, stock_qty, reserved_qty, sku, barcode, products(name)'
+        'id, product_id, size, color, price, cost_price, stock_qty, reserved_qty, sku, barcode, products(name, brand)'
 
       const toOption = (r: RawSearchVariant): PurchaseVariantOption => ({
         id: r.id,
         product_id: r.product_id,
         product_name: r.products?.name ?? '',
+        brand: r.products?.brand ?? null,
         size: r.size,
         color: r.color,
         sku: r.sku,
