@@ -17,6 +17,8 @@ import {
   ChevronDown,
   LogOut,
   Bookmark,
+  Truck,
+  Building2,
 } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import { useActiveLayawaysCount } from '@/hooks/useLayaways'
@@ -84,6 +86,15 @@ const NAV_GROUPS: NavGroup[] = [
     icon: Users,
     items: [
       { label: 'Clientes', path: '/clientes', icon: Users },
+    ],
+  },
+  {
+    id: 'compras',
+    label: 'Compras',
+    icon: Truck,
+    adminOnly: true,
+    items: [
+      { label: 'Proveedores', path: '/proveedores', icon: Building2 },
     ],
   },
   {

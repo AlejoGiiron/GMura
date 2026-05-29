@@ -6,6 +6,7 @@ export type ReturnType = 'return' | 'exchange'
 export type ReturnStatus = 'pending' | 'completed'
 export type ReturnAction = 'refund' | 'exchange'
 export type LayawayStatus = 'active' | 'completed' | 'cancelled' | 'expired'
+export type InvoiceStatus = 'pending' | 'partial' | 'paid' | 'cancelled'
 
 export interface Profile {
   id: string
@@ -206,6 +207,65 @@ export interface LayawayPayment {
   created_at: string
 }
 
+export interface Supplier {
+  id: string
+  store_id: string
+  name: string
+  nit: string | null
+  contact_name: string | null
+  phone: string | null
+  email: string | null
+  address: string | null
+  payment_terms_days: number
+  is_active: boolean
+  notes: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface PurchaseInvoice {
+  id: string
+  invoice_number: string
+  store_id: string
+  supplier_id: string
+  created_by: string
+  invoice_date: string       // 'YYYY-MM-DD'
+  due_date: string | null    // 'YYYY-MM-DD'
+  status: InvoiceStatus
+  subtotal: number
+  tax: number
+  total: number
+  paid_amount: number
+  notes: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface PurchaseInvoiceItem {
+  id: string
+  invoice_id: string
+  variant_id: string
+  product_id: string
+  qty: number
+  unit_cost: number
+  subtotal: number
+  update_cost: boolean
+}
+
+export interface SupplierPayment {
+  id: string
+  invoice_id: string
+  store_id: string
+  amount: number
+  payment_date: string       // 'YYYY-MM-DD'
+  payment_method: PaymentMethod
+  reference: string | null
+  notes: string | null
+  created_by: string
+  shift_id: string | null
+  created_at: string
+}
+
 // ── Views ─────────────────────────────────────────────────────────────────────
 
 export interface DailySalesSummary {
@@ -287,6 +347,28 @@ export interface LayawayExpiringSoon {
   pending_amount: number
   expires_at: string
   days_until_expiry: number
+}
+
+export interface PurchaseSummary {
+  store_id: string
+  supplier_id: string
+  supplier_name: string
+  month: string              // 'YYYY-MM-DD' (primer día del mes)
+  invoice_count: number
+  total_purchased: number
+  total_paid: number
+  total_pending: number
+}
+
+export interface SupplierBalance {
+  supplier_id: string
+  store_id: string
+  supplier_name: string
+  nit: string | null
+  open_invoices: number
+  total_purchased: number
+  pending_amount: number
+  overdue_invoices: number
 }
 
 // ── Database schema ───────────────────────────────────────────────────────────
@@ -417,6 +499,59 @@ export interface Database {
         }
         Update: Partial<Omit<LayawayPayment, 'id'>>
       }
+      suppliers: {
+        Row: Supplier
+        Insert: Omit<
+          Supplier,
+          'id' | 'is_active' | 'payment_terms_days' | 'created_at' | 'updated_at'
+        > & {
+          id?: string
+          is_active?: boolean
+          payment_terms_days?: number
+          created_at?: string
+          updated_at?: string
+        }
+        Update: Partial<Omit<Supplier, 'id'>>
+      }
+      purchase_invoices: {
+        Row: PurchaseInvoice
+        Insert: Omit<
+          PurchaseInvoice,
+          | 'id'
+          | 'status'
+          | 'subtotal'
+          | 'tax'
+          | 'paid_amount'
+          | 'created_at'
+          | 'updated_at'
+        > & {
+          id?: string
+          status?: InvoiceStatus
+          subtotal?: number
+          tax?: number
+          paid_amount?: number
+          created_at?: string
+          updated_at?: string
+        }
+        Update: Partial<Omit<PurchaseInvoice, 'id'>>
+      }
+      purchase_invoice_items: {
+        Row: PurchaseInvoiceItem
+        Insert: Omit<PurchaseInvoiceItem, 'id' | 'update_cost'> & {
+          id?: string
+          update_cost?: boolean
+        }
+        Update: Partial<Omit<PurchaseInvoiceItem, 'id'>>
+      }
+      supplier_payments: {
+        Row: SupplierPayment
+        Insert: Omit<SupplierPayment, 'id' | 'payment_date' | 'created_at'> & {
+          id?: string
+          payment_date?: string
+          created_at?: string
+        }
+        Update: Partial<Omit<SupplierPayment, 'id'>>
+      }
     }
     Views: {
       daily_sales_summary:    { Row: DailySalesSummary }
@@ -425,6 +560,8 @@ export interface Database {
       returns_summary:        { Row: ReturnsSummary }
       layaway_summary:        { Row: LayawaySummary }
       layaway_expiring_soon:  { Row: LayawayExpiringSoon }
+      purchase_summary:       { Row: PurchaseSummary }
+      supplier_balance:       { Row: SupplierBalance }
     }
     Functions: Record<string, never>
     Enums: Record<string, never>

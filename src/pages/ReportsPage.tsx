@@ -7,12 +7,13 @@ import { es } from 'date-fns/locale'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
   ResponsiveContainer, PieChart, Pie, Cell, AreaChart, Area,
+  LineChart, Line,
 } from 'recharts'
 import {
   Banknote, ShoppingCart, Tag, Package, RotateCcw, Archive,
   TrendingUp, TrendingDown, Download, ArrowUpRight,
   ChevronLeft, ChevronRight, BarChart2, Bookmark, Clock,
-  CheckCircle,
+  CheckCircle, Truck, Wallet, AlertTriangle,
 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { fmtCOP } from '@/lib/formatters'
@@ -22,7 +23,11 @@ import {
   useLayawaysSummary,
   useExpiringLayaways,
   useLayawaysForExport,
+  usePurchaseReport,
+  useSupplierBalances,
+  useInvoicesForExport,
 } from '@/hooks/useReports'
+import { INVOICE_STATUS_LABEL } from '@/lib/invoices'
 import type {
   DailySalesSummary,
   PaymentMethod,
@@ -59,6 +64,10 @@ const LAYAWAY_STATUS_LABELS: Record<LayawayStatus, string> = {
   cancelled: 'Cancelado',
   expired:   'Vencido',
 }
+
+// Paleta para el pie de proveedores (top 5 + "Otros")
+const SUPPLIER_COLORS = ['#8b5cf6', '#3b82f6', '#10b981', '#f59e0b', '#ec4899']
+const SUPPLIER_OTHERS_COLOR = '#cbd5e1'
 
 const PERIOD_OPTIONS = [
   { id: 'today',      label: 'Hoy' },
@@ -108,6 +117,11 @@ function pct(a: number, b: number): number | null {
 
 function fmtLabel(iso: string): string {
   try { return format(parseISO(iso + 'T00:00:00'), 'd MMM', { locale: es }) }
+  catch { return iso }
+}
+
+function fmtMonth(iso: string): string {
+  try { return format(parseISO(iso + 'T00:00:00'), 'MMM yyyy', { locale: es }) }
   catch { return iso }
 }
 
@@ -289,6 +303,9 @@ export default function ReportsPage() {
   const { data: layawayKpis, isLoading: layawayLoading } = useLayawaysSummary()
   const { data: expiringList = [], isLoading: expiringLoading } = useExpiringLayaways()
   const { data: layawayExportRows = [] } = useLayawaysForExport()
+  const { data: purchaseReport, isLoading: purchaseLoading } = usePurchaseReport({ from, to })
+  const { data: supplierBalances, isLoading: balancesLoading } = useSupplierBalances()
+  const { data: invoiceExportRows = [] } = useInvoicesForExport({ from, to })
 
   // Variants table state
   const [sortKey, setSortKey] = useState<SortKey>('units_sold')
@@ -369,6 +386,67 @@ export default function ReportsPage() {
       .sort((a, b) => Number(b.stock_value) - Number(a.stock_value))
       .slice(0, 10),
     [invReport],
+  )
+
+  // ── Purchases derived data ────────────────────────────────────────────────
+
+  const purchaseMonthlyData = useMemo(() =>
+    (purchaseReport?.byMonth ?? []).map((m) => ({
+      label: fmtMonth(m.month),
+      total: m.total_purchased,
+    })),
+    [purchaseReport],
+  )
+
+  const supplierPieData = useMemo((): PaymentSlice[] => {
+    const list = purchaseReport?.bySupplier ?? []
+    const top = list.slice(0, 5)
+    const rest = list.slice(5)
+    const data: PaymentSlice[] = top.map((s, i) => ({
+      name: s.supplier_name,
+      value: s.total_purchased,
+      color: SUPPLIER_COLORS[i] ?? SUPPLIER_OTHERS_COLOR,
+    }))
+    const restTotal = rest.reduce((s, r) => s + r.total_purchased, 0)
+    if (restTotal > 0) {
+      data.push({ name: 'Otros', value: restTotal, color: SUPPLIER_OTHERS_COLOR })
+    }
+    return data.filter((d) => d.value > 0)
+  }, [purchaseReport])
+
+  // Compras vs ventas por mes (ventas agregadas desde daily_sales_summary)
+  const purchaseVsSales = useMemo(() => {
+    const salesByMonth = new Map<string, number>()
+    for (const r of dailySales) {
+      const month = r.sale_date.slice(0, 7) + '-01'
+      salesByMonth.set(month, (salesByMonth.get(month) ?? 0) + Number(r.total_sum))
+    }
+    const purchasesByMonth = new Map<string, number>()
+    for (const m of purchaseReport?.byMonth ?? []) {
+      purchasesByMonth.set(m.month, m.total_purchased)
+    }
+    const months = new Set<string>([...salesByMonth.keys(), ...purchasesByMonth.keys()])
+    return [...months]
+      .sort((a, b) => a.localeCompare(b))
+      .map((month) => ({
+        label: fmtMonth(month),
+        ventas: salesByMonth.get(month) ?? 0,
+        compras: purchasesByMonth.get(month) ?? 0,
+      }))
+  }, [dailySales, purchaseReport])
+
+  const topSuppliers = useMemo(() => {
+    const list = purchaseReport?.bySupplier ?? []
+    const total = purchaseReport?.totalPurchased ?? 0
+    return list.slice(0, 10).map((s) => ({
+      ...s,
+      pctOfTotal: total > 0 ? (s.total_purchased / total) * 100 : 0,
+    }))
+  }, [purchaseReport])
+
+  const payableBalances = useMemo(
+    () => (supplierBalances?.balances ?? []).filter((b) => b.pending_amount > 0),
+    [supplierBalances],
   )
 
   // ── Excel export ────────────────────────────────────────────────────────────
@@ -540,6 +618,58 @@ export default function ReportsPage() {
         fecha: r.return_date,
         tipo:  r.return_type === 'return' ? 'Devolución' : 'Cambio',
         count: r.return_count, items: r.items_returned, refund: Number(r.refund_amount),
+      })
+    }
+
+    // Hoja — Compras (una fila por factura)
+    const wsC = wb.addWorksheet('Compras')
+    wsC.columns = [
+      { header: '# Factura',    key: 'number',   width: 16 },
+      { header: 'Fecha',        key: 'date',     width: 14 },
+      { header: 'Proveedor',    key: 'supplier', width: 30 },
+      { header: 'Subtotal',     key: 'subtotal', width: 16 },
+      { header: 'IVA',          key: 'tax',      width: 14 },
+      { header: 'Total',        key: 'total',    width: 16 },
+      { header: 'Pagado',       key: 'paid',     width: 16 },
+      { header: 'Saldo',        key: 'pending',  width: 16 },
+      { header: 'Estado',       key: 'status',   width: 14 },
+      { header: 'Vencimiento',  key: 'due',      width: 14 },
+    ]
+    styleHeader(wsC)
+    for (const r of invoiceExportRows) {
+      wsC.addRow({
+        number: r.invoice_number,
+        date: r.invoice_date,
+        supplier: r.supplier_name,
+        subtotal: r.subtotal,
+        tax: r.tax,
+        total: r.total,
+        paid: r.paid_amount,
+        pending: r.pending,
+        status: INVOICE_STATUS_LABEL[r.status],
+        due: r.due_date ?? '',
+      })
+    }
+
+    // Hoja — Saldos proveedores
+    const wsB = wb.addWorksheet('Saldos proveedores')
+    wsB.columns = [
+      { header: 'Proveedor',         key: 'supplier', width: 30 },
+      { header: 'NIT',               key: 'nit',      width: 18 },
+      { header: 'Facturas abiertas', key: 'open',     width: 16 },
+      { header: 'Total comprado',    key: 'total',    width: 18 },
+      { header: 'Pendiente',         key: 'pending',  width: 16 },
+      { header: 'Vencidas',          key: 'overdue',  width: 12 },
+    ]
+    styleHeader(wsB)
+    for (const b of supplierBalances?.balances ?? []) {
+      wsB.addRow({
+        supplier: b.supplier_name,
+        nit: b.nit ?? '',
+        open: b.open_invoices,
+        total: Number(b.total_purchased),
+        pending: Number(b.pending_amount),
+        overdue: b.overdue_invoices,
       })
     }
 
@@ -1038,6 +1168,223 @@ export default function ReportsPage() {
                 )}
               </SectionCard>
             </div>
+          </div>
+        </div>
+
+        {/* ── Purchases section ─────────────────────────────────────────────── */}
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h2
+              className="tracking-[-0.02em]"
+              style={{ fontFamily: 'Bricolage Grotesque, sans-serif', fontSize: 18, fontWeight: 600, color: '#1a1a1a' }}
+            >
+              Compras
+            </h2>
+            <button
+              onClick={() => navigate('/proveedores')}
+              className="flex items-center gap-1 text-xs font-medium text-[#8b5cf6] hover:underline"
+            >
+              Ir al módulo <ArrowUpRight size={12} />
+            </button>
+          </div>
+
+          {/* KPIs */}
+          <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+            {purchaseLoading
+              ? Array.from({ length: 4 }).map((_, i) => <SkeletonCard key={i} />)
+              : (
+                <>
+                  <KpiCard label="Total comprado"   value={fmtCOP(purchaseReport?.totalPurchased ?? 0)} icon={Truck}    mono />
+                  <KpiCard label="Total pagado"     value={fmtCOP(purchaseReport?.totalPaid ?? 0)}      icon={Wallet}   mono tone="green" />
+                  <KpiCard
+                    label="Saldo pendiente"
+                    value={fmtCOP(purchaseReport?.totalPending ?? 0)}
+                    icon={Banknote}
+                    mono
+                    tone={(purchaseReport?.totalPending ?? 0) > 0 ? 'red' : 'normal'}
+                  />
+                  <KpiCard
+                    label="Promedio días de pago"
+                    value={
+                      purchaseReport?.avgDaysToPay != null
+                        ? `${Math.round(purchaseReport.avgDaysToPay)} días`
+                        : '—'
+                    }
+                    icon={Clock}
+                  />
+                </>
+              )}
+          </div>
+
+          {/* Row: compras mensuales + pie proveedores */}
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+            <div className="lg:col-span-2">
+              <SectionCard title="Compras mensuales">
+                {purchaseLoading ? (
+                  <SkeletonChart height={260} />
+                ) : purchaseMonthlyData.length === 0 ? (
+                  <EmptyChart message="Sin compras en el período seleccionado" />
+                ) : (
+                  <ResponsiveContainer width="100%" height={260}>
+                    <BarChart data={purchaseMonthlyData} barSize={28}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#f5f4f1" vertical={false} />
+                      <XAxis dataKey="label" tick={{ fontSize: 11, fill: '#a8a29e' }} axisLine={false} tickLine={false} />
+                      <YAxis tickFormatter={fmtYAxis} tick={{ fontSize: 11, fill: '#a8a29e' }} axisLine={false} tickLine={false} width={68} />
+                      <Tooltip content={<CopTooltip />} />
+                      <Bar dataKey="total" name="Compras" fill="#8b5cf6" radius={[4, 4, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                )}
+              </SectionCard>
+            </div>
+
+            <SectionCard title="Compras por proveedor">
+              {purchaseLoading ? (
+                <SkeletonChart height={260} />
+              ) : supplierPieData.length === 0 ? (
+                <EmptyChart message="Sin datos de proveedores" />
+              ) : (
+                <div className="space-y-4">
+                  <ResponsiveContainer width="100%" height={160}>
+                    <PieChart>
+                      <Pie data={supplierPieData} cx="50%" cy="50%" innerRadius={45} outerRadius={72} paddingAngle={2} dataKey="value">
+                        {supplierPieData.map((d) => <Cell key={d.name} fill={d.color} />)}
+                      </Pie>
+                      <Tooltip formatter={(v) => [fmtCOP(Number(v ?? 0))]} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                  <div className="space-y-2">
+                    {supplierPieData.map((d) => {
+                      const total = supplierPieData.reduce((s, p) => s + p.value, 0)
+                      const p = total > 0 ? (d.value / total) * 100 : 0
+                      return (
+                        <div key={d.name} className="flex items-center justify-between">
+                          <div className="flex min-w-0 items-center gap-2">
+                            <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: d.color }} />
+                            <span className="truncate text-xs text-[#525252]">{d.name}</span>
+                          </div>
+                          <div className="text-right">
+                            <span className="block font-mono text-xs font-semibold text-[#1a1a1a]">{fmtCOP(d.value)}</span>
+                            <span className="text-[10px] text-[#a8a29e]">{p.toFixed(1)}%</span>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+            </SectionCard>
+          </div>
+
+          {/* Compras vs ventas */}
+          <SectionCard title="Compras vs ventas" subtitle="Comparativo mensual del período">
+            {(isLoading || purchaseLoading) ? (
+              <SkeletonChart height={260} />
+            ) : purchaseVsSales.length === 0 ? (
+              <EmptyChart message="Sin datos en el período" />
+            ) : (
+              <ResponsiveContainer width="100%" height={260}>
+                <LineChart data={purchaseVsSales}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f5f4f1" vertical={false} />
+                  <XAxis dataKey="label" tick={{ fontSize: 11, fill: '#a8a29e' }} axisLine={false} tickLine={false} />
+                  <YAxis tickFormatter={fmtYAxis} tick={{ fontSize: 11, fill: '#a8a29e' }} axisLine={false} tickLine={false} width={68} />
+                  <Tooltip content={<CopTooltip />} />
+                  <Legend iconType="circle" iconSize={8}
+                    formatter={(v: string) => <span style={{ fontSize: 11, color: '#737373' }}>{v}</span>} />
+                  <Line type="monotone" dataKey="ventas" name="Ventas" stroke="#16a34a" strokeWidth={2}
+                    dot={{ r: 3, fill: '#16a34a', strokeWidth: 0 }} activeDot={{ r: 5 }} />
+                  <Line type="monotone" dataKey="compras" name="Compras" stroke="#8b5cf6" strokeWidth={2}
+                    dot={{ r: 3, fill: '#8b5cf6', strokeWidth: 0 }} activeDot={{ r: 5 }} />
+                </LineChart>
+              </ResponsiveContainer>
+            )}
+          </SectionCard>
+
+          {/* Tablas: top proveedores + cuentas por pagar */}
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            <SectionCard title="Top proveedores" subtitle="Por total comprado en el período">
+              {purchaseLoading ? (
+                <div className="space-y-px">
+                  {Array.from({ length: 5 }).map((_, i) => <div key={i} className="h-11 animate-pulse rounded-lg bg-slate-100" />)}
+                </div>
+              ) : topSuppliers.length === 0 ? (
+                <p className="py-6 text-center text-sm text-slate-400">Sin compras en el período</p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="border-b border-[#ebe9e6] bg-[#fafaf9]">
+                        {['Proveedor', 'Total comprado', '% del total', 'Saldo'].map((h) => (
+                          <th key={h} className={thCls}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {topSuppliers.map((s) => (
+                        <tr
+                          key={s.supplier_id}
+                          onClick={() => navigate(`/proveedores?supplier=${s.supplier_id}`)}
+                          className="cursor-pointer border-b border-[#f5f4f1] last:border-0 hover:bg-[#fafaf9]"
+                        >
+                          <td className="px-4 py-3 text-sm font-medium text-[#1a1a1a]">{s.supplier_name}</td>
+                          <td className="px-4 py-3 text-right font-mono text-sm font-semibold tabular-nums">{fmtCOP(s.total_purchased)}</td>
+                          <td className="px-4 py-3 text-right font-mono text-xs tabular-nums text-[#737373]">{s.pctOfTotal.toFixed(1)}%</td>
+                          <td className="px-4 py-3 text-right font-mono text-sm tabular-nums text-red-600">
+                            {s.total_pending > 0 ? fmtCOP(s.total_pending) : <span className="text-[#a8a29e]">—</span>}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </SectionCard>
+
+            <SectionCard title="Cuentas por pagar" subtitle="Saldo consolidado por proveedor">
+              {balancesLoading ? (
+                <div className="space-y-px">
+                  {Array.from({ length: 5 }).map((_, i) => <div key={i} className="h-11 animate-pulse rounded-lg bg-slate-100" />)}
+                </div>
+              ) : payableBalances.length === 0 ? (
+                <p className="py-6 text-center text-sm text-slate-400">Sin cuentas pendientes por pagar</p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="border-b border-[#ebe9e6] bg-[#fafaf9]">
+                        {['Proveedor', 'Abiertas', 'Pendiente', 'Vencidas'].map((h) => (
+                          <th key={h} className={thCls}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {payableBalances.map((b) => (
+                        <tr
+                          key={b.supplier_id}
+                          onClick={() => navigate(`/proveedores?supplier=${b.supplier_id}`)}
+                          className={`cursor-pointer border-b border-[#f5f4f1] last:border-0 hover:bg-[#fafaf9] ${
+                            b.overdue_invoices > 0 ? 'bg-red-50/40' : ''
+                          }`}
+                        >
+                          <td className="px-4 py-3 text-sm font-medium text-[#1a1a1a]">{b.supplier_name}</td>
+                          <td className="px-4 py-3 text-right font-mono text-sm tabular-nums text-[#525252]">{b.open_invoices}</td>
+                          <td className="px-4 py-3 text-right font-mono text-sm font-semibold tabular-nums text-red-600">{fmtCOP(b.pending_amount)}</td>
+                          <td className="px-4 py-3 text-right">
+                            {b.overdue_invoices > 0 ? (
+                              <span className="inline-flex items-center gap-1 font-mono text-xs font-bold text-red-600">
+                                <AlertTriangle size={11} /> {b.overdue_invoices}
+                              </span>
+                            ) : (
+                              <span className="text-[#a8a29e]">—</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </SectionCard>
           </div>
         </div>
 

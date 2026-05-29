@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { format, subDays } from 'date-fns'
+import { format, subDays, startOfMonth } from 'date-fns'
 import toast from 'react-hot-toast'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from './useAuth'
@@ -12,6 +12,9 @@ import type {
   LayawaySummary,
   LayawayExpiringSoon,
   LayawayStatus,
+  PurchaseSummary,
+  SupplierBalance,
+  InvoiceStatus,
 } from '@/types/database.types'
 
 const STALE_5_MIN = 5 * 60 * 1_000
@@ -365,6 +368,276 @@ export function useInventoryReport() {
       const lowStockCount   = items.filter((i) => i.stock_state === 'low').length
 
       return { totalValue, outOfStockCount, lowStockCount, items }
+    },
+    enabled: !!storeId,
+    staleTime: STALE_5_MIN,
+  })
+}
+
+// ── usePurchaseReport ───────────────────────────────────────────────────────
+// Compras del período desde purchase_summary, agrupadas por mes y proveedor.
+// avgDaysToPay se calcula con los abonos del período (payment_date - invoice_date).
+
+export type PurchaseMonthRow = {
+  month: string            // 'YYYY-MM-DD'
+  total_purchased: number
+  total_paid: number
+  total_pending: number
+  invoice_count: number
+}
+
+export type PurchaseSupplierRow = {
+  supplier_id: string
+  supplier_name: string
+  total_purchased: number
+  total_paid: number
+  total_pending: number
+  invoice_count: number
+}
+
+export type PurchaseReport = {
+  byMonth: PurchaseMonthRow[]
+  bySupplier: PurchaseSupplierRow[]
+  totalPurchased: number
+  totalPaid: number
+  totalPending: number
+  avgDaysToPay: number | null
+}
+
+interface RawPaymentForAvg {
+  payment_date: string
+  purchase_invoices: { invoice_date: string } | null
+}
+
+export function usePurchaseReport({ from, to }: ReportsFilters) {
+  const { profile } = useAuth()
+  const storeId = profile?.store_id ?? ''
+
+  const fromMonth = format(startOfMonth(from), 'yyyy-MM-dd')
+  const fromDate  = format(from, 'yyyy-MM-dd')
+  const toDate    = format(to,   'yyyy-MM-dd')
+
+  return useQuery({
+    queryKey: ['reports', 'purchases', storeId, fromMonth, toDate],
+    queryFn: async (): Promise<PurchaseReport> => {
+      const { data, error } = await supabase
+        .from('purchase_summary' as never)
+        .select('*')
+        .gte('month' as never, fromMonth)
+        .lte('month' as never, toDate)
+        .order('month' as never, { ascending: true })
+
+      if (error) {
+        toast.error('Error cargando reporte de compras')
+        throw error
+      }
+
+      const rows = (data ?? []) as unknown as PurchaseSummary[]
+
+      const monthMap = new Map<string, PurchaseMonthRow>()
+      const supplierMap = new Map<string, PurchaseSupplierRow>()
+      let totalPurchased = 0
+      let totalPaid = 0
+      let totalPending = 0
+
+      for (const r of rows) {
+        const purchased = Number(r.total_purchased)
+        const paid = Number(r.total_paid)
+        const pending = Number(r.total_pending)
+        totalPurchased += purchased
+        totalPaid += paid
+        totalPending += pending
+
+        const m = monthMap.get(r.month) ?? {
+          month: r.month,
+          total_purchased: 0,
+          total_paid: 0,
+          total_pending: 0,
+          invoice_count: 0,
+        }
+        m.total_purchased += purchased
+        m.total_paid += paid
+        m.total_pending += pending
+        m.invoice_count += r.invoice_count
+        monthMap.set(r.month, m)
+
+        const s = supplierMap.get(r.supplier_id) ?? {
+          supplier_id: r.supplier_id,
+          supplier_name: r.supplier_name,
+          total_purchased: 0,
+          total_paid: 0,
+          total_pending: 0,
+          invoice_count: 0,
+        }
+        s.total_purchased += purchased
+        s.total_paid += paid
+        s.total_pending += pending
+        s.invoice_count += r.invoice_count
+        supplierMap.set(r.supplier_id, s)
+      }
+
+      // Promedio de días de pago: abonos del período vs fecha de su factura
+      const { data: payData, error: payErr } = await supabase
+        .from('supplier_payments')
+        .select('payment_date, purchase_invoices(invoice_date)')
+        .eq('store_id' as never, storeId)
+        .gte('payment_date' as never, fromDate)
+        .lte('payment_date' as never, toDate)
+      if (payErr) throw payErr
+
+      const payRows = (payData ?? []) as unknown as RawPaymentForAvg[]
+      let daySum = 0
+      let dayCount = 0
+      for (const p of payRows) {
+        const inv = p.purchase_invoices?.invoice_date
+        if (!inv) continue
+        const diff = Math.round(
+          (new Date(p.payment_date).getTime() - new Date(inv).getTime()) /
+            86_400_000,
+        )
+        if (diff >= 0) {
+          daySum += diff
+          dayCount += 1
+        }
+      }
+      const avgDaysToPay = dayCount > 0 ? daySum / dayCount : null
+
+      return {
+        byMonth: [...monthMap.values()].sort((a, b) =>
+          a.month.localeCompare(b.month),
+        ),
+        bySupplier: [...supplierMap.values()].sort(
+          (a, b) => b.total_purchased - a.total_purchased,
+        ),
+        totalPurchased,
+        totalPaid,
+        totalPending,
+        avgDaysToPay,
+      }
+    },
+    enabled: !!storeId,
+    staleTime: STALE_5_MIN,
+  })
+}
+
+// ── useSupplierBalances ───────────────────────────────────────────────────────
+// Saldos consolidados por proveedor (activos e inactivos) desde supplier_balance.
+
+export type SupplierBalancesData = {
+  balances: SupplierBalance[]
+  totalPending: number
+  suppliersWithDebt: number
+  overdueInvoices: number
+  openInvoices: number
+}
+
+export function useSupplierBalances() {
+  const { profile } = useAuth()
+  const storeId = profile?.store_id ?? ''
+
+  return useQuery({
+    queryKey: ['reports', 'supplier-balances', storeId],
+    queryFn: async (): Promise<SupplierBalancesData> => {
+      const { data, error } = await supabase
+        .from('supplier_balance' as never)
+        .select('*')
+        .order('pending_amount' as never, { ascending: false })
+
+      if (error) {
+        toast.error('Error cargando saldos de proveedores')
+        throw error
+      }
+
+      const rows = (data ?? []) as unknown as SupplierBalance[]
+      const balances = rows.map((r) => ({
+        ...r,
+        total_purchased: Number(r.total_purchased),
+        pending_amount: Number(r.pending_amount),
+      }))
+
+      const totalPending = balances.reduce((s, r) => s + r.pending_amount, 0)
+      const suppliersWithDebt = balances.filter((r) => r.pending_amount > 0).length
+      const overdueInvoices = balances.reduce((s, r) => s + r.overdue_invoices, 0)
+      const openInvoices = balances.reduce((s, r) => s + r.open_invoices, 0)
+
+      return { balances, totalPending, suppliersWithDebt, overdueInvoices, openInvoices }
+    },
+    enabled: !!storeId,
+    staleTime: STALE_5_MIN,
+  })
+}
+
+// ── useInvoicesForExport ──────────────────────────────────────────────────────
+// Lista plana de facturas del período para la hoja "Compras" del Excel.
+
+export type InvoiceExportRow = {
+  invoice_number: string
+  invoice_date: string
+  supplier_name: string
+  subtotal: number
+  tax: number
+  total: number
+  paid_amount: number
+  pending: number
+  status: InvoiceStatus
+  due_date: string | null
+}
+
+interface RawExportInvoice {
+  invoice_number: string
+  invoice_date: string
+  subtotal: number
+  tax: number
+  total: number
+  paid_amount: number
+  status: InvoiceStatus
+  due_date: string | null
+  suppliers: { name: string } | null
+}
+
+export function useInvoicesForExport({ from, to }: ReportsFilters) {
+  const { profile } = useAuth()
+  const storeId = profile?.store_id ?? ''
+
+  const fromDate = format(from, 'yyyy-MM-dd')
+  const toDate   = format(to,   'yyyy-MM-dd')
+
+  return useQuery({
+    queryKey: ['reports', 'invoices-export', storeId, fromDate, toDate],
+    queryFn: async (): Promise<InvoiceExportRow[]> => {
+      const { data, error } = await supabase
+        .from('purchase_invoices')
+        .select(
+          'invoice_number, invoice_date, subtotal, tax, total, paid_amount, status, due_date, suppliers(name)',
+        )
+        .eq('store_id' as never, storeId)
+        .gte('invoice_date' as never, fromDate)
+        .lte('invoice_date' as never, toDate)
+        .order('invoice_date' as never, { ascending: false })
+        .limit(5000)
+
+      if (error) {
+        toast.error('Error preparando export de compras')
+        throw error
+      }
+
+      return (data ?? []).map((row) => {
+        const r = row as unknown as RawExportInvoice
+        const total = Number(r.total)
+        const paid = Number(r.paid_amount)
+        return {
+          invoice_number: r.invoice_number,
+          invoice_date: r.invoice_date,
+          supplier_name: r.suppliers?.name ?? '',
+          subtotal: Number(r.subtotal),
+          tax: Number(r.tax),
+          total,
+          paid_amount: paid,
+          pending: Math.max(0, total - paid),
+          status: r.status,
+          due_date: r.due_date,
+        }
+      })
     },
     enabled: !!storeId,
     staleTime: STALE_5_MIN,
