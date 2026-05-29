@@ -214,10 +214,6 @@ export default function CajaSection() {
       toast.error('El porcentaje de abono inicial no puede superar 100')
       return
     }
-    if (layawayDiscountMode === 'percent' && discountValue > 100) {
-      toast.error('El porcentaje de descuento no puede superar 100')
-      return
-    }
 
     setSaving(true)
     try {
@@ -442,56 +438,42 @@ export default function CajaSection() {
             </p>
           </div>
 
-          {/* Descuento aplicable */}
+          {/* Descuento aplicable — solo monto fijo */}
           <div className="mb-4">
-            <label className="mb-1.5 block text-xs font-medium text-[#525252]">
-              Descuento aplicable
+            <label className="flex cursor-pointer items-center gap-2.5">
+              <input
+                type="checkbox"
+                checked={layawayDiscountMode === 'fixed'}
+                onChange={(e) =>
+                  setLayawayDiscountMode(e.target.checked ? 'fixed' : 'none')
+                }
+                className="h-4 w-4 cursor-pointer rounded accent-violet-500"
+              />
+              <span className="text-xs font-medium text-[#525252]">
+                Permitir descuento al crear un separado
+              </span>
             </label>
-            <div className="flex flex-wrap gap-1.5">
-              {(['none', 'fixed', 'percent'] as const).map((mode) => {
-                const active = layawayDiscountMode === mode
-                const label =
-                  mode === 'none'
-                    ? 'Ninguno'
-                    : mode === 'fixed'
-                      ? 'Monto fijo'
-                      : 'Porcentaje'
-                return (
-                  <button
-                    key={mode}
-                    type="button"
-                    onClick={() => setLayawayDiscountMode(mode)}
-                    className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
-                      active
-                        ? 'border-violet-600 bg-violet-600 text-white'
-                        : 'border-[#ebe9e6] bg-white text-[#525252] hover:border-violet-300 hover:bg-violet-50'
-                    }`}
-                  >
-                    {label}
-                  </button>
-                )
-              })}
-            </div>
-            {layawayDiscountMode !== 'none' && (
-              <div className="mt-2 flex items-center gap-2 rounded-lg border border-[#ebe9e6] px-3 focus-within:border-violet-400 focus-within:ring-2 focus-within:ring-violet-100">
-                <input
-                  value={layawayDiscountValue}
-                  onChange={(e) =>
-                    setLayawayDiscountValue(e.target.value.replace(/\D/g, ''))
-                  }
-                  placeholder="0"
-                  inputMode="numeric"
-                  className="h-9 flex-1 bg-transparent font-mono text-sm outline-none"
-                />
-                <span className="text-xs text-[#a8a29e]">
-                  {layawayDiscountMode === 'percent' ? '%' : 'COP'}
-                </span>
-              </div>
+            {layawayDiscountMode === 'fixed' && (
+              <>
+                <div className="mt-2 flex items-center gap-2 rounded-lg border border-[#ebe9e6] px-3 focus-within:border-violet-400 focus-within:ring-2 focus-within:ring-violet-100">
+                  <span className="text-sm text-[#737373]">$</span>
+                  <input
+                    value={layawayDiscountValue}
+                    onChange={(e) =>
+                      setLayawayDiscountValue(e.target.value.replace(/\D/g, ''))
+                    }
+                    placeholder="0"
+                    inputMode="numeric"
+                    className="h-9 flex-1 bg-transparent font-mono text-sm outline-none"
+                  />
+                  <span className="text-xs text-[#a8a29e]">COP</span>
+                </div>
+                <p className="mt-1 text-[11px] text-[#a8a29e]">
+                  Monto máximo de descuento que el vendedor puede aplicar al
+                  crear un separado.
+                </p>
+              </>
             )}
-            <p className="mt-1 text-[11px] text-[#a8a29e]">
-              Descuento máximo que el vendedor puede aplicar al crear un
-              separado. 0 = sin descuento.
-            </p>
           </div>
 
           {/* Días vencimiento */}

@@ -19,7 +19,7 @@ export interface SizeTypeConfig {
 }
 
 export type LayawayInitialPaymentMode = 'none' | 'fixed' | 'percent'
-export type LayawayDiscountMode = 'none' | 'fixed' | 'percent'
+export type LayawayDiscountMode = 'none' | 'fixed'
 
 export interface StoreConfig {
   timezone: string
