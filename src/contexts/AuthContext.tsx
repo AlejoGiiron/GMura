@@ -9,6 +9,8 @@ interface AuthContextValue {
   profile: Profile | null
   isLoading: boolean
   signOut: () => Promise<void>
+  // Recarga el perfil del usuario actual (p. ej. tras cambiar de tienda activa).
+  refreshProfile: () => Promise<void>
 }
 
 export const AuthContext = createContext<AuthContextValue | null>(null)
@@ -65,8 +67,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await supabase.auth.signOut()
   }
 
+  // Recarga ligera del perfil: no cierra sesión ante un error transitorio
+  // (a diferencia de fetchProfile en el arranque), solo avisa.
+  async function refreshProfile() {
+    const uid = user?.id
+    if (!uid) return
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', uid)
+      .single()
+    if (error) {
+      toast.error('No se pudo actualizar el perfil')
+      return
+    }
+    setProfile(data)
+  }
+
   return (
-    <AuthContext.Provider value={{ user, profile, isLoading, signOut }}>
+    <AuthContext.Provider value={{ user, profile, isLoading, signOut, refreshProfile }}>
       {children}
     </AuthContext.Provider>
   )

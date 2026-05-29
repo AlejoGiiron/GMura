@@ -1,10 +1,93 @@
 import { useState } from 'react'
-import { Users, Plus, X } from 'lucide-react'
+import { Users, Plus, X, Store, Check } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useStoreUsers } from '@/hooks/useConfig'
 import { useConfigMutations } from '@/hooks/useConfigMutations'
 import { useAuth } from '@/hooks/useAuth'
+import { useMyStores } from '@/hooks/useStores'
+import {
+  useUserStoreAccess,
+  useGrantStoreAccess,
+  useRevokeStoreAccess,
+} from '@/hooks/useUserStores'
 import type { Profile, UserRole } from '@/types/database.types'
+
+// ─── Store Access Panel (solo admins) ─────────────────────────────────────────
+
+function StoreAccessPanel({ user }: { user: Profile }) {
+  // Tiendas que el admin actual puede delegar = sus propias tiendas accesibles.
+  const { data: assignable = [], isLoading: loadingStores } = useMyStores()
+  const { data: access = [], isLoading: loadingAccess } = useUserStoreAccess(user.id)
+  const grant = useGrantStoreAccess()
+  const revoke = useRevokeStoreAccess()
+
+  const accessSet = new Set(access)
+  const busy = grant.isPending || revoke.isPending
+
+  function toggle(storeId: string, isBase: boolean) {
+    if (isBase) {
+      toast.error('No puedes quitar la tienda base del usuario')
+      return
+    }
+    if (accessSet.has(storeId)) {
+      revoke.mutate({ userId: user.id, storeId })
+    } else {
+      grant.mutate({ userId: user.id, storeId })
+    }
+  }
+
+  return (
+    <div className="border-t border-[#f5f4f1] bg-[#fafaf9] px-5 py-4">
+      <p className="mb-2 text-[11px] font-semibold uppercase tracking-[.06em] text-[#a8a29e]">
+        Tiendas con acceso
+      </p>
+      {loadingStores || loadingAccess ? (
+        <div className="space-y-1.5">
+          {[1, 2].map((i) => (
+            <div key={i} className="h-9 animate-pulse rounded-lg bg-slate-100" />
+          ))}
+        </div>
+      ) : (
+        <div className="space-y-1.5">
+          {assignable.map((s) => {
+            const isBase = s.store_id === user.store_id
+            const checked = accessSet.has(s.store_id) || isBase
+            return (
+              <button
+                key={s.store_id}
+                onClick={() => toggle(s.store_id, isBase)}
+                disabled={busy}
+                className="flex w-full items-center justify-between gap-3 rounded-lg border border-[#ebe9e6] bg-white px-3 py-2 text-left text-sm transition-colors hover:bg-[#f8f7f5] disabled:opacity-60"
+              >
+                <span className="flex items-center gap-2.5">
+                  <Store size={14} className="text-[#a8a29e]" />
+                  <span className="text-[#1a1a1a]">{s.store_name}</span>
+                  {isBase && (
+                    <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-500">
+                      base
+                    </span>
+                  )}
+                </span>
+                <span
+                  className={`flex h-5 w-5 items-center justify-center rounded-md border ${
+                    checked
+                      ? 'border-violet-500 bg-violet-500 text-white'
+                      : 'border-[#ebe9e6] bg-white'
+                  }`}
+                >
+                  {checked && <Check size={13} />}
+                </span>
+              </button>
+            )
+          })}
+          <p className="pt-1 text-[11px] text-[#a8a29e]">
+            Solo puedes delegar tiendas a las que tú tienes acceso.
+          </p>
+        </div>
+      )}
+    </div>
+  )
+}
 
 // ─── Avatar ──────────────────────────────────────────────────────────────────
 
@@ -177,54 +260,76 @@ function UserRow({ user }: { user: Profile }) {
   const { profile: currentProfile } = useAuth()
   const { updateUserRole, toggleUserActive } = useConfigMutations()
   const isSelf = user.id === currentProfile?.id
+  const [showStores, setShowStores] = useState(false)
+  const isAdmin = user.role === 'admin'
 
   return (
-    <div className="flex items-center gap-3 border-b border-[#f5f4f1] px-5 py-3.5 last:border-0">
-      <Avatar name={user.full_name} />
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium text-[#1a1a1a] truncate">
-          {user.full_name}
-          {isSelf && (
-            <span className="ml-2 text-[11px] font-normal text-[#a8a29e]">(tú)</span>
-          )}
-        </p>
-        <p className="text-xs text-[#737373] truncate">{user.email}</p>
+    <div className="border-b border-[#f5f4f1] last:border-0">
+      <div className="flex items-center gap-3 px-5 py-3.5">
+        <Avatar name={user.full_name} />
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-medium text-[#1a1a1a] truncate">
+            {user.full_name}
+            {isSelf && (
+              <span className="ml-2 text-[11px] font-normal text-[#a8a29e]">(tú)</span>
+            )}
+          </p>
+          <p className="text-xs text-[#737373] truncate">{user.email}</p>
+        </div>
+
+        <RoleBadge role={user.role} />
+
+        {/* Tiendas con acceso (solo admins) */}
+        {isAdmin && (
+          <button
+            onClick={() => setShowStores((v) => !v)}
+            title="Tiendas con acceso"
+            className={`flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-xs font-medium transition-colors ${
+              showStores
+                ? 'border-violet-300 bg-violet-50 text-violet-700'
+                : 'border-[#ebe9e6] bg-white text-[#525252] hover:bg-slate-50'
+            }`}
+          >
+            <Store size={13} />
+            Tiendas
+          </button>
+        )}
+
+        {/* Role select */}
+        {!isSelf && (
+          <select
+            value={user.role}
+            onChange={(e) =>
+              void updateUserRole.mutateAsync({ id: user.id, role: e.target.value as UserRole })
+            }
+            className="h-8 rounded-lg border border-[#ebe9e6] bg-white px-2 text-xs text-[#525252] outline-none focus:border-violet-400"
+          >
+            <option value="seller">Vendedor</option>
+            <option value="admin">Admin</option>
+          </select>
+        )}
+
+        {/* Active toggle */}
+        {!isSelf && (
+          <button
+            onClick={() =>
+              void toggleUserActive.mutateAsync({ id: user.id, is_active: !user.is_active })
+            }
+            title={user.is_active ? 'Desactivar acceso' : 'Activar acceso'}
+            className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full transition-colors ${
+              user.is_active ? 'bg-violet-500' : 'bg-slate-200'
+            }`}
+          >
+            <span
+              className={`inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform ${
+                user.is_active ? 'translate-x-4' : 'translate-x-1'
+              }`}
+            />
+          </button>
+        )}
       </div>
 
-      <RoleBadge role={user.role} />
-
-      {/* Role select */}
-      {!isSelf && (
-        <select
-          value={user.role}
-          onChange={(e) =>
-            void updateUserRole.mutateAsync({ id: user.id, role: e.target.value as UserRole })
-          }
-          className="h-8 rounded-lg border border-[#ebe9e6] bg-white px-2 text-xs text-[#525252] outline-none focus:border-violet-400"
-        >
-          <option value="seller">Vendedor</option>
-          <option value="admin">Admin</option>
-        </select>
-      )}
-
-      {/* Active toggle */}
-      {!isSelf && (
-        <button
-          onClick={() =>
-            void toggleUserActive.mutateAsync({ id: user.id, is_active: !user.is_active })
-          }
-          title={user.is_active ? 'Desactivar acceso' : 'Activar acceso'}
-          className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full transition-colors ${
-            user.is_active ? 'bg-violet-500' : 'bg-slate-200'
-          }`}
-        >
-          <span
-            className={`inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform ${
-              user.is_active ? 'translate-x-4' : 'translate-x-1'
-            }`}
-          />
-        </button>
-      )}
+      {isAdmin && showStores && <StoreAccessPanel user={user} />}
     </div>
   )
 }

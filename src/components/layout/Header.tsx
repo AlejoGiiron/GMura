@@ -9,6 +9,7 @@ import {
 } from './CashShiftModals'
 import { LayawayNotifications } from './LayawayNotifications'
 import { SupplierNotifications } from './SupplierNotifications'
+import { StoreSwitcher } from './StoreSwitcher'
 
 function getBogoTime(): string {
   return new Intl.DateTimeFormat('es-CO', {
@@ -76,6 +77,10 @@ export default function Header() {
           )}
 
           {isAdmin && <SupplierNotifications />}
+
+          <span className="h-5 w-px bg-gray-200" />
+
+          <StoreSwitcher />
 
           <span className="h-5 w-px bg-gray-200" />
 
