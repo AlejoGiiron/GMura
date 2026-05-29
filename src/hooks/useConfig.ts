@@ -4,11 +4,13 @@ import { useAuth } from './useAuth'
 import type { Store, Profile } from '@/types/database.types'
 import type { StoreConfig } from '@/types/config.types'
 import { migrateLegacyPaymentMethods } from '@/lib/paymentMethods'
+import { DEFAULT_SIZE_TYPES } from '@/lib/sizeTypes'
 
 export const DEFAULT_CONFIG: StoreConfig = {
   timezone: 'America/Bogota',
   currency: 'COP',
   sizes: ['XS', 'S', 'M', 'L', 'XL', 'XXL', 'XXXL'],
+  size_types: DEFAULT_SIZE_TYPES,
   colors: [
     { name: 'Negro', hex: '#000000' },
     { name: 'Blanco', hex: '#ffffff' },
@@ -51,6 +53,10 @@ export function resolveConfig(raw: Record<string, unknown> | null | undefined): 
     ...r,
     colors: Array.isArray(r.colors) ? r.colors : DEFAULT_CONFIG.colors,
     sizes: Array.isArray(r.sizes) ? r.sizes : DEFAULT_CONFIG.sizes,
+    size_types:
+      Array.isArray(r.size_types) && r.size_types.length > 0
+        ? r.size_types
+        : DEFAULT_CONFIG.size_types,
     brands: Array.isArray(r.brands) ? r.brands : DEFAULT_CONFIG.brands,
     adjustment_reasons: Array.isArray(r.adjustment_reasons)
       ? r.adjustment_reasons

@@ -140,7 +140,6 @@ function ReprintReceiptModal({
                   totalExpenses={closing.totalExpenses}
                   expectedCash={closing.expectedCash}
                   orderCount={closing.orderCount}
-                  avgTicket={closing.avgTicket}
                   countedCash={countedCash}
                   difference={difference}
                   storeName={closing.storeName}
@@ -180,7 +179,6 @@ function ReprintReceiptModal({
           totalExpenses={closing.totalExpenses}
           expectedCash={closing.expectedCash}
           orderCount={closing.orderCount}
-          avgTicket={closing.avgTicket}
           countedCash={countedCash}
           difference={difference}
           storeName={closing.storeName}

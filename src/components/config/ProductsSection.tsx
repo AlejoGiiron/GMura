@@ -1,37 +1,80 @@
 import { useState, useEffect } from 'react'
-import { Tag, GripVertical, Plus, Trash2, RefreshCw } from 'lucide-react'
+import { Tag, GripVertical, Plus, Trash2, RefreshCw, X } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useStoreConfig, resolveConfig } from '@/hooks/useConfig'
 import { useConfigMutations } from '@/hooks/useConfigMutations'
-import type { StoreColorConfig } from '@/types/config.types'
+import { useAuth } from '@/hooks/useAuth'
+import { supabase } from '@/lib/supabase'
+import { newSizeTypeId } from '@/lib/sizeTypes'
+import type { StoreColorConfig, SizeTypeConfig } from '@/types/config.types'
 
-// ─── Sizes ────────────────────────────────────────────────────────────────────
+// ─── Size types ─────────────────────────────────────────────────────────────
 
-function SizeList({
-  sizes,
+function SizeTypesManager({
+  types,
   onChange,
+  storeId,
 }: {
-  sizes: string[]
-  onChange: (s: string[]) => void
+  types: SizeTypeConfig[]
+  onChange: (t: SizeTypeConfig[]) => void
+  storeId: string
 }) {
-  const [newSize, setNewSize] = useState('')
+  const [newSizeInputs, setNewSizeInputs] = useState<Record<string, string>>({})
+  const [deletingId, setDeletingId] = useState<string | null>(null)
   const [draggedIdx, setDraggedIdx] = useState<number | null>(null)
   const [dragOverIdx, setDragOverIdx] = useState<number | null>(null)
 
-  function addSize() {
-    const v = newSize.trim().toUpperCase()
-    if (!v) return
-    if (sizes.includes(v)) {
-      toast.error(`La talla "${v}" ya existe`)
-      return
-    }
-    onChange([...sizes, v])
-    setNewSize('')
+  function updateLabel(idx: number, label: string) {
+    onChange(types.map((t, i) => (i === idx ? { ...t, label } : t)))
   }
 
-  function removeSize(idx: number) {
-    const updated = sizes.filter((_, i) => i !== idx)
-    onChange(updated)
+  function addSize(idx: number) {
+    const t = types[idx]
+    const v = (newSizeInputs[t.id] ?? '').trim()
+    if (!v) return
+    if (t.sizes.includes(v)) {
+      toast.error(`La talla "${v}" ya existe en "${t.label}"`)
+      return
+    }
+    onChange(types.map((x, i) => (i === idx ? { ...x, sizes: [...x.sizes, v] } : x)))
+    setNewSizeInputs((s) => ({ ...s, [t.id]: '' }))
+  }
+
+  function removeSize(idx: number, sizeIdx: number) {
+    onChange(
+      types.map((t, i) =>
+        i === idx ? { ...t, sizes: t.sizes.filter((_, j) => j !== sizeIdx) } : t,
+      ),
+    )
+  }
+
+  async function removeType(idx: number) {
+    const t = types[idx]
+    setDeletingId(t.id)
+    try {
+      const { count, error } = await supabase
+        .from('products')
+        .select('id', { count: 'exact', head: true })
+        .eq('store_id' as never, storeId)
+        .eq('size_type' as never, t.id)
+      if (error) throw error
+      if ((count ?? 0) > 0) {
+        toast.error(
+          `No se puede eliminar "${t.label}": ${count} producto${count === 1 ? '' : 's'} lo usa${count === 1 ? '' : 'n'}`,
+        )
+        return
+      }
+      onChange(types.filter((_, i) => i !== idx))
+      toast.success(`Tipo "${t.label}" eliminado`)
+    } catch {
+      toast.error('No se pudo verificar el uso del tipo de talla')
+    } finally {
+      setDeletingId(null)
+    }
+  }
+
+  function addType() {
+    onChange([...types, { id: newSizeTypeId(), label: 'Nuevo tipo', sizes: [] }])
   }
 
   function handleDrop(targetIdx: number) {
@@ -40,7 +83,7 @@ function SizeList({
       setDragOverIdx(null)
       return
     }
-    const next = [...sizes]
+    const next = [...types]
     const [moved] = next.splice(draggedIdx, 1)
     next.splice(targetIdx, 0, moved)
     onChange(next)
@@ -51,62 +94,106 @@ function SizeList({
   return (
     <div>
       <p className="mb-2 text-[11px] font-semibold uppercase tracking-[.05em] text-[#737373]">
-        Tallas predefinidas
+        Tipos de talla
       </p>
-      <div className="space-y-1">
-        {sizes.map((size, idx) => (
+      <p className="mb-3 text-[11px] text-[#a8a29e]">
+        Define los conjuntos de tallas disponibles al crear productos (ej. Pantalón
+        Mujer). Arrastra para reordenar.
+      </p>
+
+      <div className="space-y-2">
+        {types.map((t, idx) => (
           <div
-            key={`${size}-${idx}`}
+            key={t.id}
             draggable
             onDragStart={() => setDraggedIdx(idx)}
             onDragEnd={() => { setDraggedIdx(null); setDragOverIdx(null) }}
             onDragOver={(e) => { e.preventDefault(); setDragOverIdx(idx) }}
             onDrop={(e) => { e.preventDefault(); handleDrop(idx) }}
-            className={`flex items-center gap-2 rounded-lg border px-3 py-2 transition-colors ${
+            className={`rounded-xl border p-3 transition-colors ${
               draggedIdx === idx
                 ? 'opacity-40'
                 : dragOverIdx === idx
                 ? 'border-violet-300 bg-violet-50'
-                : 'border-[#ebe9e6] bg-white hover:bg-slate-50'
+                : 'border-[#ebe9e6] bg-white'
             }`}
           >
-            <span className="cursor-grab text-slate-300 active:cursor-grabbing">
-              <GripVertical size={14} />
-            </span>
-            <span
-              className="inline-flex h-6 min-w-[28px] items-center justify-center rounded-[5px] bg-[#f5f4f1] px-2 text-xs font-semibold tabular-nums"
-            >
-              {size}
-            </span>
-            <span className="flex-1 text-sm text-[#1a1a1a]">{size}</span>
-            <button
-              onClick={() => removeSize(idx)}
-              className="grid h-6 w-6 place-items-center rounded-md text-slate-300 hover:bg-red-50 hover:text-red-400"
-            >
-              <Trash2 size={12} />
-            </button>
+            {/* Label row */}
+            <div className="mb-2.5 flex items-center gap-2">
+              <span className="cursor-grab text-slate-300 active:cursor-grabbing">
+                <GripVertical size={14} />
+              </span>
+              <input
+                value={t.label}
+                onChange={(e) => updateLabel(idx, e.target.value)}
+                placeholder="Nombre del tipo"
+                className="h-9 flex-1 rounded-lg border border-[#ebe9e6] px-3 text-sm font-medium outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100"
+              />
+              <button
+                onClick={() => void removeType(idx)}
+                disabled={deletingId === t.id}
+                title="Eliminar tipo de talla"
+                className="grid h-8 w-8 place-items-center rounded-md text-slate-300 hover:bg-red-50 hover:text-red-400 disabled:opacity-40"
+              >
+                <Trash2 size={13} />
+              </button>
+            </div>
+
+            {/* Sizes chips */}
+            <div className="flex flex-wrap items-center gap-1.5 pl-6">
+              {t.sizes.length === 0 ? (
+                <span className="text-[11px] text-[#a8a29e]">
+                  Sin tallas. Agrega abajo, o déjalo vacío para tallas libres.
+                </span>
+              ) : (
+                t.sizes.map((size, sizeIdx) => (
+                  <span
+                    key={`${size}-${sizeIdx}`}
+                    className="inline-flex items-center gap-1 rounded-[5px] bg-[#f5f4f1] px-2 py-1 text-xs font-semibold tabular-nums"
+                  >
+                    {size}
+                    <button
+                      onClick={() => removeSize(idx, sizeIdx)}
+                      className="text-slate-400 hover:text-red-500"
+                    >
+                      <X size={11} />
+                    </button>
+                  </span>
+                ))
+              )}
+            </div>
+
+            {/* Add size */}
+            <div className="mt-2.5 flex gap-2 pl-6">
+              <input
+                value={newSizeInputs[t.id] ?? ''}
+                onChange={(e) =>
+                  setNewSizeInputs((s) => ({ ...s, [t.id]: e.target.value }))
+                }
+                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addSize(idx) } }}
+                placeholder="Nueva talla"
+                className="h-8 flex-1 rounded-lg border border-[#ebe9e6] px-2.5 text-sm outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100"
+              />
+              <button
+                onClick={() => addSize(idx)}
+                disabled={!(newSizeInputs[t.id] ?? '').trim()}
+                className="flex h-8 items-center gap-1 rounded-lg border border-[#ebe9e6] bg-white px-2.5 text-xs font-medium text-[#525252] hover:bg-slate-50 disabled:opacity-40"
+              >
+                <Plus size={12} />
+                Talla
+              </button>
+            </div>
           </div>
         ))}
       </div>
-      {/* Add */}
-      <div className="mt-2 flex gap-2">
-        <input
-          value={newSize}
-          onChange={(e) => setNewSize(e.target.value)}
-          onKeyDown={(e) => { if (e.key === 'Enter') addSize() }}
-          placeholder="Nueva talla (ej. 4XL)"
-          className="h-9 flex-1 rounded-lg border border-[#ebe9e6] px-3 text-sm outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100"
-        />
-        <button
-          onClick={addSize}
-          disabled={!newSize.trim()}
-          className="flex h-9 items-center gap-1.5 rounded-lg border border-[#ebe9e6] bg-white px-3 text-sm font-medium text-[#525252] hover:bg-slate-50 disabled:opacity-40"
-        >
-          <Plus size={13} />
-          Agregar
-        </button>
-      </div>
-      <p className="mt-1.5 text-[11px] text-[#a8a29e]">Arrastra para reordenar</p>
+
+      <button
+        onClick={addType}
+        className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-lg border-[1.5px] border-dashed border-[#d6d3d1] py-2.5 text-sm font-medium text-violet-500 hover:border-violet-300 hover:bg-violet-50"
+      >
+        <Plus size={14} />
+        Nuevo tipo de talla
+      </button>
     </div>
   )
 }
@@ -280,10 +367,11 @@ function BrandList({
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 export default function ProductsSection() {
+  const { profile } = useAuth()
   const { data: store, isLoading } = useStoreConfig()
   const { updateStoreConfig } = useConfigMutations()
 
-  const [sizes, setSizes] = useState<string[]>([])
+  const [sizeTypes, setSizeTypes] = useState<SizeTypeConfig[]>([])
   const [colors, setColors] = useState<StoreColorConfig[]>([])
   const [brands, setBrands] = useState<string[]>([])
   const [returnDays, setReturnDays] = useState(30)
@@ -292,17 +380,24 @@ export default function ProductsSection() {
   useEffect(() => {
     if (!store) return
     const cfg = resolveConfig(store.config)
-    setSizes(cfg.sizes)
+    setSizeTypes(cfg.size_types)
     setColors(cfg.colors)
     setBrands(cfg.brands)
     setReturnDays(cfg.return_days_limit)
   }, [store])
 
   async function handleSave() {
+    const cleaned = sizeTypes
+      .map((t) => ({ ...t, label: t.label.trim() }))
+      .filter((t) => t.label.length > 0)
+    if (cleaned.length === 0) {
+      toast.error('Debe existir al menos un tipo de talla')
+      return
+    }
     setSaving(true)
     try {
       await updateStoreConfig.mutateAsync({
-        sizes,
+        size_types: cleaned,
         colors,
         brands,
         return_days_limit: returnDays,
@@ -343,7 +438,11 @@ export default function ProductsSection() {
       {/* Body */}
       <div className="divide-y divide-[#f5f4f1]">
         <div className="px-5 py-5">
-          <SizeList sizes={sizes} onChange={setSizes} />
+          <SizeTypesManager
+            types={sizeTypes}
+            onChange={setSizeTypes}
+            storeId={profile?.store_id ?? ''}
+          />
         </div>
         <div className="px-5 py-5">
           <ColorList colors={colors} onChange={setColors} />

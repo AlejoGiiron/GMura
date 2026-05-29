@@ -736,7 +736,7 @@ export default function SalesHistoryPage() {
       </div>
 
       {/* Summary cards */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <SummaryCard
           label="Total ventas"
           value={fmtCOP(summary?.totalRevenue ?? 0)}
@@ -748,12 +748,6 @@ export default function SalesHistoryPage() {
           label="Órdenes"
           value={String(summary?.orderCount ?? 0)}
           icon={<Receipt size={15} />}
-          isLoading={summaryLoading}
-        />
-        <SummaryCard
-          label="Ticket promedio"
-          value={fmtCOP(summary?.averageTicket ?? 0)}
-          icon={<ShoppingBag size={15} />}
           isLoading={summaryLoading}
         />
         <SummaryCard

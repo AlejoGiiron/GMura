@@ -455,7 +455,6 @@ export function CloseShiftModal({ shift, onClose }: CloseShiftModalProps) {
                   totalExpenses={closing.totalExpenses}
                   expectedCash={closing.expectedCash}
                   orderCount={closing.orderCount}
-                  avgTicket={closing.avgTicket}
                   countedCash={real}
                   difference={diff}
                   storeName={closing.storeName}
@@ -501,7 +500,6 @@ export function CloseShiftModal({ shift, onClose }: CloseShiftModalProps) {
           totalExpenses={closing.totalExpenses}
           expectedCash={closing.expectedCash}
           orderCount={closing.orderCount}
-          avgTicket={closing.avgTicket}
           countedCash={real}
           difference={diff}
           storeName={closing.storeName}

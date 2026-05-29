@@ -35,7 +35,6 @@ export interface CashShiftReceiptProps {
   totalExpenses: number
   expectedCash: number
   orderCount: number
-  avgTicket: number
   countedCash: number
   difference: number
   storeName: string
@@ -137,7 +136,6 @@ export function CashShiftReceipt(props: CashShiftReceiptProps) {
     totalExpenses,
     expectedCash,
     orderCount,
-    avgTicket,
     countedCash,
     difference,
     storeName,
@@ -253,10 +251,6 @@ export function CashShiftReceipt(props: CashShiftReceiptProps) {
         <Line>
           <span style={monoLight}>Transacciones:</span>
           <span>{orderCount + lpRows.length}</span>
-        </Line>
-        <Line>
-          <span style={monoLight}>Ticket prom:</span>
-          <span>{fmtCOP(Math.round(avgTicket))}</span>
         </Line>
       </div>
 

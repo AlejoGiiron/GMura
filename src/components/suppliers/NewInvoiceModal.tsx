@@ -386,6 +386,11 @@ export default function NewInvoiceModal({
                           className="flex w-full items-center justify-between gap-3 border-b border-[#f5f4f1] px-3 py-2.5 text-left last:border-0 hover:bg-[#f8f7f5]"
                         >
                           <div className="min-w-0">
+                            {r.brand && (
+                              <p className="truncate text-[10px] font-semibold uppercase tracking-wider text-[#a8a29e]">
+                                {r.brand}
+                              </p>
+                            )}
                             <p className="truncate text-sm font-medium text-[#1a1a1a]">
                               {r.product_name}
                             </p>

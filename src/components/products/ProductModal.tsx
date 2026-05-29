@@ -2,7 +2,8 @@ import { useState, useRef, type ChangeEvent, type FormEvent } from 'react'
 import { X, Package } from 'lucide-react'
 import { useCategories } from '@/hooks/useProducts'
 import { useProductMutations } from '@/hooks/useProductMutations'
-import { SIZE_TYPES, resolveSizeType, type SizeTypeKey } from '@/lib/sizeTypes'
+import { useStoreConfig, resolveConfig } from '@/hooks/useConfig'
+import { DEFAULT_SIZE_TYPE_ID, findSizeType } from '@/lib/sizeTypes'
 import type { Product } from '@/types/database.types'
 
 interface ProductModalProps {
@@ -14,12 +15,24 @@ interface ProductModalProps {
 export default function ProductModal({ product, onClose, onSaved }: ProductModalProps) {
   const { data: categories = [] } = useCategories()
   const { create, update, uploadImage } = useProductMutations()
+  const { data: storeData } = useStoreConfig()
+  const sizeTypes = resolveConfig(
+    (storeData as unknown as { config: Record<string, unknown> | null } | undefined)?.config,
+  ).size_types
 
   const [name, setName] = useState(product?.name ?? '')
   const [brand, setBrand] = useState(product?.brand ?? '')
   const [categoryId, setCategoryId] = useState(product?.category_id ?? '')
   const [description, setDescription] = useState(product?.description ?? '')
-  const [sizeType, setSizeType] = useState<SizeTypeKey>(resolveSizeType(product?.size_type))
+  const [sizeType, setSizeType] = useState<string>(product?.size_type ?? DEFAULT_SIZE_TYPE_ID)
+
+  // Si el producto tiene un tipo de talla que ya no existe en la config
+  // (ej. fue eliminado o renombrado), lo agregamos como opción extra para
+  // preservar la referencia al editar.
+  const sizeTypeOptions =
+    product?.size_type && !findSizeType(sizeTypes, product.size_type)
+      ? [...sizeTypes, { id: product.size_type, label: product.size_type, sizes: [] }]
+      : sizeTypes
   const [imageFile, setImageFile] = useState<File | null>(null)
   const [imagePreview, setImagePreview] = useState<string | null>(product?.image_url ?? null)
   const [submitting, setSubmitting] = useState(false)
@@ -176,12 +189,12 @@ export default function ProductModal({ product, onClose, onSaved }: ProductModal
             </label>
             <select
               value={sizeType}
-              onChange={(e) => setSizeType(e.target.value as SizeTypeKey)}
+              onChange={(e) => setSizeType(e.target.value)}
               className="h-10 w-full rounded-lg border border-slate-200 px-3 text-sm outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100"
             >
-              {(Object.keys(SIZE_TYPES) as SizeTypeKey[]).map((key) => (
-                <option key={key} value={key}>
-                  {SIZE_TYPES[key].label}
+              {sizeTypeOptions.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.label}
                 </option>
               ))}
             </select>

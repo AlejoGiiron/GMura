@@ -15,7 +15,6 @@ import {
   Tag,
   Printer,
   CheckCircle,
-  ChevronDown,
   Camera,
   Wallet,
   Bookmark,
@@ -927,6 +926,11 @@ function CartPanel({
                   }}
                 />
                 <div className="min-w-0 flex-1">
+                  {item.brand && (
+                    <p className="truncate text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                      {item.brand}
+                    </p>
+                  )}
                   <p className="truncate text-sm font-medium text-slate-900">{item.name}</p>
                   <p className="text-xs text-slate-400">
                     {[item.size ? `T.${item.size}` : null, item.color]
@@ -975,28 +979,19 @@ function CartPanel({
             <Tag size={13} /> Descuento
           </div>
           <div className="flex h-8 items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5">
-            <button
-              onClick={() =>
-                store.setDiscount({
-                  ...discount,
-                  type: discount.type === 'percent' ? 'fixed' : 'percent',
-                })
-              }
-              className="flex items-center gap-0.5 text-xs font-medium text-slate-500 hover:text-slate-800"
-            >
-              {discount.type === 'percent' ? '%' : '$'}
-              <ChevronDown size={10} />
-            </button>
-            <span className="mx-1 text-slate-200">|</span>
+            <span className="text-sm font-medium text-slate-400">$</span>
             <input
               type="number"
               min={0}
+              max={subtotal}
               value={discount.value === 0 ? '' : discount.value}
               onChange={(e) =>
-                store.setDiscount({ ...discount, value: Math.max(0, Number(e.target.value) || 0) })
+                store.setDiscount({
+                  value: Math.min(Math.max(0, Number(e.target.value) || 0), subtotal),
+                })
               }
               placeholder="0"
-              className="w-16 bg-transparent text-right text-sm font-semibold outline-none"
+              className="w-20 bg-transparent text-right text-sm font-semibold outline-none"
             />
           </div>
         </div>
@@ -1008,9 +1003,7 @@ function CartPanel({
           </div>
           {discountAmt > 0 && (
             <div className="flex justify-between text-green-600">
-              <span>
-                Descuento{discount.type === 'percent' ? ` (${discount.value}%)` : ''}
-              </span>
+              <span>Descuento</span>
               <span className="font-mono">-{fmtCOP(discountAmt)}</span>
             </div>
           )}
@@ -1103,6 +1096,7 @@ export default function POSPage() {
         variant_id: match.variant.id,
         product_id: match.product.id,
         name: match.product.name,
+        brand: match.product.brand,
         size: match.variant.size,
         color: match.variant.color,
         unit_price: match.variant.price,
@@ -1146,6 +1140,7 @@ export default function POSPage() {
         variant_id: match.variant.id,
         product_id: match.product.id,
         name: match.product.name,
+        brand: match.product.brand,
         size: match.variant.size,
         color: match.variant.color,
         unit_price: match.variant.price,
@@ -1167,6 +1162,7 @@ export default function POSPage() {
       variant_id: variant.id,
       product_id: product.id,
       name: product.name,
+      brand: product.brand,
       size: variant.size,
       color: variant.color,
       unit_price: variant.price,

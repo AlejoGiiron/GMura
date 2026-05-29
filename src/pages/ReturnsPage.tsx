@@ -1337,6 +1337,7 @@ export default function ReturnsPage() {
     createReturn.mutate(
       {
         original_order_id: selectedOrder.id,
+        original_order_number: selectedOrder.order_number,
         customer_id: selectedOrder.customer_id,
         type: returnType,
         returnItems: selectedItems.map((i) => ({

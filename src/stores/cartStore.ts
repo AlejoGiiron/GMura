@@ -4,6 +4,7 @@ export interface CartItem {
   variant_id: string
   product_id: string
   name: string
+  brand: string | null
   size: string | null
   color: string | null
   unit_price: number
@@ -12,7 +13,6 @@ export interface CartItem {
 }
 
 export interface Discount {
-  type: 'percent' | 'fixed'
   value: number
 }
 
@@ -30,7 +30,7 @@ interface CartStore {
 
 export const useCartStore = create<CartStore>((set) => ({
   items: [],
-  discount: { type: 'percent', value: 0 },
+  discount: { value: 0 },
   customer_id: null,
 
   addItem: (newItem) =>
@@ -63,15 +63,13 @@ export const useCartStore = create<CartStore>((set) => ({
 
   setDiscount: (discount) => set({ discount }),
   setCustomer: (id) => set({ customer_id: id }),
-  clear: () => set({ items: [], discount: { type: 'percent', value: 0 }, customer_id: null }),
+  clear: () => set({ items: [], discount: { value: 0 }, customer_id: null }),
 }))
 
 export function cartTotals(items: CartItem[], discount: Discount) {
   const subtotal = items.reduce((s, i) => s + i.unit_price * i.qty, 0)
-  const discountAmt =
-    discount.type === 'percent'
-      ? Math.round(subtotal * (discount.value / 100))
-      : Math.min(discount.value, subtotal)
+  // Descuento solo como monto fijo en COP, nunca mayor al subtotal.
+  const discountAmt = Math.min(Math.max(0, discount.value), subtotal)
   const total = Math.max(0, subtotal - discountAmt)
   return { subtotal, discountAmt, total }
 }

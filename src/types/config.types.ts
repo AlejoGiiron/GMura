@@ -12,13 +12,20 @@ export interface LabelFields {
 
 export type LabelFormat = '38x25' | '50x30' | '58x40'
 
+export interface SizeTypeConfig {
+  id: string
+  label: string
+  sizes: string[]
+}
+
 export type LayawayInitialPaymentMode = 'none' | 'fixed' | 'percent'
-export type LayawayDiscountMode = 'none' | 'fixed' | 'percent'
+export type LayawayDiscountMode = 'none' | 'fixed'
 
 export interface StoreConfig {
   timezone: string
   currency: string
   sizes: string[]
+  size_types: SizeTypeConfig[]
   colors: StoreColorConfig[]
   brands: string[]
   return_days_limit: number

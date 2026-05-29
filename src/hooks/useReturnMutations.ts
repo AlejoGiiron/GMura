@@ -21,6 +21,7 @@ export type ExchangeItemInput = {
 
 export type CreateReturnInput = {
   original_order_id: string
+  original_order_number: number
   customer_id: string | null
   type: ReturnType
   returnItems: ReturnItemInput[]
@@ -202,6 +203,53 @@ export function useCreateReturn() {
         }
       }
 
+      // Paso 5 — Reflejar el dinero que SALE de la caja en el cuadre del turno.
+      // El valor de los ítems devueltos se reembolsa al cliente; si fue en
+      // efectivo y hay un turno abierto, se registra como cash_expense.
+      // En un cambio, la orden de los ítems nuevos ya cuenta como venta (entra
+      // dinero) y este egreso acredita los ítems devueltos: el neto del cuadre
+      // queda correcto en ambos sentidos. Pagos no-efectivo no tocan la caja.
+      if (input.refundMethod === 'cash') {
+        const refundTotal = input.returnItems.reduce(
+          (sum, ri) => sum + ri.qty * ri.unit_price,
+          0,
+        )
+        if (refundTotal > 0) {
+          const { data: openShift, error: shiftErr } = await supabase
+            .from('cash_shifts')
+            .select('id')
+            .eq('store_id' as never, storeId)
+            .eq('opened_by' as never, userId)
+            .is('closed_at' as never, null)
+            .maybeSingle()
+
+          if (!shiftErr && openShift) {
+            const shiftId = (openShift as { id: string }).id
+            const reason =
+              input.type === 'exchange'
+                ? `Devolución por cambio #${input.original_order_number}`
+                : `Devolución venta #${input.original_order_number}`
+            const { error: expErr } = await supabase
+              .from('cash_expenses')
+              .insert({
+                shift_id: shiftId,
+                store_id: storeId,
+                amount: refundTotal,
+                reason,
+                notes: input.notes.trim() || null,
+                created_by: userId,
+              } as never)
+            if (expErr) {
+              // La devolución ya se confirmó; no la revertimos por un fallo de
+              // caja. Avisamos para registrar el egreso manualmente.
+              toast.error(
+                `Devolución registrada, pero no se reflejó en caja: ${expErr.message}. Regístralo como egreso manual.`,
+              )
+            }
+          }
+        }
+      }
+
       return ret
     },
 
@@ -216,6 +264,10 @@ export function useCreateReturn() {
       void queryClient.invalidateQueries({ queryKey: ['products'] })
       void queryClient.invalidateQueries({ queryKey: ['stock-movements'] })
       void queryClient.invalidateQueries({ queryKey: ['orders'] })
+      // El reembolso/cambio en efectivo afecta el cuadre del turno.
+      void queryClient.invalidateQueries({ queryKey: ['shift-expenses'] })
+      void queryClient.invalidateQueries({ queryKey: ['shift-closing'] })
+      void queryClient.invalidateQueries({ queryKey: ['cash-shifts'] })
       toast.success('Devolución registrada exitosamente')
     },
 
