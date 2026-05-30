@@ -30,7 +30,7 @@ import {
   type ExchangeVariantOption,
 } from '@/hooks/useReturns'
 import { useCreateReturn, type ExchangeItemInput } from '@/hooks/useReturnMutations'
-import { useStoreConfig, resolveConfig } from '@/hooks/useConfig'
+import { useResolvedConfig } from '@/hooks/useConfig'
 import type { PaymentMethod, ReturnType, Return } from '@/types/database.types'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -118,7 +118,7 @@ function Step1Search({
       return
     }
     onOrderSelected(detail)
-  }, [detail, onOrderSelected])
+  }, [detail, onOrderSelected, returnDaysLimit])
 
   return (
     <div className="flex flex-col gap-5 p-6">
@@ -1236,8 +1236,7 @@ export default function ReturnsPage() {
   const preloadAttemptedRef = useRef<string | null>(null)
 
   const createReturn = useCreateReturn()
-  const { data: storeData } = useStoreConfig()
-  const config = resolveConfig((storeData as unknown as { config: Record<string, unknown> | null } | undefined)?.config)
+  const config = useResolvedConfig()
   const returnDaysLimit = config.return_days_limit
 
   const preloadOrderId = searchParams.get('orderId')

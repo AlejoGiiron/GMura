@@ -3,7 +3,7 @@ import { Printer } from 'lucide-react'
 import JsBarcode from 'jsbarcode'
 import toast from 'react-hot-toast'
 import { fmtCOP } from '@/lib/formatters'
-import { useStoreConfig, resolveConfig } from '@/hooks/useConfig'
+import { useStoreConfig, useResolvedConfig } from '@/hooks/useConfig'
 import { useConfigMutations } from '@/hooks/useConfigMutations'
 import type { LabelFormat, LabelFields } from '@/types/config.types'
 
@@ -91,6 +91,7 @@ const FORMAT_LABELS: Record<LabelFormat, string> = {
 
 export default function EtiquetasSection() {
   const { data: store, isLoading } = useStoreConfig()
+  const config = useResolvedConfig()
   const { updateStoreConfig } = useConfigMutations()
 
   const [format, setFormat] = useState<LabelFormat>('38x25')
@@ -104,10 +105,9 @@ export default function EtiquetasSection() {
 
   useEffect(() => {
     if (!store) return
-    const cfg = resolveConfig(store.config)
-    setFormat(cfg.label_format)
-    setFields(cfg.label_fields)
-  }, [store])
+    setFormat(config.label_format)
+    setFields(config.label_fields)
+  }, [store, config])
 
   function toggleField(key: keyof LabelFields) {
     setFields((prev) => ({ ...prev, [key]: !prev[key] }))

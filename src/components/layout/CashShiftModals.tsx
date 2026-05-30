@@ -3,7 +3,7 @@ import { X, Wallet, Banknote, Receipt, Printer } from 'lucide-react'
 import { fmtCOP } from '@/lib/formatters'
 import { useCashShiftMutations } from '@/hooks/useCashShiftMutations'
 import { useRegisterExpense } from '@/hooks/useCashExpenseMutations'
-import { useStoreConfig, resolveConfig } from '@/hooks/useConfig'
+import { useResolvedConfig } from '@/hooks/useConfig'
 import { useShiftClosing } from '@/hooks/useShiftClosing'
 import {
   CashShiftReceipt,
@@ -132,8 +132,7 @@ interface ExpenseModalProps {
 }
 
 export function ExpenseModal({ onClose }: ExpenseModalProps) {
-  const { data: store } = useStoreConfig()
-  const config = resolveConfig(store?.config ?? null)
+  const config = useResolvedConfig()
   const reasons = config.expense_reasons
   const registerExpense = useRegisterExpense()
 

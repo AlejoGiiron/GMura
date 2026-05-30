@@ -6,7 +6,7 @@ import {
   useCompleteLayaway,
 } from '@/hooks/useLayawayMutations'
 import { PAYMENT_METHODS, PAYMENT_METHOD_KEYS } from '@/lib/paymentMethods'
-import { useStoreConfig, resolveConfig } from '@/hooks/useConfig'
+import { useResolvedConfig } from '@/hooks/useConfig'
 import { migrateLegacyPaymentMethods } from '@/lib/paymentMethods'
 import type { PaymentMethod } from '@/types/database.types'
 
@@ -35,8 +35,7 @@ export function AddPaymentModal({
   onPayed,
   onCompleted,
 }: Props) {
-  const { data: storeData } = useStoreConfig()
-  const config = resolveConfig(storeData?.config ?? null)
+  const config = useResolvedConfig()
   const enabledMethods = migrateLegacyPaymentMethods(config.payment_methods)
   const visibleMethods = PAYMENT_METHOD_KEYS.filter((m) =>
     enabledMethods.includes(m),

@@ -2,7 +2,7 @@ import { useState, useRef, type ChangeEvent, type FormEvent } from 'react'
 import { X, Package } from 'lucide-react'
 import { useCategories } from '@/hooks/useProducts'
 import { useProductMutations } from '@/hooks/useProductMutations'
-import { useStoreConfig, resolveConfig } from '@/hooks/useConfig'
+import { useResolvedConfig } from '@/hooks/useConfig'
 import { DEFAULT_SIZE_TYPE_ID, findSizeType } from '@/lib/sizeTypes'
 import type { Product } from '@/types/database.types'
 
@@ -15,10 +15,7 @@ interface ProductModalProps {
 export default function ProductModal({ product, onClose, onSaved }: ProductModalProps) {
   const { data: categories = [] } = useCategories()
   const { create, update, uploadImage } = useProductMutations()
-  const { data: storeData } = useStoreConfig()
-  const sizeTypes = resolveConfig(
-    (storeData as unknown as { config: Record<string, unknown> | null } | undefined)?.config,
-  ).size_types
+  const sizeTypes = useResolvedConfig().size_types
 
   const [name, setName] = useState(product?.name ?? '')
   const [brand, setBrand] = useState(product?.brand ?? '')

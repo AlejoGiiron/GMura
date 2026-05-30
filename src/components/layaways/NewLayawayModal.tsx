@@ -34,7 +34,7 @@ import {
 } from '@/hooks/usePOSSearch'
 import { useCustomerSearch } from '@/hooks/useCustomers'
 import { useCreateCustomer } from '@/hooks/useCustomerMutations'
-import { useStoreConfig, resolveConfig } from '@/hooks/useConfig'
+import { useStoreConfig, useResolvedConfig } from '@/hooks/useConfig'
 import {
   PAYMENT_METHODS,
   PAYMENT_METHOD_KEYS,
@@ -935,9 +935,8 @@ function Stepper({ current }: { current: number }) {
 
 export function NewLayawayModal({ prefill, onClose, onCreated }: Props) {
   const { data: storeData } = useStoreConfig()
-  const config = resolveConfig(storeData?.config ?? null)
-  const storeName =
-    (storeData as unknown as { name?: string } | undefined)?.name ?? 'G-Mura'
+  const config = useResolvedConfig()
+  const storeName = storeData?.name ?? 'G-Mura'
   const enabledMethods = migrateLegacyPaymentMethods(config.payment_methods)
   const defaultDays =
     typeof config.layaway_default_days === 'number'
