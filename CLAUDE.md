@@ -318,8 +318,26 @@ Sidebar agrupado en secciones colapsables (feature/12-caja-completa) ✅
 - Configuración (tienda, usuarios, productos, caja, etiquetas)
 
 ## Estado actual del proyecto
-Última fase completada: Limpieza de calidad (lint, useResolvedConfig, memo)
+Última fase completada: Testing — Vitest + cobertura de lógica financiera
 En progreso: —
+
+## Testing
+- Framework: Vitest (v2.x, compatible con Vite 5) + jsdom + @testing-library/*.
+  Gestor de paquetes del proyecto: pnpm (hay pnpm-lock.yaml; NO usar npm install)
+- vitest.config.ts: environment jsdom, globals true, alias '@' → src
+- Scripts: test (watch), test:run (CI), test:ui; "check" = typecheck + lint +
+  test:run (gate de pre-commit)
+- Convención: tests junto al código (src/**/*.test.ts), descripciones en español
+- Lógica financiera pura aislada para poder testearla sin React ni red:
+  · src/lib/shiftCalc.ts → calculateShiftSummary (extraída de useShiftClosing;
+    el hook ahora solo hace las queries y le pasa los datos). Cubre cuadre:
+    ventas por método, solo efectivo afecta expectedCash, gastos, abonos de
+    separados, devoluciones (cash_expense) y exclusión de órdenes de separados
+    completados (converted_order_id) para no duplicar
+  · cartStore.cartTotals, layawayCalc.calculateMaxDiscount /
+    calculateRequiredInitialPayment / isLayawayOverdue / daysUntilExpiry
+- 35 tests (3 archivos): src/lib/shiftCalc.test.ts, src/lib/layawayCalc.test.ts,
+  src/stores/cartStore.test.ts
 
 Refactor de calidad (refactor/quality-cleanup) ✅
   - Lint sin deuda: AuthContext (catch sin binding, directiva eslint-disable
