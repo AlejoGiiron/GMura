@@ -34,6 +34,7 @@ export interface CashShiftReceiptProps {
   cashSales: number
   totalExpenses: number
   expectedCash: number
+  overdraft?: number
   orderCount: number
   countedCash: number
   difference: number
@@ -109,6 +110,7 @@ export function CashShiftReceipt(props: CashShiftReceiptProps) {
   } = props
   const lpTotal = layawayPaymentsTotal ?? 0
   const lpRows = layawayPayments ?? []
+  const overdraft = props.overdraft ?? 0
 
   const closedAt = shift.closed_at ? new Date(shift.closed_at) : printedAt
   const duration = fmtDuration(shift.opened_at, closedAt)
@@ -290,6 +292,12 @@ export function CashShiftReceipt(props: CashShiftReceiptProps) {
           <span style={{ fontWeight: 700 }}>Esperado:</span>
           <span style={{ fontWeight: 700 }}>{fmtCOP(expectedCash)}</span>
         </Line>
+        {overdraft > 0 && (
+          <Line>
+            <span style={{ ...monoLight, color: '#dc2626' }}>Sobregiro:</span>
+            <span style={{ color: '#dc2626' }}>-{fmtCOP(overdraft)}</span>
+          </Line>
+        )}
         <Line>
           <span style={monoLight}>Contado:</span>
           <span>{fmtCOP(countedCash)}</span>

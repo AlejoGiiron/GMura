@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from './useAuth'
+import { reconcileCash, shiftDifference } from '@/lib/shiftCalc'
 import type { CashShift, Profile } from '@/types/database.types'
 
 export const SHIFT_HISTORY_PAGE_SIZE = 50
@@ -18,6 +19,7 @@ export interface ShiftHistoryRow {
   cashSales: number
   totalExpenses: number
   expectedCash: number
+  overdraft: number
   countedCash: number
   difference: number
 }
@@ -201,7 +203,7 @@ export function useShiftHistory(filters: ShiftHistoryFilters) {
         const openingAmount = Number(s.opening_amount)
         const cashSales = cashByShift.get(s.id) ?? 0
         const totalExpenses = expByShift.get(s.id) ?? 0
-        const expectedCash = openingAmount + cashSales - totalExpenses
+        const rec = reconcileCash(openingAmount + cashSales, totalExpenses)
         const countedCash =
           s.closing_amount != null ? Number(s.closing_amount) : 0
         return {
@@ -219,9 +221,10 @@ export function useShiftHistory(filters: ShiftHistoryFilters) {
           cashierName: s.profiles?.full_name ?? 'Cajero',
           cashSales,
           totalExpenses,
-          expectedCash,
+          expectedCash: rec.expectedCash,
+          overdraft: rec.overdraft,
           countedCash,
-          difference: countedCash - expectedCash,
+          difference: shiftDifference(countedCash, rec),
         }
       })
 

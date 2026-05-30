@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from './useAuth'
+import { calculateShiftSummary, type SalesByMethod } from '@/lib/shiftCalc'
 import type {
   CashShift,
   CashExpense,
@@ -9,13 +10,7 @@ import type {
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-export interface SalesByMethod {
-  method: PaymentMethod
-  count: number
-  total: number
-  regularTotal: number
-  layawayTotal: number
-}
+export type { SalesByMethod }
 
 export interface LayawayPaymentRow {
   id: string
@@ -33,6 +28,7 @@ export interface ShiftClosingData {
   cashSales: number
   totalExpenses: number
   expectedCash: number
+  overdraft: number
   orderCount: number
   layawayPayments: LayawayPaymentRow[]
   layawayPaymentsTotal: number
@@ -146,10 +142,6 @@ export function useShiftClosing(shiftId: string | null) {
       const { data: orders, error: ordersErr } = await oQuery
       if (ordersErr) throw ordersErr
 
-      const filteredOrders = ((orders ?? []) as unknown as RawOrder[]).filter(
-        (o) => !excludedOrderIds.has(o.id),
-      )
-
       // 3. Abonos de separados del turno
       let pQuery = supabase
         .from('layaway_payments')
@@ -179,62 +171,7 @@ export function useShiftClosing(shiftId: string | null) {
         layaway_number: p.layaways?.layaway_number ?? 0,
       }))
 
-      // 4. Agregación por método (orders + abonos combinados)
-      type AggRow = {
-        count: number
-        total: number
-        regularTotal: number
-        layawayTotal: number
-      }
-      const aggMap = new Map<PaymentMethod, AggRow>()
-      let regularSalesTotal = 0
-      let layawayPaymentsTotal = 0
-      let cashSales = 0
-
-      for (const row of filteredOrders) {
-        const t = Number(row.total)
-        regularSalesTotal += t
-        if (row.payment_method === 'cash') cashSales += t
-        const prev = aggMap.get(row.payment_method) ?? {
-          count: 0,
-          total: 0,
-          regularTotal: 0,
-          layawayTotal: 0,
-        }
-        aggMap.set(row.payment_method, {
-          count: prev.count + 1,
-          total: prev.total + t,
-          regularTotal: prev.regularTotal + t,
-          layawayTotal: prev.layawayTotal,
-        })
-      }
-
-      for (const p of layawayPayments) {
-        const t = p.amount
-        layawayPaymentsTotal += t
-        if (p.payment_method === 'cash') cashSales += t
-        const prev = aggMap.get(p.payment_method) ?? {
-          count: 0,
-          total: 0,
-          regularTotal: 0,
-          layawayTotal: 0,
-        }
-        aggMap.set(p.payment_method, {
-          count: prev.count + 1,
-          total: prev.total + t,
-          regularTotal: prev.regularTotal,
-          layawayTotal: prev.layawayTotal + t,
-        })
-      }
-
-      const salesByMethod: SalesByMethod[] = Array.from(aggMap.entries())
-        .map(([method, v]) => ({ method, ...v }))
-        .sort((a, b) => b.total - a.total)
-
-      const totalSales = regularSalesTotal + layawayPaymentsTotal
-      const orderCount = filteredOrders.length
-
-      // 5. Egresos del turno
+      // 4. Egresos del turno
       const { data: expensesRaw, error: expErr } = await supabase
         .from('cash_expenses')
         .select('*')
@@ -244,25 +181,35 @@ export function useShiftClosing(shiftId: string | null) {
 
       if (expErr) throw expErr
       const expenses = (expensesRaw ?? []) as unknown as CashExpense[]
-      const totalExpenses = expenses.reduce(
-        (sum, e) => sum + Number(e.amount),
-        0,
-      )
 
-      const expectedCash = shift.opening_amount + cashSales - totalExpenses
+      // 5. Agregación pura del cuadre (orders + abonos - egresos). La función
+      //    excluye las órdenes generadas al completar separados para no contar
+      //    dos veces el dinero.
+      const summary = calculateShiftSummary({
+        openingAmount: shift.opening_amount,
+        orders: ((orders ?? []) as unknown as RawOrder[]).map((o) => ({
+          id: o.id,
+          total: Number(o.total),
+          payment_method: o.payment_method,
+        })),
+        excludedOrderIds,
+        layawayPayments,
+        expenses: expenses.map((e) => ({ amount: Number(e.amount) })),
+      })
 
       return {
         shift,
         expenses,
-        salesByMethod,
-        totalSales,
-        cashSales,
-        totalExpenses,
-        expectedCash,
-        orderCount,
+        salesByMethod: summary.salesByMethod,
+        totalSales: summary.totalSales,
+        cashSales: summary.cashSales,
+        totalExpenses: summary.totalExpenses,
+        expectedCash: summary.expectedCash,
+        overdraft: summary.overdraft,
+        orderCount: summary.orderCount,
         layawayPayments,
-        layawayPaymentsTotal,
-        regularSalesTotal,
+        layawayPaymentsTotal: summary.layawayPaymentsTotal,
+        regularSalesTotal: summary.regularSalesTotal,
         storeName,
         userName,
       }

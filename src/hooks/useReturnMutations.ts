@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from './useAuth'
 import toast from 'react-hot-toast'
+import { calculateExchangeAmounts } from '@/lib/returnCalc'
 import type { PaymentMethod, ReturnType, Return } from '@/types/database.types'
 
 // ── Input types ───────────────────────────────────────────────────────────────
@@ -147,14 +148,19 @@ export function useCreateReturn() {
         )
       }
 
-      // Paso 4 — Si es cambio: crear nueva orden con los ítems nuevos.
-      // El trigger deduct_stock_on_sale descuenta stock automáticamente.
-      if (input.type === 'exchange') {
-        const exchangeTotal = input.exchangeItems.reduce(
-          (sum, i) => sum + i.unit_price * i.qty,
-          0,
-        )
+      // Paso 4 — Si es cambio: registrar SOLO la diferencia de precio como
+      // venta (no el valor completo del producto nuevo). La orden lleva los
+      // ítems nuevos como order_items para que el trigger deduct_stock_on_sale
+      // descuente su stock, pero el total se netea con un descuento que acredita
+      // los ítems devueltos: subtotal = valor nuevos, descuento = min(devueltos,
+      // nuevos), total = max(0, diferencia). Así reportes no se inflan y caja
+      // refleja solo el movimiento real.
+      const exchange =
+        input.type === 'exchange'
+          ? calculateExchangeAmounts(input.returnItems, input.exchangeItems)
+          : null
 
+      if (input.type === 'exchange' && exchange) {
         const { data: newOrder, error: orderErr } = await supabase
           .from('orders')
           .insert({
@@ -162,9 +168,9 @@ export function useCreateReturn() {
             customer_id: input.customer_id,
             created_by: userId,
             status: 'completed',
-            subtotal: exchangeTotal,
-            discount: 0,
-            total: exchangeTotal,
+            subtotal: exchange.orderSubtotal,
+            discount: exchange.orderDiscount,
+            total: exchange.orderTotal,
             payment_method: input.refundMethod,
             cash_received: null,
           } as never)
@@ -203,17 +209,20 @@ export function useCreateReturn() {
         }
       }
 
-      // Paso 5 — Reflejar el dinero que SALE de la caja en el cuadre del turno.
-      // El valor de los ítems devueltos se reembolsa al cliente; si fue en
-      // efectivo y hay un turno abierto, se registra como cash_expense.
-      // En un cambio, la orden de los ítems nuevos ya cuenta como venta (entra
-      // dinero) y este egreso acredita los ítems devueltos: el neto del cuadre
-      // queda correcto en ambos sentidos. Pagos no-efectivo no tocan la caja.
+      // Paso 5 — Reflejar el dinero que SALE de la caja en el cuadre del turno,
+      // solo si el reembolso es en efectivo y hay turno abierto:
+      //  · Devolución pura → se reembolsa el valor de los ítems devueltos.
+      //  · Cambio → solo si el producto nuevo es MÁS BARATO se devuelve la
+      //    diferencia (refundDue); si es más caro, el cliente paga y eso ya
+      //    entró como venta en la orden del Paso 4 (sin egreso).
       if (input.refundMethod === 'cash') {
-        const refundTotal = input.returnItems.reduce(
-          (sum, ri) => sum + ri.qty * ri.unit_price,
-          0,
-        )
+        const refundTotal =
+          input.type === 'exchange'
+            ? (exchange?.refundDue ?? 0)
+            : input.returnItems.reduce(
+                (sum, ri) => sum + ri.qty * ri.unit_price,
+                0,
+              )
         if (refundTotal > 0) {
           const { data: openShift, error: shiftErr } = await supabase
             .from('cash_shifts')

@@ -321,7 +321,10 @@ export function CloseShiftModal({ shift, onClose }: CloseShiftModalProps) {
   const real = parseCOP(contado)
   const hasInput = contado.length > 0
   const expected = closing?.expectedCash ?? 0
-  const diff = real - expected
+  const overdraft = closing?.overdraft ?? 0
+  // Lógica B: la diferencia descuenta el sobregiro para que un egreso que vacía
+  // la caja se lea como faltante y no como sobrante.
+  const diff = real - expected - overdraft
 
   async function doClose(): Promise<boolean> {
     return new Promise((resolve) => {
@@ -453,6 +456,7 @@ export function CloseShiftModal({ shift, onClose }: CloseShiftModalProps) {
                   cashSales={closing.cashSales}
                   totalExpenses={closing.totalExpenses}
                   expectedCash={closing.expectedCash}
+                  overdraft={closing.overdraft}
                   orderCount={closing.orderCount}
                   countedCash={real}
                   difference={diff}
@@ -498,6 +502,7 @@ export function CloseShiftModal({ shift, onClose }: CloseShiftModalProps) {
           cashSales={closing.cashSales}
           totalExpenses={closing.totalExpenses}
           expectedCash={closing.expectedCash}
+          overdraft={closing.overdraft}
           orderCount={closing.orderCount}
           countedCash={real}
           difference={diff}
