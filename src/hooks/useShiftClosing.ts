@@ -28,6 +28,7 @@ export interface ShiftClosingData {
   cashSales: number
   totalExpenses: number
   expectedCash: number
+  overdraft: number
   orderCount: number
   layawayPayments: LayawayPaymentRow[]
   layawayPaymentsTotal: number
@@ -204,6 +205,7 @@ export function useShiftClosing(shiftId: string | null) {
         cashSales: summary.cashSales,
         totalExpenses: summary.totalExpenses,
         expectedCash: summary.expectedCash,
+        overdraft: summary.overdraft,
         orderCount: summary.orderCount,
         layawayPayments,
         layawayPaymentsTotal: summary.layawayPaymentsTotal,

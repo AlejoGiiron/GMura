@@ -318,8 +318,34 @@ Sidebar agrupado en secciones colapsables (feature/12-caja-completa) ✅
 - Configuración (tienda, usuarios, productos, caja, etiquetas)
 
 ## Estado actual del proyecto
-Última fase completada: Testing — Vitest + cobertura de lógica financiera
+Última fase completada: Fixes financieros — cuadre Lógica B + netear cambios
 En progreso: —
+
+Fixes de lógica financiera (test/financial-coverage) ✅
+  - FIX 1 — Cuadre Lógica B (esperado tope en $0): cuando los egresos superan el
+    efectivo disponible, el cuadre ya NO muestra sobrante falso. En shiftCalc.ts:
+    reconcileCash(disponible, egresos) → { expectedCash: max(0, disp-egr),
+    overdraft: max(0, egr-disp) }; shiftDifference(contado, rec) = contado -
+    esperado - sobregiro. calculateShiftSummary devuelve overdraft. useShiftClosing
+    y useShiftHistory lo propagan; CashShiftReceipt muestra línea "Sobregiro: -$X"
+    (rojo) cuando aplica; CloseShiftModal/CashShiftsHistoryPage calculan la
+    diferencia con sobregiro. Caso foto (ap 162k, egreso 180k, contado 0) →
+    FALTANTE $18.000
+  - FIX 2 — Netear cambios (no inflar ventas ni caja): la orden de un cambio
+    registra SOLO la diferencia de precio. src/lib/returnCalc.ts:
+    calculateExchangeAmounts(returnItems, exchangeItems) → orderSubtotal =
+    valor nuevos, orderDiscount = min(devueltos, nuevos), orderTotal =
+    max(0, diferencia), refundDue = max(0, -diferencia). En useReturnMutations
+    el cambio crea la orden con subtotal/discount/total neteados pero mantiene
+    los order_items de los ítems nuevos (su stock baja por el trigger
+    deduct_stock_on_sale; los devueltos suben por el trigger de return_items).
+    El reembolso en efectivo (cambio más barato) genera cash_expense por
+    refundDue; el cobro de diferencia ya entra como venta en la orden.
+    Decisión: se conserva una orden de total $0 cuando no hay diferencia para
+    reusar el trigger de stock en vez de un movimiento manual (más limpio/seguro)
+  - Tests: shiftCalc.test.ts cubre la tabla de casos del cuadre (incl. caso foto
+    y sobregiro); returnCalc.test.ts cubre cambio mismo precio / más caro / más
+    barato y que el total nunca sea el valor completo del ítem nuevo
 
 ## Testing
 - Framework: Vitest (v2.x, compatible con Vite 5) + jsdom + @testing-library/*.
@@ -334,10 +360,11 @@ En progreso: —
     ventas por método, solo efectivo afecta expectedCash, gastos, abonos de
     separados, devoluciones (cash_expense) y exclusión de órdenes de separados
     completados (converted_order_id) para no duplicar
+  · src/lib/returnCalc.ts → calculateExchangeAmounts (netea cambios)
   · cartStore.cartTotals, layawayCalc.calculateMaxDiscount /
     calculateRequiredInitialPayment / isLayawayOverdue / daysUntilExpiry
-- 35 tests (3 archivos): src/lib/shiftCalc.test.ts, src/lib/layawayCalc.test.ts,
-  src/stores/cartStore.test.ts
+- 50 tests (4 archivos): src/lib/shiftCalc.test.ts, src/lib/returnCalc.test.ts,
+  src/lib/layawayCalc.test.ts, src/stores/cartStore.test.ts
 
 Refactor de calidad (refactor/quality-cleanup) ✅
   - Lint sin deuda: AuthContext (catch sin binding, directiva eslint-disable

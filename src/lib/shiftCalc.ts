@@ -44,8 +44,44 @@ export interface ShiftSummary {
   totalSales: number
   cashSales: number
   totalExpenses: number
+  // Efectivo esperado en caja (tope en 0, Lógica B). Si los egresos superan lo
+  // disponible, el faltante se reporta en `overdraft` en vez de un esperado
+  // negativo.
   expectedCash: number
+  overdraft: number
   orderCount: number
+}
+
+export interface CashReconciliation {
+  expectedCash: number
+  overdraft: number
+}
+
+/**
+ * Lógica B del cuadre: el efectivo esperado nunca baja de 0. Cuando los egresos
+ * superan el efectivo disponible (apertura + ventas/abonos en efectivo) el
+ * exceso se reporta como `overdraft` (sobregiro), no como un esperado negativo.
+ */
+export function reconcileCash(
+  availableCash: number,
+  totalExpenses: number,
+): CashReconciliation {
+  return {
+    expectedCash: Math.max(0, availableCash - totalExpenses),
+    overdraft: Math.max(0, totalExpenses - availableCash),
+  }
+}
+
+/**
+ * Diferencia del cuadre = contado − esperado − sobregiro. Positiva = SOBRANTE,
+ * negativa = FALTANTE, cero = CUADRADO. Restar el sobregiro asegura que un
+ * egreso que vacía la caja se lea como faltante y no como sobrante.
+ */
+export function shiftDifference(
+  countedCash: number,
+  rec: CashReconciliation,
+): number {
+  return countedCash - rec.expectedCash - rec.overdraft
 }
 
 type AggRow = {
@@ -108,7 +144,10 @@ export function calculateShiftSummary(input: ShiftSummaryInput): ShiftSummary {
 
   const totalSales = regularSalesTotal + layawayPaymentsTotal
   const totalExpenses = input.expenses.reduce((sum, e) => sum + e.amount, 0)
-  const expectedCash = input.openingAmount + cashSales - totalExpenses
+  const { expectedCash, overdraft } = reconcileCash(
+    input.openingAmount + cashSales,
+    totalExpenses,
+  )
 
   return {
     salesByMethod,
@@ -118,6 +157,7 @@ export function calculateShiftSummary(input: ShiftSummaryInput): ShiftSummary {
     cashSales,
     totalExpenses,
     expectedCash,
+    overdraft,
     orderCount: orders.length,
   }
 }

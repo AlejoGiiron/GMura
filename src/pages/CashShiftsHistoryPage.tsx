@@ -139,6 +139,7 @@ function ReprintReceiptModal({
                   cashSales={closing.cashSales}
                   totalExpenses={closing.totalExpenses}
                   expectedCash={closing.expectedCash}
+                  overdraft={closing.overdraft}
                   orderCount={closing.orderCount}
                   countedCash={countedCash}
                   difference={difference}
@@ -178,6 +179,7 @@ function ReprintReceiptModal({
           cashSales={closing.cashSales}
           totalExpenses={closing.totalExpenses}
           expectedCash={closing.expectedCash}
+          overdraft={closing.overdraft}
           orderCount={closing.orderCount}
           countedCash={countedCash}
           difference={difference}

@@ -1,9 +1,17 @@
 import { describe, it, expect } from 'vitest'
 import {
   calculateShiftSummary,
+  reconcileCash,
+  shiftDifference,
   type ShiftOrderInput,
   type ShiftLayawayPaymentInput,
 } from './shiftCalc'
+
+function label(diff: number): 'CUADRADO' | 'SOBRANTE' | 'FALTANTE' {
+  if (diff > 0) return 'SOBRANTE'
+  if (diff < 0) return 'FALTANTE'
+  return 'CUADRADO'
+}
 
 function order(
   id: string,
@@ -150,6 +158,78 @@ describe('calculateShiftSummary', () => {
     expect(r.totalSales).toBe(0)
     expect(r.cashSales).toBe(0)
     expect(r.expectedCash).toBe(50_000)
+    expect(r.overdraft).toBe(0)
     expect(r.salesByMethod).toEqual([])
+  })
+
+  it('caso foto vía calculateShiftSummary: egreso mayor a lo disponible', () => {
+    // apertura 162k, sin ventas, egreso 180k (pago a proveedor en efectivo)
+    const r = calculateShiftSummary({
+      openingAmount: 162_000,
+      orders: [],
+      layawayPayments: [],
+      expenses: [{ amount: 180_000 }],
+    })
+    expect(r.cashSales).toBe(0)
+    expect(r.totalExpenses).toBe(180_000)
+    expect(r.expectedCash).toBe(0) // tope en 0, no negativo
+    expect(r.overdraft).toBe(18_000)
+    // contado 0 → FALTANTE 18.000 (no SOBRANTE)
+    expect(shiftDifference(0, r)).toBe(-18_000)
+  })
+})
+
+describe('reconcileCash + shiftDifference (Lógica B del cuadre)', () => {
+  it('caso normal cuadrado: ap 50k + ventas 100k, sin egresos, contado 150k', () => {
+    const rec = reconcileCash(150_000, 0)
+    expect(rec).toEqual({ expectedCash: 150_000, overdraft: 0 })
+    const diff = shiftDifference(150_000, rec)
+    expect(diff).toBe(0)
+    expect(label(diff)).toBe('CUADRADO')
+  })
+
+  it('faltante por error de conteo: contado 145k → -5k FALTANTE', () => {
+    const rec = reconcileCash(150_000, 0)
+    const diff = shiftDifference(145_000, rec)
+    expect(diff).toBe(-5_000)
+    expect(label(diff)).toBe('FALTANTE')
+  })
+
+  it('sobrante: contado 155k → +5k SOBRANTE', () => {
+    const rec = reconcileCash(150_000, 0)
+    const diff = shiftDifference(155_000, rec)
+    expect(diff).toBe(5_000)
+    expect(label(diff)).toBe('SOBRANTE')
+  })
+
+  it('egreso normal: ap 50k + ventas 100k, egresos 30k, contado 120k → CUADRADO', () => {
+    const rec = reconcileCash(150_000, 30_000)
+    expect(rec).toEqual({ expectedCash: 120_000, overdraft: 0 })
+    const diff = shiftDifference(120_000, rec)
+    expect(diff).toBe(0)
+    expect(label(diff)).toBe('CUADRADO')
+  })
+
+  it('CASO FOTO: ap 162k, egresos 180k, contado 0 → FALTANTE 18.000', () => {
+    const rec = reconcileCash(162_000, 180_000)
+    expect(rec).toEqual({ expectedCash: 0, overdraft: 18_000 })
+    const diff = shiftDifference(0, rec)
+    expect(diff).toBe(-18_000)
+    expect(label(diff)).toBe('FALTANTE')
+  })
+
+  it('pago exacto: ap 100k, egresos 100k, contado 0 → CUADRADO', () => {
+    const rec = reconcileCash(100_000, 100_000)
+    expect(rec).toEqual({ expectedCash: 0, overdraft: 0 })
+    const diff = shiftDifference(0, rec)
+    expect(diff).toBe(0)
+    expect(label(diff)).toBe('CUADRADO')
+  })
+
+  it('sobregiro con conteo parcial: ap 162k, egresos 180k, contado 10k → FALTANTE 8.000', () => {
+    const rec = reconcileCash(162_000, 180_000)
+    const diff = shiftDifference(10_000, rec)
+    expect(diff).toBe(-8_000)
+    expect(label(diff)).toBe('FALTANTE')
   })
 })
