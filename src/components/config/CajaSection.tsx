@@ -9,7 +9,7 @@ import {
   Bookmark,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { useStoreConfig, resolveConfig } from '@/hooks/useConfig'
+import { useStoreConfig, useResolvedConfig } from '@/hooks/useConfig'
 import { useConfigMutations } from '@/hooks/useConfigMutations'
 import {
   PAYMENT_METHODS,
@@ -104,6 +104,7 @@ function ConfirmDeleteReasonModal({
 
 export default function CajaSection() {
   const { data: store, isLoading } = useStoreConfig()
+  const config = useResolvedConfig()
   const { updateStoreConfig, uploadPaymentQR } = useConfigMutations()
   const fileRef = useRef<HTMLInputElement>(null)
 
@@ -125,17 +126,16 @@ export default function CajaSection() {
 
   useEffect(() => {
     if (!store) return
-    const cfg = resolveConfig(store.config)
-    setReasons(cfg.adjustment_reasons)
-    setPaymentMethods(migrateLegacyPaymentMethods(cfg.payment_methods))
-    setPaymentQrUrl(cfg.payment_qr_url)
-    setExpenseReasons(cfg.expense_reasons)
-    setLayawayInitialMode(cfg.layaway_initial_payment_mode)
-    setLayawayInitialValue(String(cfg.layaway_initial_payment_value ?? 0))
-    setLayawayDiscountMode(cfg.layaway_discount_mode)
-    setLayawayDiscountValue(String(cfg.layaway_discount_value ?? 0))
-    setLayawayDefaultDays(String(cfg.layaway_default_days ?? 90))
-  }, [store])
+    setReasons(config.adjustment_reasons)
+    setPaymentMethods(migrateLegacyPaymentMethods(config.payment_methods))
+    setPaymentQrUrl(config.payment_qr_url)
+    setExpenseReasons(config.expense_reasons)
+    setLayawayInitialMode(config.layaway_initial_payment_mode)
+    setLayawayInitialValue(String(config.layaway_initial_payment_value ?? 0))
+    setLayawayDiscountMode(config.layaway_discount_mode)
+    setLayawayDiscountValue(String(config.layaway_discount_value ?? 0))
+    setLayawayDefaultDays(String(config.layaway_default_days ?? 90))
+  }, [store, config])
 
   function addReason() {
     const v = newReason.trim()

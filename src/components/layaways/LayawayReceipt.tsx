@@ -1,9 +1,9 @@
-import { useEffect } from 'react'
 import { fmtCOP } from '@/lib/formatters'
 import { PAYMENT_METHODS } from '@/lib/paymentMethods'
+import { useReceiptPrintStyle } from '@/lib/receiptPrint'
 import type { LayawayDetail } from '@/hooks/useLayaways'
 
-export const LAYAWAY_PRINT_CONTAINER_ID = 'gmura-layaway-receipt-print'
+const LAYAWAY_PRINT_CONTAINER_ID = 'gmura-layaway-receipt-print'
 const LAYAWAY_PRINT_STYLE_ID = 'gmura-layaway-receipt-print-style'
 
 const DIVIDER = '═══════════════════════════════'
@@ -36,41 +36,6 @@ function fmtDateOnly(iso: string | Date): string {
     year: 'numeric',
     timeZone: 'America/Bogota',
   }).format(d)
-}
-
-export function useLayawayReceiptPrintStyle() {
-  useEffect(() => {
-    if (document.getElementById(LAYAWAY_PRINT_STYLE_ID)) return
-    const style = document.createElement('style')
-    style.id = LAYAWAY_PRINT_STYLE_ID
-    style.textContent = `
-      @media print {
-        body > * { visibility: hidden !important; }
-        #${LAYAWAY_PRINT_CONTAINER_ID},
-        #${LAYAWAY_PRINT_CONTAINER_ID} * { visibility: visible !important; }
-        #${LAYAWAY_PRINT_CONTAINER_ID} {
-          display: block !important;
-          position: fixed !important;
-          top: 0 !important;
-          left: 0 !important;
-          width: 80mm !important;
-          padding: 4mm !important;
-          margin: 0 !important;
-          box-sizing: border-box !important;
-          background: #fff !important;
-          color: #000 !important;
-          font-family: ui-monospace, SFMono-Regular, Menlo, monospace !important;
-          font-size: 11px !important;
-          line-height: 1.4 !important;
-        }
-        @page { margin: 0; size: 80mm auto; }
-      }
-    `
-    document.head.appendChild(style)
-    return () => {
-      document.getElementById(LAYAWAY_PRINT_STYLE_ID)?.remove()
-    }
-  }, [])
 }
 
 function Line({ children }: { children: React.ReactNode }) {
@@ -235,7 +200,7 @@ export function LayawayReceipt({
 }
 
 export function LayawayReceiptPrint(props: LayawayReceiptProps) {
-  useLayawayReceiptPrintStyle()
+  useReceiptPrintStyle(LAYAWAY_PRINT_STYLE_ID, LAYAWAY_PRINT_CONTAINER_ID)
   return (
     <div
       id={LAYAWAY_PRINT_CONTAINER_ID}

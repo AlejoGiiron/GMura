@@ -4,7 +4,7 @@ import JsBarcode from 'jsbarcode'
 import toast from 'react-hot-toast'
 import { fmtCOP } from '@/lib/formatters'
 import { generateBarcode } from '@/lib/products'
-import { useStoreConfig, resolveConfig } from '@/hooks/useConfig'
+import { useResolvedConfig } from '@/hooks/useConfig'
 import { useVariantMutations } from '@/hooks/useVariantMutations'
 import type { LabelFormat } from '@/types/config.types'
 import type { Variant } from '@/types/database.types'
@@ -145,10 +145,7 @@ export default function LabelPrintModal({
   variants,
   onClose,
 }: LabelPrintModalProps) {
-  const { data: storeData } = useStoreConfig()
-  const config = resolveConfig(
-    (storeData as unknown as { config: Record<string, unknown> | null } | undefined)?.config,
-  )
+  const config = useResolvedConfig()
   const labelFormat: LabelFormat = FORMAT_DIMS[config.label_format]
     ? config.label_format
     : FALLBACK_FORMAT

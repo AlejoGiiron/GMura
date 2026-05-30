@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { Store as StoreIcon, Upload } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { useStoreConfig, resolveConfig } from '@/hooks/useConfig'
+import { useStoreConfig, useResolvedConfig } from '@/hooks/useConfig'
 import { useConfigMutations } from '@/hooks/useConfigMutations'
 
 const TIMEZONES = [
@@ -18,6 +18,7 @@ function SkeletonField() {
 
 export default function StoreSection() {
   const { data: store, isLoading } = useStoreConfig()
+  const config = useResolvedConfig()
   const { updateStore, updateStoreConfig, uploadLogo } = useConfigMutations()
   const fileRef = useRef<HTMLInputElement>(null)
 
@@ -32,9 +33,8 @@ export default function StoreSection() {
     setName(store.name)
     setAddress(store.address ?? '')
     setPhone(store.phone ?? '')
-    const cfg = resolveConfig(store.config)
-    setTimezone(cfg.timezone)
-  }, [store])
+    setTimezone(config.timezone)
+  }, [store, config])
 
   async function handleSave() {
     if (!name.trim()) {

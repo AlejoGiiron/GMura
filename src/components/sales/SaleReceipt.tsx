@@ -1,9 +1,9 @@
-import { useEffect } from 'react'
 import { fmtCOP } from '@/lib/formatters'
 import { PAYMENT_METHODS } from '@/lib/paymentMethods'
+import { useReceiptPrintStyle } from '@/lib/receiptPrint'
 import type { PaymentMethod } from '@/types/database.types'
 
-export const SALE_PRINT_CONTAINER_ID = 'gmura-sale-receipt-print'
+const SALE_PRINT_CONTAINER_ID = 'gmura-sale-receipt-print'
 const SALE_PRINT_STYLE_ID = 'gmura-sale-receipt-print-style'
 
 const DIVIDER = '═══════════════════════════════'
@@ -56,43 +56,6 @@ function fmtDateTime(iso: string | Date): string {
     hour12: false,
     timeZone: 'America/Bogota',
   }).format(d)
-}
-
-// ── Hook para inyectar @media print una sola vez ──────────────────────────────
-
-export function useSaleReceiptPrintStyle() {
-  useEffect(() => {
-    if (document.getElementById(SALE_PRINT_STYLE_ID)) return
-    const style = document.createElement('style')
-    style.id = SALE_PRINT_STYLE_ID
-    style.textContent = `
-      @media print {
-        body > * { visibility: hidden !important; }
-        #${SALE_PRINT_CONTAINER_ID},
-        #${SALE_PRINT_CONTAINER_ID} * { visibility: visible !important; }
-        #${SALE_PRINT_CONTAINER_ID} {
-          display: block !important;
-          position: fixed !important;
-          top: 0 !important;
-          left: 0 !important;
-          width: 80mm !important;
-          padding: 4mm !important;
-          margin: 0 !important;
-          box-sizing: border-box !important;
-          background: #fff !important;
-          color: #000 !important;
-          font-family: ui-monospace, SFMono-Regular, Menlo, monospace !important;
-          font-size: 11px !important;
-          line-height: 1.4 !important;
-        }
-        @page { margin: 0; size: 80mm auto; }
-      }
-    `
-    document.head.appendChild(style)
-    return () => {
-      document.getElementById(SALE_PRINT_STYLE_ID)?.remove()
-    }
-  }, [])
 }
 
 // ── Subcomponentes visuales ───────────────────────────────────────────────────
@@ -243,7 +206,7 @@ export function SaleReceipt({ sale, storeName, printedAt }: SaleReceiptProps) {
 // ── Contenedor para impresión (oculto en pantalla) ────────────────────────────
 
 export function SaleReceiptPrint(props: SaleReceiptProps) {
-  useSaleReceiptPrintStyle()
+  useReceiptPrintStyle(SALE_PRINT_STYLE_ID, SALE_PRINT_CONTAINER_ID)
   return (
     <div
       id={SALE_PRINT_CONTAINER_ID}

@@ -32,7 +32,7 @@ import { useBarcode } from '@/hooks/useBarcode'
 import BarcodeScanner from '@/components/pos/BarcodeScanner'
 import { useCreateOrder } from '@/hooks/useCreateOrder'
 import { useCategories } from '@/hooks/useProducts'
-import { useStoreConfig, resolveConfig } from '@/hooks/useConfig'
+import { useStoreConfig, useResolvedConfig } from '@/hooks/useConfig'
 import { fmtCOP } from '@/lib/formatters'
 import { getColorHex } from '@/lib/products'
 import { useDebounce } from '@/hooks/useDebounce'
@@ -1056,7 +1056,7 @@ export default function POSPage() {
   const { data: allProducts = [] } = usePOSProducts()
   const { data: categories = [] } = useCategories()
   const { data: storeData } = useStoreConfig()
-  const config = resolveConfig((storeData as unknown as { config: Record<string, unknown> | null } | undefined)?.config)
+  const config = useResolvedConfig()
   const { items, discount, customer_id, addItem, clear } = useCartStore()
   const createOrder = useCreateOrder()
   const { data: currentShift, isLoading: loadingShift } = useCurrentShift()
@@ -1393,10 +1393,7 @@ export default function POSPage() {
           items={completedSale.items}
           discount={completedSale.discount}
           customer={completedSale.customer}
-          storeName={
-            (storeData as unknown as { name?: string } | undefined)?.name ??
-            'G-Mura'
-          }
+          storeName={storeData?.name ?? 'G-Mura'}
           onClose={handleTicketClose}
         />
       )}

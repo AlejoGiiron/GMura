@@ -1,13 +1,13 @@
-import { useEffect } from 'react'
 import { fmtCOP } from '@/lib/formatters'
 import { PAYMENT_METHODS } from '@/lib/paymentMethods'
+import { useReceiptPrintStyle } from '@/lib/receiptPrint'
 import type {
   CashShift,
   CashExpense,
   PaymentMethod,
 } from '@/types/database.types'
 
-export const SHIFT_PRINT_CONTAINER_ID = 'gmura-shift-receipt-print'
+const SHIFT_PRINT_CONTAINER_ID = 'gmura-shift-receipt-print'
 const SHIFT_PRINT_STYLE_ID = 'gmura-shift-receipt-print-style'
 
 export interface SalesByMethodRow {
@@ -77,43 +77,6 @@ function fmtDuration(opened: string, closed: string | Date): string {
   const m = totalMin % 60
   if (h === 0) return `${m}m`
   return `${h}h ${m}m`
-}
-
-// ── Hook para inyectar @media print una sola vez ──────────────────────────────
-
-export function useShiftReceiptPrintStyle() {
-  useEffect(() => {
-    if (document.getElementById(SHIFT_PRINT_STYLE_ID)) return
-    const style = document.createElement('style')
-    style.id = SHIFT_PRINT_STYLE_ID
-    style.textContent = `
-      @media print {
-        body > * { visibility: hidden !important; }
-        #${SHIFT_PRINT_CONTAINER_ID},
-        #${SHIFT_PRINT_CONTAINER_ID} * { visibility: visible !important; }
-        #${SHIFT_PRINT_CONTAINER_ID} {
-          display: block !important;
-          position: fixed !important;
-          top: 0 !important;
-          left: 0 !important;
-          width: 80mm !important;
-          padding: 4mm !important;
-          margin: 0 !important;
-          box-sizing: border-box !important;
-          background: #fff !important;
-          color: #000 !important;
-          font-family: ui-monospace, SFMono-Regular, Menlo, monospace !important;
-          font-size: 11px !important;
-          line-height: 1.4 !important;
-        }
-        @page { margin: 0; size: 80mm auto; }
-      }
-    `
-    document.head.appendChild(style)
-    return () => {
-      document.getElementById(SHIFT_PRINT_STYLE_ID)?.remove()
-    }
-  }, [])
 }
 
 // ── Subcomponentes visuales ───────────────────────────────────────────────────
@@ -365,7 +328,7 @@ export function CashShiftReceipt(props: CashShiftReceiptProps) {
 // ── Contenedor para impresión (oculto en pantalla) ────────────────────────────
 
 export function CashShiftReceiptPrint(props: CashShiftReceiptProps) {
-  useShiftReceiptPrintStyle()
+  useReceiptPrintStyle(SHIFT_PRINT_STYLE_ID, SHIFT_PRINT_CONTAINER_ID)
   return (
     <div
       id={SHIFT_PRINT_CONTAINER_ID}

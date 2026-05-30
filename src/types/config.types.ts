@@ -24,7 +24,6 @@ export type LayawayDiscountMode = 'none' | 'fixed'
 export interface StoreConfig {
   timezone: string
   currency: string
-  sizes: string[]
   size_types: SizeTypeConfig[]
   colors: StoreColorConfig[]
   brands: string[]

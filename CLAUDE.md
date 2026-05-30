@@ -318,9 +318,24 @@ Sidebar agrupado en secciones colapsables (feature/12-caja-completa) ✅
 - Configuración (tienda, usuarios, productos, caja, etiquetas)
 
 ## Estado actual del proyecto
-Última fase completada: 15.2 - Hotfix feedback (descuento separados solo fijo +
-  devoluciones reflejadas en el cuadre de caja)
+Última fase completada: Limpieza de calidad (lint, useResolvedConfig, memo)
 En progreso: —
+
+Refactor de calidad (refactor/quality-cleanup) ✅
+  - Lint sin deuda: AuthContext (catch sin binding, directiva eslint-disable
+    sobrante, contexto movido a src/contexts/auth-context.ts para react-refresh),
+    ReturnsPage (dep returnDaysLimit). package.json: lint con --max-warnings 0,
+    scripts typecheck y check (tsc + lint) listos para pre-commit
+  - useResolvedConfig() en useConfig.ts unifica las ~12 repeticiones de
+    resolveConfig(store?.config) y elimina el cast innecesario
+    "as unknown as { config }" (Store.config ya era Record<string,unknown>|null);
+    memoiza por referencia de la tienda
+  - config.sizes (lista plana) eliminado de StoreConfig/DEFAULT_CONFIG/resolveConfig
+    (huérfano tras 15.1; lo reemplazó size_types)
+  - VariantsPanel: catalogSizes envuelto en useMemo (dep estable)
+  - src/lib/receiptPrint.ts: hook useReceiptPrintStyle(styleId, containerId)
+    compartido; CashShiftReceipt/SaleReceipt/LayawayReceipt dejan de exportar
+    constantes/hooks (silencia react-refresh) y reusan el helper (DRY)
 
 Nota: las migraciones 011_suppliers y 012_purchase_views quedan pendientes de
 aplicar en Supabase + verificar triggers/vistas antes del despliegue.

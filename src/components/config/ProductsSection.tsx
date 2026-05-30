@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Tag, GripVertical, Plus, Trash2, RefreshCw, X } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { useStoreConfig, resolveConfig } from '@/hooks/useConfig'
+import { useStoreConfig, useResolvedConfig } from '@/hooks/useConfig'
 import { useConfigMutations } from '@/hooks/useConfigMutations'
 import { useAuth } from '@/hooks/useAuth'
 import { supabase } from '@/lib/supabase'
@@ -369,6 +369,7 @@ function BrandList({
 export default function ProductsSection() {
   const { profile } = useAuth()
   const { data: store, isLoading } = useStoreConfig()
+  const config = useResolvedConfig()
   const { updateStoreConfig } = useConfigMutations()
 
   const [sizeTypes, setSizeTypes] = useState<SizeTypeConfig[]>([])
@@ -379,12 +380,11 @@ export default function ProductsSection() {
 
   useEffect(() => {
     if (!store) return
-    const cfg = resolveConfig(store.config)
-    setSizeTypes(cfg.size_types)
-    setColors(cfg.colors)
-    setBrands(cfg.brands)
-    setReturnDays(cfg.return_days_limit)
-  }, [store])
+    setSizeTypes(config.size_types)
+    setColors(config.colors)
+    setBrands(config.brands)
+    setReturnDays(config.return_days_limit)
+  }, [store, config])
 
   async function handleSave() {
     const cleaned = sizeTypes

@@ -5,7 +5,7 @@ import { useVariantMutations } from '@/hooks/useVariantMutations'
 import LabelPrintModal from '@/components/products/LabelPrintModal'
 import { fmtCOP } from '@/lib/formatters'
 import { generateBarcode, getColorHex } from '@/lib/products'
-import { useStoreConfig, resolveConfig } from '@/hooks/useConfig'
+import { useResolvedConfig } from '@/hooks/useConfig'
 import { findSizeType, isCustomSizeType } from '@/lib/sizeTypes'
 import type { Product, Variant } from '@/types/database.types'
 import toast from 'react-hot-toast'
@@ -55,12 +55,12 @@ interface VariantsPanelProps {
 export default function VariantsPanel({ product, onClose }: VariantsPanelProps) {
   const { data: variants = [], isLoading } = useVariants(product.id)
   const { create, update, toggleActive } = useVariantMutations(product.id)
-  const { data: storeData } = useStoreConfig()
-  const sizeTypes = resolveConfig(
-    (storeData as unknown as { config: Record<string, unknown> | null } | undefined)?.config,
-  ).size_types
+  const sizeTypes = useResolvedConfig().size_types
 
-  const catalogSizes: readonly string[] = findSizeType(sizeTypes, product.size_type)?.sizes ?? []
+  const catalogSizes = useMemo<readonly string[]>(
+    () => findSizeType(sizeTypes, product.size_type)?.sizes ?? [],
+    [sizeTypes, product.size_type],
+  )
   const isCustomSizes = isCustomSizeType(sizeTypes, product.size_type)
   const defaultSize = catalogSizes[0] ?? ''
   const emptyForm = useMemo(() => buildEmptyForm(defaultSize), [defaultSize])

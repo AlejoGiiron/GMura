@@ -1,3 +1,4 @@
+import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from './useAuth'
@@ -9,7 +10,6 @@ import { DEFAULT_SIZE_TYPES } from '@/lib/sizeTypes'
 export const DEFAULT_CONFIG: StoreConfig = {
   timezone: 'America/Bogota',
   currency: 'COP',
-  sizes: ['XS', 'S', 'M', 'L', 'XL', 'XXL', 'XXXL'],
   size_types: DEFAULT_SIZE_TYPES,
   colors: [
     { name: 'Negro', hex: '#000000' },
@@ -52,7 +52,6 @@ export function resolveConfig(raw: Record<string, unknown> | null | undefined): 
     ...DEFAULT_CONFIG,
     ...r,
     colors: Array.isArray(r.colors) ? r.colors : DEFAULT_CONFIG.colors,
-    sizes: Array.isArray(r.sizes) ? r.sizes : DEFAULT_CONFIG.sizes,
     size_types:
       Array.isArray(r.size_types) && r.size_types.length > 0
         ? r.size_types
@@ -71,6 +70,17 @@ export function resolveConfig(raw: Record<string, unknown> | null | undefined): 
       ? { ...DEFAULT_CONFIG.label_fields, ...r.label_fields }
       : DEFAULT_CONFIG.label_fields,
   }
+}
+
+/**
+ * Devuelve la configuración resuelta (con defaults aplicados) de la tienda
+ * activa. Unifica el patrón `resolveConfig(store?.config)` repetido en toda la
+ * app y memoiza el resultado por referencia de la tienda para no recrear el
+ * objeto en cada render (estabiliza dependencias de useMemo/useEffect).
+ */
+export function useResolvedConfig(): StoreConfig {
+  const { data: store } = useStoreConfig()
+  return useMemo(() => resolveConfig(store?.config ?? null), [store])
 }
 
 export function useStoreConfig() {
