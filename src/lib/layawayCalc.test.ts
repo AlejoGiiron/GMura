@@ -6,58 +6,31 @@ import {
   daysUntilExpiry,
 } from './layawayCalc'
 
-describe('calculateMaxDiscount', () => {
-  it("modo 'none' siempre devuelve 0, aunque haya valor configurado", () => {
+describe('calculateMaxDiscount (descuento libre, sin tope configurado)', () => {
+  it("modo 'none' devuelve 0 (descuento no permitido)", () => {
     expect(
-      calculateMaxDiscount(100_000, {
-        layaway_discount_mode: 'none',
-        layaway_discount_value: 20_000,
-      }),
+      calculateMaxDiscount(100_000, { layaway_discount_mode: 'none' }),
     ).toBe(0)
   })
 
-  it("modo 'fixed' devuelve el valor configurado", () => {
+  it("modo 'fixed' permite descontar hasta el subtotal completo", () => {
     expect(
-      calculateMaxDiscount(100_000, {
-        layaway_discount_mode: 'fixed',
-        layaway_discount_value: 20_000,
-      }),
-    ).toBe(20_000)
-  })
-
-  it("modo 'fixed' con valor mayor al subtotal hace cap al subtotal", () => {
-    expect(
-      calculateMaxDiscount(100_000, {
-        layaway_discount_mode: 'fixed',
-        layaway_discount_value: 150_000,
-      }),
+      calculateMaxDiscount(100_000, { layaway_discount_mode: 'fixed' }),
     ).toBe(100_000)
-  })
-
-  it('un valor 0 devuelve 0', () => {
     expect(
-      calculateMaxDiscount(100_000, {
-        layaway_discount_mode: 'fixed',
-        layaway_discount_value: 0,
-      }),
-    ).toBe(0)
+      calculateMaxDiscount(45_000, { layaway_discount_mode: 'fixed' }),
+    ).toBe(45_000)
   })
 
   it('subtotal 0 devuelve 0', () => {
     expect(
-      calculateMaxDiscount(0, {
-        layaway_discount_mode: 'fixed',
-        layaway_discount_value: 20_000,
-      }),
+      calculateMaxDiscount(0, { layaway_discount_mode: 'fixed' }),
     ).toBe(0)
   })
 
-  it('un valor negativo devuelve 0', () => {
+  it('subtotal negativo devuelve 0', () => {
     expect(
-      calculateMaxDiscount(100_000, {
-        layaway_discount_mode: 'fixed',
-        layaway_discount_value: -10_000,
-      }),
+      calculateMaxDiscount(-100, { layaway_discount_mode: 'fixed' }),
     ).toBe(0)
   })
 })

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { X, Search, Plus, Trash2, Info, PackagePlus } from 'lucide-react'
+import { X, Search, Plus, Trash2, Info, PackagePlus, AlertTriangle } from 'lucide-react'
+import toast from 'react-hot-toast'
 import { useSupplierList } from '@/hooks/useSuppliers'
 import { usePurchaseVariantSearch } from '@/hooks/usePurchaseInvoices'
 import { useCreateInvoice } from '@/hooks/useInvoiceMutations'
@@ -38,6 +39,97 @@ const LABEL =
 const INPUT =
   'h-10 w-full rounded-lg border border-[#ebe9e6] bg-white px-3 text-sm outline-none transition focus:border-[#8b5cf6] focus:shadow-[0_0_0_4px_#8b5cf61a]'
 
+// ── Aviso de producto duplicado ───────────────────────────────────────────────
+
+interface DuplicateProductWarningProps {
+  name: string
+  matches: Product[]
+  onUseExisting: (product: Product) => void
+  onCreateAnyway: () => void
+  onClose: () => void
+}
+
+function DuplicateProductWarning({
+  name,
+  matches,
+  onUseExisting,
+  onCreateAnyway,
+  onClose,
+}: DuplicateProductWarningProps) {
+  return (
+    <div
+      className="fixed inset-0 z-[60] grid place-items-center p-4"
+      style={{ background: 'rgba(15,23,42,0.5)', backdropFilter: 'blur(4px)' }}
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-md rounded-[14px] bg-white p-6 shadow-[0_20px_60px_rgba(0,0,0,0.3)]"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="mb-4 flex items-start gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-amber-100">
+            <AlertTriangle size={18} className="text-amber-700" />
+          </div>
+          <div>
+            <h3 className="text-base font-semibold text-[#1a1a1a]">
+              Ya existe un producto similar
+            </h3>
+            <p className="mt-0.5 text-[13px] text-[#737373]">
+              Encontramos producto(s) parecidos a &ldquo;{name}&rdquo;. Usa el
+              existente para no duplicar el catálogo; si le falta una talla o
+              color, agrégalos al mismo producto.
+            </p>
+          </div>
+        </div>
+
+        <div className="mb-5 space-y-1.5">
+          {matches.map((p) => (
+            <div
+              key={p.id}
+              className="flex items-center justify-between gap-3 rounded-lg border border-[#ebe9e6] bg-[#fafaf9] px-3 py-2"
+            >
+              <div className="min-w-0">
+                {p.brand && (
+                  <p className="truncate text-[10px] font-semibold uppercase tracking-wider text-[#a8a29e]">
+                    {p.brand}
+                  </p>
+                )}
+                <p className="truncate text-sm font-medium text-[#1a1a1a]">
+                  {p.name}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => onUseExisting(p)}
+                className="shrink-0 rounded-md border border-[#ebe9e6] bg-white px-2.5 py-1 text-[11px] font-medium text-[#8b5cf6] hover:bg-[#f5f4f1]"
+              >
+                Usar este
+              </button>
+            </div>
+          ))}
+        </div>
+
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            className="h-9 flex-1 rounded-lg border border-[#ebe9e6] bg-white text-sm font-medium text-[#525252] hover:bg-[#f5f4f1]"
+          >
+            Cancelar
+          </button>
+          <button
+            type="button"
+            onClick={onCreateAnyway}
+            className="h-9 flex-1 rounded-lg bg-[#8b5cf6] text-sm font-semibold text-white hover:bg-[#7c3aed]"
+          >
+            Crear de todas formas
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function NewInvoiceModal({
   onClose,
   onCreated,
@@ -65,6 +157,13 @@ export default function NewInvoiceModal({
   const [showProductModal, setShowProductModal] = useState(false)
   const [variantPanelProduct, setVariantPanelProduct] = useState<Product | null>(null)
   const newProductIds = useRef<Set<string>>(new Set())
+  // Guard anti-duplicados: productos con nombre similar al término buscado.
+  const [dupWarning, setDupWarning] = useState<{ name: string; matches: Product[] } | null>(null)
+  const [checkingDup, setCheckingDup] = useState(false)
+  // Variantes que ya existían al abrir VariantsPanel sobre un producto EXISTENTE;
+  // se excluyen al re-agregar para no volcar todo el catálogo del producto a la
+  // factura (solo las variantes nuevas creadas en la sesión).
+  const preexistingVariantIds = useRef<Set<string>>(new Set())
 
   // Quick supplier
   const [showSupplierModal, setShowSupplierModal] = useState(false)
@@ -150,15 +249,70 @@ export default function NewInvoiceModal({
     setItems((prev) => prev.filter((i) => i.key !== key))
   }
 
-  // Tras crear producto + variantes, agrega las variantes nuevas como items.
+  // Al pulsar "Crear producto": precarga el término como nombre y, antes de
+  // abrir el modal en blanco, busca productos con nombre similar para evitar
+  // duplicados. Si hay coincidencias, muestra el aviso; si no, crea directo.
+  async function handleCreateProductClick() {
+    const name = search.trim()
+    preexistingVariantIds.current = new Set()
+    if (!name) {
+      setShowProductModal(true)
+      return
+    }
+    setCheckingDup(true)
+    try {
+      const { data, error } = await supabase
+        .from('products')
+        .select('*')
+        .eq('store_id' as never, storeId)
+        .ilike('name' as never, `%${name}%`)
+        .order('name' as never)
+        .limit(5)
+      if (error) throw error
+      const matches = (data ?? []) as unknown as Product[]
+      if (matches.length > 0) {
+        setDupWarning({ name, matches })
+      } else {
+        setShowProductModal(true)
+      }
+    } catch {
+      toast.error('No se pudo verificar productos existentes')
+      setShowProductModal(true)
+    } finally {
+      setCheckingDup(false)
+    }
+  }
+
+  // "Usar existente": abre VariantsPanel sobre el producto ya creado para
+  // agregar SOLO la variante (talla/color) que falte, sin duplicar el producto.
+  async function handleUseExisting(product: Product) {
+    setDupWarning(null)
+    const { data, error } = await supabase
+      .from('variants')
+      .select('id')
+      .eq('product_id' as never, product.id)
+      .eq('store_id' as never, storeId)
+      .eq('is_active' as never, true)
+    preexistingVariantIds.current = new Set(
+      error
+        ? []
+        : ((data ?? []) as unknown as { id: string }[]).map((v) => v.id),
+    )
+    setVariantPanelProduct(product)
+  }
+
+  // Tras crear/editar variantes, agrega como items SOLO las variantes nuevas
+  // (las preexistentes de un producto ya catalogado se excluyen).
   async function handleVariantsPanelClose(product: Product) {
     setVariantPanelProduct(null)
+    const skip = preexistingVariantIds.current
     const { data, error } = await supabase
       .from('variants')
       .select('id, size, color, sku, cost_price, price')
       .eq('product_id' as never, product.id)
       .eq('store_id' as never, storeId)
       .eq('is_active' as never, true)
+    preexistingVariantIds.current = new Set()
     if (error) return
     const variants = (data ?? []) as unknown as Array<{
       id: string
@@ -169,6 +323,7 @@ export default function NewInvoiceModal({
       price: number
     }>
     for (const v of variants) {
+      if (skip.has(v.id)) continue
       addItem({
         variant_id: v.id,
         product_id: product.id,
@@ -177,7 +332,7 @@ export default function NewInvoiceModal({
         color: v.color,
         sku: v.sku,
         unit_cost: v.cost_price != null ? Number(v.cost_price) : 0,
-        // Producto nuevo: tiene sentido fijar su costo desde esta factura.
+        // Variante nueva: tiene sentido fijar su costo desde esta factura.
         update_cost: true,
       })
     }
@@ -347,10 +502,11 @@ export default function NewInvoiceModal({
                   />
                   <button
                     type="button"
-                    onClick={() => setShowProductModal(true)}
-                    className="flex shrink-0 items-center gap-1.5 rounded-md border border-[#ebe9e6] bg-white px-2.5 py-1 text-[11px] font-medium text-[#8b5cf6] hover:bg-[#f5f4f1]"
+                    onClick={() => void handleCreateProductClick()}
+                    disabled={checkingDup}
+                    className="flex shrink-0 items-center gap-1.5 rounded-md border border-[#ebe9e6] bg-white px-2.5 py-1 text-[11px] font-medium text-[#8b5cf6] hover:bg-[#f5f4f1] disabled:opacity-50"
                   >
-                    <PackagePlus size={13} /> Crear producto
+                    <PackagePlus size={13} /> {checkingDup ? 'Verificando…' : 'Crear producto'}
                   </button>
                 </div>
 
@@ -399,6 +555,11 @@ export default function NewInvoiceModal({
                               {r.color ? ` · ${r.color}` : ''}
                               {r.sku ? ` · ${r.sku}` : ''} · disp. {available}
                             </p>
+                            {r.barcode && (
+                              <p className="mt-0.5 truncate font-mono text-[10px] text-[#a8a29e]">
+                                {r.barcode}
+                              </p>
+                            )}
                           </div>
                           <span className="shrink-0 font-mono text-xs text-[#525252]">
                             {r.cost_price != null ? fmtCOP(r.cost_price) : 'sin costo'}
@@ -659,13 +820,29 @@ export default function NewInvoiceModal({
         />
       )}
 
+      {/* Aviso de producto duplicado */}
+      {dupWarning && (
+        <DuplicateProductWarning
+          name={dupWarning.name}
+          matches={dupWarning.matches}
+          onUseExisting={(p) => void handleUseExisting(p)}
+          onCreateAnyway={() => {
+            setDupWarning(null)
+            setShowProductModal(true)
+          }}
+          onClose={() => setDupWarning(null)}
+        />
+      )}
+
       {/* Crear producto */}
       {showProductModal && (
         <ProductModal
+          initialName={search.trim()}
           onClose={() => setShowProductModal(false)}
           onSaved={(p) => {
             setShowProductModal(false)
             newProductIds.current.add(p.id)
+            preexistingVariantIds.current = new Set()
             setVariantPanelProduct(p)
           }}
         />

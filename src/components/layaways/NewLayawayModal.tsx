@@ -666,7 +666,6 @@ interface ConfirmStepProps {
   subtotal: number
   discount: string
   setDiscount: (v: string) => void
-  maxDiscount: number
   showDiscount: boolean
   total: number
   required: number
@@ -683,7 +682,6 @@ function ConfirmStep({
   subtotal,
   discount,
   setDiscount,
-  maxDiscount,
   showDiscount,
   total,
   required,
@@ -697,6 +695,10 @@ function ConfirmStep({
 }: ConfirmStepProps) {
   const parsedAmount = parseCOP(amount)
   const parsedDiscount = parseCOP(discount)
+  // Descuento libre: el único límite es el subtotal; >50% solo advierte.
+  const effectiveDiscount = Math.min(parsedDiscount, subtotal)
+  const overSubtotal = parsedDiscount > subtotal
+  const over50 = !overSubtotal && parsedDiscount > subtotal * 0.5
   const visibleMethods = PAYMENT_METHOD_KEYS.filter((m) =>
     enabledMethods.includes(m),
   )
@@ -713,10 +715,10 @@ function ConfirmStep({
             <span>Subtotal</span>
             <span className="font-mono">{fmtCOP(subtotal)}</span>
           </div>
-          {parsedDiscount > 0 && (
+          {effectiveDiscount > 0 && (
             <div className="flex justify-between text-green-700">
               <span>Descuento</span>
-              <span className="font-mono">-{fmtCOP(parsedDiscount)}</span>
+              <span className="font-mono">-{fmtCOP(effectiveDiscount)}</span>
             </div>
           )}
           <div className="flex items-baseline justify-between border-t border-[#ebe9e6] pt-1.5">
@@ -730,18 +732,12 @@ function ConfirmStep({
         </div>
       </div>
 
-      {/* Descuento (solo si está habilitado en config) */}
+      {/* Descuento (solo si está habilitado en config) — monto libre */}
       {showDiscount && (
         <div>
-          <div className="mb-1.5 flex items-end justify-between">
-            <label className="text-[11px] font-semibold uppercase tracking-[.05em] text-[#737373]">
-              Descuento aplicado
-            </label>
-            <span className="text-[11px] text-[#737373]">
-              Máximo permitido:{' '}
-              <strong className="text-[#1a1a1a]">{fmtCOP(maxDiscount)}</strong>
-            </span>
-          </div>
+          <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[.05em] text-[#737373]">
+            Descuento
+          </label>
           <div className="flex items-center gap-2 rounded-lg border border-[#ebe9e6] px-3 focus-within:border-violet-400 focus-within:ring-2 focus-within:ring-violet-100">
             <span className="text-sm text-[#737373]">$</span>
             <input
@@ -753,17 +749,8 @@ function ConfirmStep({
             />
             <span className="text-xs text-[#a8a29e]">COP</span>
           </div>
-          <div className="mt-2 flex flex-wrap gap-1.5">
-            {maxDiscount > 0 && (
-              <button
-                type="button"
-                onClick={() => setDiscount(String(maxDiscount))}
-                className="rounded-lg border border-[#ebe9e6] bg-white px-2.5 py-1 text-xs font-semibold text-[#525252] hover:border-violet-300 hover:bg-violet-50"
-              >
-                Aplicar máximo ({fmtCOP(maxDiscount)})
-              </button>
-            )}
-            {parsedDiscount > 0 && (
+          {parsedDiscount > 0 && (
+            <div className="mt-2">
               <button
                 type="button"
                 onClick={() => setDiscount('')}
@@ -771,13 +758,18 @@ function ConfirmStep({
               >
                 Quitar descuento
               </button>
-            )}
-          </div>
-          {parsedDiscount > maxDiscount && (
-            <p className="mt-1.5 text-[11px] text-red-600">
-              No puede superar el máximo configurado ({fmtCOP(maxDiscount)}).
-            </p>
+            </div>
           )}
+          {overSubtotal ? (
+            <p className="mt-1.5 text-[11px] text-red-600">
+              El descuento no puede superar el valor del separado (
+              {fmtCOP(subtotal)}).
+            </p>
+          ) : over50 ? (
+            <p className="mt-1.5 text-[11px] text-amber-600">
+              Este descuento supera el 50% del valor del separado.
+            </p>
+          ) : null}
         </div>
       )}
 
@@ -973,7 +965,8 @@ export function NewLayawayModal({ prefill, onClose, onCreated }: Props) {
     () => calculateRequiredInitialPayment(total, config),
     [total, config],
   )
-  const showDiscount = config.layaway_discount_mode !== 'none' && maxDiscount > 0
+  // El descuento es libre: basta con que esté permitido en la config.
+  const showDiscount = config.layaway_discount_mode !== 'none'
 
   // Pre-fill amount con el requerido cuando se llega al paso 3
   useEffect(() => {
@@ -1045,7 +1038,9 @@ export function NewLayawayModal({ prefill, onClose, onCreated }: Props) {
   function handleSubmit() {
     if (!customer) return
     if (!canSubmit) {
-      if (parsedAmount < requiredInitial) {
+      if (rawDiscount > subtotal) {
+        toast.error('El descuento no puede superar el valor del separado')
+      } else if (parsedAmount < requiredInitial) {
         toast.error(`Abono mínimo requerido: ${fmtCOP(requiredInitial)}`)
       }
       return
@@ -1062,7 +1057,6 @@ export function NewLayawayModal({ prefill, onClose, onCreated }: Props) {
         expires_at: new Date(expiresAt + 'T23:59:59-05:00').toISOString(),
         notes,
         discount: parsedDiscount,
-        max_discount: maxDiscount,
         initial_payment:
           parsedAmount > 0
             ? { amount: parsedAmount, method }
@@ -1269,7 +1263,6 @@ export function NewLayawayModal({ prefill, onClose, onCreated }: Props) {
               subtotal={subtotal}
               discount={discount}
               setDiscount={setDiscount}
-              maxDiscount={maxDiscount}
               showDiscount={showDiscount}
               total={total}
               required={requiredInitial}
