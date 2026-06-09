@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from './useAuth'
+import { getActiveStoreId } from './useActiveStoreId'
 import toast from 'react-hot-toast'
 import type { Supplier } from '@/types/database.types'
 
@@ -33,7 +34,7 @@ export function useCreateSupplier() {
 
   return useMutation({
     mutationFn: async (data: SupplierFormData): Promise<Supplier> => {
-      const storeId = profile?.store_id
+      const storeId = getActiveStoreId(profile)
       if (!storeId) throw new Error('Sesión inválida. Vuelve a iniciar sesión.')
       if (!data.name.trim()) throw new Error('El nombre del proveedor es obligatorio')
 

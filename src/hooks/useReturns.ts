@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from './useAuth'
+import { getActiveStoreId } from './useActiveStoreId'
 import { useDebounce } from './useDebounce'
 import toast from 'react-hot-toast'
 import type { PaymentMethod, ReturnType, ReturnStatus } from '@/types/database.types'
@@ -143,7 +144,7 @@ function toSearchResult(row: RawOrderSearch): OrderSearchResult {
 
 export function useOrderSearch(query: string) {
   const { profile } = useAuth()
-  const storeId = profile?.store_id ?? ''
+  const storeId = getActiveStoreId(profile)
   const dq = useDebounce(query.trim(), 300)
 
   return useQuery({
@@ -214,10 +215,10 @@ export function useOrderSearch(query: string) {
 
 export function useOrderDetail(orderId: string | null) {
   const { profile } = useAuth()
-  const storeId = profile?.store_id ?? ''
+  const storeId = getActiveStoreId(profile)
 
   return useQuery({
-    queryKey: ['returns', 'order-detail', orderId],
+    queryKey: ['returns', 'order-detail', orderId, storeId],
     queryFn: async (): Promise<FoundOrder | null> => {
       if (!orderId) return null
 
@@ -286,7 +287,7 @@ export function useOrderDetail(orderId: string | null) {
 
 export function useReturnHistory(filters: ReturnHistoryFilters) {
   const { profile } = useAuth()
-  const storeId = profile?.store_id ?? ''
+  const storeId = getActiveStoreId(profile)
 
   return useQuery({
     queryKey: ['returns', 'history', storeId, filters],
@@ -344,7 +345,7 @@ export function useReturnHistory(filters: ReturnHistoryFilters) {
 
 export function useVariantSearch(query: string) {
   const { profile } = useAuth()
-  const storeId = profile?.store_id ?? ''
+  const storeId = getActiveStoreId(profile)
   const dq = useDebounce(query.trim(), 300)
 
   return useQuery({

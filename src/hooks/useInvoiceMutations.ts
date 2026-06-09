@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from './useAuth'
+import { getActiveStoreId } from './useActiveStoreId'
 import { useCurrentShift } from './useCashShift'
 import { fmtCOP } from '@/lib/formatters'
 import { todayDateString } from '@/lib/invoices'
@@ -87,7 +88,7 @@ export function useCreateInvoice() {
 
   return useMutation({
     mutationFn: async (input: CreateInvoiceInput): Promise<PurchaseInvoice> => {
-      const storeId = profile?.store_id
+      const storeId = getActiveStoreId(profile)
       const userId = profile?.id
       if (!storeId || !userId) {
         throw new Error('Sesión inválida. Vuelve a iniciar sesión.')
@@ -223,7 +224,7 @@ export function useRegisterPayment() {
 
   return useMutation({
     mutationFn: async (input: RegisterPaymentInput) => {
-      const storeId = profile?.store_id
+      const storeId = getActiveStoreId(profile)
       const userId = profile?.id
       if (!storeId || !userId) {
         throw new Error('Sesión inválida. Vuelve a iniciar sesión.')
@@ -295,7 +296,7 @@ export function useCancelInvoice() {
 
   return useMutation({
     mutationFn: async (input: CancelInvoiceInput) => {
-      const storeId = profile?.store_id
+      const storeId = getActiveStoreId(profile)
       if (!storeId) throw new Error('Sesión inválida')
 
       const { data: invRaw, error: invErr } = await supabase

@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from './useAuth'
+import { getActiveStoreId } from './useActiveStoreId'
 import toast from 'react-hot-toast'
 import type { Customer } from '@/types/database.types'
 
@@ -22,7 +23,7 @@ export function useCreateCustomer() {
 
   return useMutation({
     mutationFn: async (data: CustomerFormData): Promise<Customer> => {
-      const storeId = profile?.store_id ?? ''
+      const storeId = getActiveStoreId(profile)
       const { data: row, error } = await supabase
         .from('customers')
         .insert({

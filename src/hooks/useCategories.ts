@@ -1,12 +1,13 @@
 import { useQuery } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from './useAuth'
+import { getActiveStoreId } from './useActiveStoreId'
 import type { Category } from '@/types/database.types'
 
 /** Fetches ALL categories (active + inactive) — for admin management. */
 export function useAllCategories() {
   const { profile } = useAuth()
-  const storeId = profile?.store_id ?? ''
+  const storeId = getActiveStoreId(profile)
 
   return useQuery({
     queryKey: ['categories-all', storeId],

@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from './useAuth'
+import { getActiveStoreId } from './useActiveStoreId'
 import { useDebounce } from './useDebounce'
 import type {
   Layaway,
@@ -146,7 +147,7 @@ function normalizeNumeric(s: string): number {
 
 export function useLayawayList(filters: LayawayListFilters) {
   const { profile } = useAuth()
-  const storeId = profile?.store_id ?? ''
+  const storeId = getActiveStoreId(profile)
   const dq = useDebounce(filters.search.trim(), 300)
 
   return useQuery<LayawayListResult>({
@@ -258,10 +259,10 @@ export function useLayawayList(filters: LayawayListFilters) {
 
 export function useLayawayDetail(id: string | null) {
   const { profile } = useAuth()
-  const storeId = profile?.store_id ?? ''
+  const storeId = getActiveStoreId(profile)
 
   return useQuery<LayawayDetail | null>({
-    queryKey: ['layaways', 'detail', id],
+    queryKey: ['layaways', 'detail', id, storeId],
     queryFn: async () => {
       if (!id) return null
       const { data, error } = await supabase
@@ -354,10 +355,10 @@ interface RawCustomerLayaway {
 
 export function useCustomerLayaways(customerId: string | null) {
   const { profile } = useAuth()
-  const storeId = profile?.store_id ?? ''
+  const storeId = getActiveStoreId(profile)
 
   return useQuery<CustomerLayawayRow[]>({
-    queryKey: ['layaways', 'by-customer', customerId],
+    queryKey: ['layaways', 'by-customer', customerId, storeId],
     queryFn: async () => {
       if (!customerId) return []
       const { data, error } = await supabase
@@ -396,7 +397,7 @@ export function useCustomerLayaways(customerId: string | null) {
 
 export function useActiveLayawaysCount() {
   const { profile } = useAuth()
-  const storeId = profile?.store_id ?? ''
+  const storeId = getActiveStoreId(profile)
 
   return useQuery<number>({
     queryKey: ['active-layaways-count', storeId],
@@ -418,7 +419,7 @@ export function useActiveLayawaysCount() {
 
 export function useLayawayStatusCounts() {
   const { profile } = useAuth()
-  const storeId = profile?.store_id ?? ''
+  const storeId = getActiveStoreId(profile)
 
   return useQuery<LayawayStatusCounts>({
     queryKey: ['layaways', 'status-counts', storeId],

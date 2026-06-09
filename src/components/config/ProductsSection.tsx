@@ -4,6 +4,7 @@ import toast from 'react-hot-toast'
 import { useStoreConfig, useResolvedConfig } from '@/hooks/useConfig'
 import { useConfigMutations } from '@/hooks/useConfigMutations'
 import { useAuth } from '@/hooks/useAuth'
+import { getActiveStoreId } from '@/hooks/useActiveStoreId'
 import { supabase } from '@/lib/supabase'
 import { newSizeTypeId } from '@/lib/sizeTypes'
 import type { StoreColorConfig, SizeTypeConfig } from '@/types/config.types'
@@ -441,7 +442,7 @@ export default function ProductsSection() {
           <SizeTypesManager
             types={sizeTypes}
             onChange={setSizeTypes}
-            storeId={profile?.store_id ?? ''}
+            storeId={getActiveStoreId(profile)}
           />
         </div>
         <div className="px-5 py-5">

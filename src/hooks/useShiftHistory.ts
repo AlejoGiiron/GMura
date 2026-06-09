@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from './useAuth'
+import { getActiveStoreId } from './useActiveStoreId'
 import { reconcileCash, shiftDifference } from '@/lib/shiftCalc'
 import type { CashShift, Profile } from '@/types/database.types'
 
@@ -39,7 +40,7 @@ type RawShift = CashShift & {
 
 export function useShiftHistory(filters: ShiftHistoryFilters) {
   const { profile } = useAuth()
-  const storeId = profile?.store_id ?? ''
+  const storeId = getActiveStoreId(profile)
 
   return useQuery<ShiftHistoryResult>({
     queryKey: ['shift-history', storeId, filters],
@@ -244,7 +245,7 @@ export function useShiftHistory(filters: ShiftHistoryFilters) {
 
 export function useStoreCashiers() {
   const { profile } = useAuth()
-  const storeId = profile?.store_id ?? ''
+  const storeId = getActiveStoreId(profile)
 
   return useQuery<Profile[]>({
     queryKey: ['store-cashiers', storeId],

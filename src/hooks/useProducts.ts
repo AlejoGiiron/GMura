@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from './useAuth'
+import { getActiveStoreId } from './useActiveStoreId'
 import type { Category, Product, Variant } from '@/types/database.types'
 
 export type ProductWithDetails = Product & {
@@ -10,7 +11,7 @@ export type ProductWithDetails = Product & {
 
 export function useProducts() {
   const { profile } = useAuth()
-  const storeId = profile?.store_id ?? ''
+  const storeId = getActiveStoreId(profile)
 
   return useQuery({
     queryKey: ['products', storeId],
@@ -30,7 +31,7 @@ export function useProducts() {
 
 export function useCategories() {
   const { profile } = useAuth()
-  const storeId = profile?.store_id ?? ''
+  const storeId = getActiveStoreId(profile)
 
   return useQuery({
     queryKey: ['categories', storeId],

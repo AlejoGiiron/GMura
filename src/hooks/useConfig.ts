@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from './useAuth'
+import { getActiveStoreId } from './useActiveStoreId'
 import type { Store, Profile } from '@/types/database.types'
 import type { StoreConfig } from '@/types/config.types'
 import { migrateLegacyPaymentMethods } from '@/lib/paymentMethods'
@@ -85,7 +86,7 @@ export function useResolvedConfig(): StoreConfig {
 
 export function useStoreConfig() {
   const { profile } = useAuth()
-  const storeId = profile?.store_id ?? ''
+  const storeId = getActiveStoreId(profile)
 
   return useQuery<Store>({
     queryKey: ['store', storeId],
@@ -105,7 +106,7 @@ export function useStoreConfig() {
 
 export function useStoreUsers() {
   const { profile } = useAuth()
-  const storeId = profile?.store_id ?? ''
+  const storeId = getActiveStoreId(profile)
 
   return useQuery<Profile[]>({
     queryKey: ['store-users', storeId],

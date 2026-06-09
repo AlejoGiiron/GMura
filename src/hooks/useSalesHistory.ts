@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from './useAuth'
+import { getActiveStoreId } from './useActiveStoreId'
 import { useDebounce } from './useDebounce'
 import type {
   OrderStatus,
@@ -140,7 +141,7 @@ type RawReturnRow = {
 
 export function useSalesHistory(filters: SalesHistoryFilters) {
   const { profile } = useAuth()
-  const storeId = profile?.store_id ?? ''
+  const storeId = getActiveStoreId(profile)
   const dq = useDebounce(filters.query.trim(), 300)
 
   return useQuery({
@@ -241,7 +242,7 @@ export function useSalesHistory(filters: SalesHistoryFilters) {
 
 export function useSalesSummary(filters: SalesHistoryFilters) {
   const { profile } = useAuth()
-  const storeId = profile?.store_id ?? ''
+  const storeId = getActiveStoreId(profile)
 
   return useQuery({
     queryKey: [
@@ -312,10 +313,10 @@ export function useSalesSummary(filters: SalesHistoryFilters) {
 
 export function useSaleDetail(orderId: string | null) {
   const { profile } = useAuth()
-  const storeId = profile?.store_id ?? ''
+  const storeId = getActiveStoreId(profile)
 
   return useQuery({
-    queryKey: ['sales-history', 'detail', orderId],
+    queryKey: ['sales-history', 'detail', orderId, storeId],
     queryFn: async (): Promise<SaleDetail | null> => {
       if (!orderId) return null
 
