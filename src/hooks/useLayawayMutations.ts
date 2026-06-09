@@ -23,7 +23,6 @@ export interface CreateLayawayInput {
   items: NewLayawayItem[]
   expires_at: string // ISO
   discount?: number
-  max_discount?: number
   initial_payment?: {
     amount: number
     method: PaymentMethod
@@ -104,17 +103,14 @@ export function useCreateLayaway() {
         throw new Error('El total del separado debe ser mayor a cero')
       }
 
+      // Descuento libre: solo se valida que no sea negativo ni supere el
+      // subtotal (el tope configurado se eliminó).
       const rawDiscount = input.discount ?? 0
       if (rawDiscount < 0) {
         throw new Error('El descuento no puede ser negativo')
       }
       if (rawDiscount > subtotal) {
         throw new Error('El descuento no puede superar el subtotal')
-      }
-      if (typeof input.max_discount === 'number' && rawDiscount > input.max_discount) {
-        throw new Error(
-          `Descuento máximo permitido: ${fmtCOP(input.max_discount)}`,
-        )
       }
       const discount = Math.round(rawDiscount)
       const total = subtotal - discount

@@ -8,16 +8,18 @@ import type { Product } from '@/types/database.types'
 
 interface ProductModalProps {
   product?: Product | null
+  // Nombre inicial sugerido al crear (ej. el término de búsqueda de la factura).
+  initialName?: string
   onClose: () => void
   onSaved: (product: Product) => void
 }
 
-export default function ProductModal({ product, onClose, onSaved }: ProductModalProps) {
+export default function ProductModal({ product, initialName, onClose, onSaved }: ProductModalProps) {
   const { data: categories = [] } = useCategories()
   const { create, update, uploadImage } = useProductMutations()
   const sizeTypes = useResolvedConfig().size_types
 
-  const [name, setName] = useState(product?.name ?? '')
+  const [name, setName] = useState(product?.name ?? initialName ?? '')
   const [brand, setBrand] = useState(product?.brand ?? '')
   const [categoryId, setCategoryId] = useState(product?.category_id ?? '')
   const [description, setDescription] = useState(product?.description ?? '')

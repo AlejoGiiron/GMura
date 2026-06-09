@@ -29,21 +29,16 @@ export function calculateRequiredInitialPayment(
 }
 
 /**
- * Calcula el descuento máximo permitido por la configuración de la tienda
- * sobre un subtotal dado. Solo admite monto fijo; devuelve 0 si el modo es
- * 'none' o la configuración es inválida. Hace cap al subtotal.
+ * Descuento máximo permitido sobre un subtotal. El descuento de separados es
+ * LIBRE (sin tope configurado): si está permitido (mode 'fixed'), el único
+ * límite lógico es el propio subtotal; si no está permitido ('none'), es 0.
  */
 export function calculateMaxDiscount(
   subtotal: number,
-  config: Pick<StoreConfig, 'layaway_discount_mode' | 'layaway_discount_value'>,
+  config: Pick<StoreConfig, 'layaway_discount_mode'>,
 ): number {
   if (subtotal <= 0) return 0
-  const value = config.layaway_discount_value
-  if (typeof value !== 'number' || value < 0) return 0
-  if (config.layaway_discount_mode === 'fixed') {
-    return Math.min(Math.round(value), subtotal)
-  }
-  return 0
+  return config.layaway_discount_mode === 'fixed' ? subtotal : 0
 }
 
 /** Devuelve true si el separado venció y sigue activo. */

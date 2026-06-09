@@ -37,6 +37,10 @@ export interface StoreConfig {
   layaway_initial_payment_mode: LayawayInitialPaymentMode
   layaway_initial_payment_value: number
   layaway_default_days: number
+  // 'none' = no permitido, 'fixed' = permitido (descuento en pesos LIBRE al
+  // crear el separado; el único límite es el subtotal).
   layaway_discount_mode: LayawayDiscountMode
+  // Legacy: antes era el tope máximo de descuento. Ya no se usa para validar;
+  // se conserva por compatibilidad con datos guardados.
   layaway_discount_value: number
 }

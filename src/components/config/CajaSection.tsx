@@ -120,7 +120,6 @@ export default function CajaSection() {
   const [layawayInitialValue, setLayawayInitialValue] = useState('')
   const [layawayDiscountMode, setLayawayDiscountMode] =
     useState<LayawayDiscountMode>('none')
-  const [layawayDiscountValue, setLayawayDiscountValue] = useState('')
   const [layawayDefaultDays, setLayawayDefaultDays] = useState('')
   const [saving, setSaving] = useState(false)
 
@@ -133,7 +132,6 @@ export default function CajaSection() {
     setLayawayInitialMode(config.layaway_initial_payment_mode)
     setLayawayInitialValue(String(config.layaway_initial_payment_value ?? 0))
     setLayawayDiscountMode(config.layaway_discount_mode)
-    setLayawayDiscountValue(String(config.layaway_discount_value ?? 0))
     setLayawayDefaultDays(String(config.layaway_default_days ?? 90))
   }, [store, config])
 
@@ -201,7 +199,6 @@ export default function CajaSection() {
 
   async function handleSave() {
     const initialValue = Math.max(0, parseInt(layawayInitialValue || '0', 10) || 0)
-    const discountValue = Math.max(0, parseInt(layawayDiscountValue || '0', 10) || 0)
     const daysParsed = Math.max(
       1,
       Math.min(
@@ -224,7 +221,6 @@ export default function CajaSection() {
         layaway_initial_payment_mode: layawayInitialMode,
         layaway_initial_payment_value: initialValue,
         layaway_discount_mode: layawayDiscountMode,
-        layaway_discount_value: discountValue,
         layaway_default_days: daysParsed,
       })
       toast.success('Configuración de caja guardada')
@@ -450,30 +446,13 @@ export default function CajaSection() {
                 className="h-4 w-4 cursor-pointer rounded accent-violet-500"
               />
               <span className="text-xs font-medium text-[#525252]">
-                Permitir descuento al crear un separado
+                Permitir descuento en separados
               </span>
             </label>
-            {layawayDiscountMode === 'fixed' && (
-              <>
-                <div className="mt-2 flex items-center gap-2 rounded-lg border border-[#ebe9e6] px-3 focus-within:border-violet-400 focus-within:ring-2 focus-within:ring-violet-100">
-                  <span className="text-sm text-[#737373]">$</span>
-                  <input
-                    value={layawayDiscountValue}
-                    onChange={(e) =>
-                      setLayawayDiscountValue(e.target.value.replace(/\D/g, ''))
-                    }
-                    placeholder="0"
-                    inputMode="numeric"
-                    className="h-9 flex-1 bg-transparent font-mono text-sm outline-none"
-                  />
-                  <span className="text-xs text-[#a8a29e]">COP</span>
-                </div>
-                <p className="mt-1 text-[11px] text-[#a8a29e]">
-                  Monto máximo de descuento que el vendedor puede aplicar al
-                  crear un separado.
-                </p>
-              </>
-            )}
+            <p className="mt-1.5 pl-[26px] text-[11px] text-[#a8a29e]">
+              Si está activo, el vendedor podrá aplicar un descuento en pesos al
+              crear un separado.
+            </p>
           </div>
 
           {/* Días vencimiento */}

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Users, Plus, X, Store, Check } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useStoreUsers } from '@/hooks/useConfig'
@@ -133,10 +133,36 @@ interface CreateUserModalProps {
 
 function CreateUserModal({ onClose, onCreated }: CreateUserModalProps) {
   const { createUser } = useConfigMutations()
+  // Solo se pueden asignar tiendas a las que el admin actual tiene acceso.
+  const { data: myStores = [], isLoading: loadingStores } = useMyStores()
   const [fullName, setFullName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [role, setRole] = useState<UserRole>('seller')
+  // Orden importa: la primera es la base / activa inicial.
+  const [selectedStoreIds, setSelectedStoreIds] = useState<string[]>([])
+
+  // Si solo hay una tienda asignable, se preselecciona.
+  useEffect(() => {
+    if (myStores.length === 1 && selectedStoreIds.length === 0) {
+      setSelectedStoreIds([myStores[0].store_id])
+    }
+  }, [myStores, selectedStoreIds.length])
+
+  function handleRoleChange(next: UserRole) {
+    setRole(next)
+    // Un vendedor solo puede tener una tienda: recorta la selección.
+    if (next === 'seller') setSelectedStoreIds((prev) => prev.slice(0, 1))
+  }
+
+  function toggleStore(storeId: string) {
+    setSelectedStoreIds((prev) => {
+      if (role === 'seller') return [storeId]
+      return prev.includes(storeId)
+        ? prev.filter((id) => id !== storeId)
+        : [...prev, storeId]
+    })
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -144,8 +170,18 @@ function CreateUserModal({ onClose, onCreated }: CreateUserModalProps) {
       toast.error('Todos los campos son requeridos')
       return
     }
+    if (selectedStoreIds.length === 0) {
+      toast.error('Selecciona al menos una tienda')
+      return
+    }
     try {
-      await createUser.mutateAsync({ full_name: fullName.trim(), email: email.trim(), password, role })
+      await createUser.mutateAsync({
+        full_name: fullName.trim(),
+        email: email.trim(),
+        password,
+        role,
+        store_ids: selectedStoreIds,
+      })
       onCreated()
     } catch {
       // toast shown by mutation
@@ -223,12 +259,71 @@ function CreateUserModal({ onClose, onCreated }: CreateUserModalProps) {
             <label className="mb-1.5 block text-xs font-medium text-[#525252]">Rol</label>
             <select
               value={role}
-              onChange={(e) => setRole(e.target.value as UserRole)}
+              onChange={(e) => handleRoleChange(e.target.value as UserRole)}
               className="h-10 w-full rounded-lg border border-[#ebe9e6] bg-white px-3 text-sm outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100"
             >
               <option value="seller">Vendedor</option>
               <option value="admin">Administrador</option>
             </select>
+          </div>
+
+          {/* Tiendas */}
+          <div>
+            <label className="mb-1.5 block text-xs font-medium text-[#525252]">
+              {role === 'admin' ? 'Tiendas con acceso' : 'Tienda'}
+            </label>
+            {loadingStores ? (
+              <div className="space-y-1.5">
+                {[1, 2].map((i) => (
+                  <div key={i} className="h-10 animate-pulse rounded-lg bg-slate-100" />
+                ))}
+              </div>
+            ) : myStores.length === 0 ? (
+              <p className="text-xs text-[#a8a29e]">No tienes tiendas para asignar.</p>
+            ) : (
+              <div className="space-y-1.5">
+                {myStores.map((s) => {
+                  const idx = selectedStoreIds.indexOf(s.store_id)
+                  const checked = idx !== -1
+                  const isBase = idx === 0
+                  return (
+                    <button
+                      key={s.store_id}
+                      type="button"
+                      onClick={() => toggleStore(s.store_id)}
+                      className="flex w-full items-center justify-between gap-3 rounded-lg border border-[#ebe9e6] bg-white px-3 py-2 text-left text-sm transition-colors hover:bg-[#f8f7f5]"
+                    >
+                      <span className="flex items-center gap-2.5">
+                        <Store size={14} className="text-[#a8a29e]" />
+                        <span className="text-[#1a1a1a]">{s.store_name}</span>
+                        {role === 'admin' && isBase && (
+                          <span className="rounded-full bg-violet-100 px-1.5 py-0.5 text-[10px] font-semibold text-violet-700">
+                            principal
+                          </span>
+                        )}
+                      </span>
+                      <span
+                        className={`flex h-5 w-5 items-center justify-center border ${
+                          role === 'admin' ? 'rounded-md' : 'rounded-full'
+                        } ${
+                          checked
+                            ? 'border-violet-500 bg-violet-500 text-white'
+                            : 'border-[#ebe9e6] bg-white'
+                        }`}
+                      >
+                        {checked && <Check size={13} />}
+                      </span>
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+            {role === 'admin' && myStores.length > 0 && (
+              <p className="mt-1.5 text-[11px] text-[#a8a29e]">
+                La primera tienda será su tienda principal y la activa al iniciar
+                sesión.
+              </p>
+            )}
           </div>
 
           {/* Footer */}
@@ -262,6 +357,9 @@ function UserRow({ user }: { user: Profile }) {
   const isSelf = user.id === currentProfile?.id
   const [showStores, setShowStores] = useState(false)
   const isAdmin = user.role === 'admin'
+  // Conteo de tiendas con acceso (solo admins). Requiere la política admin
+  // SELECT de user_stores (migración 014) para leer accesos de otros.
+  const { data: storeAccess = [] } = useUserStoreAccess(isAdmin ? user.id : null)
 
   return (
     <div className="border-b border-[#f5f4f1] last:border-0">
@@ -291,7 +389,7 @@ function UserRow({ user }: { user: Profile }) {
             }`}
           >
             <Store size={13} />
-            Tiendas
+            Tiendas{storeAccess.length > 0 ? ` (${storeAccess.length})` : ''}
           </button>
         )}
 
