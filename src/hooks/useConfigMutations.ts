@@ -16,6 +16,9 @@ interface CreateUserInput {
   email: string
   password: string
   role: UserRole
+  // Multi-tienda: la primera es la base (store_id) y la activa inicial.
+  // Para vendedores la Edge Function ignora todas menos la primera.
+  store_ids: string[]
 }
 
 export function useConfigMutations() {
@@ -108,7 +111,7 @@ export function useConfigMutations() {
   const createUser = useMutation({
     mutationFn: async (input: CreateUserInput) => {
       const { data, error } = await supabase.functions.invoke('create-user', {
-        body: { ...input, store_id: storeId },
+        body: input,
       })
       if (error) throw error
       if ((data as { error?: string } | null)?.error) {

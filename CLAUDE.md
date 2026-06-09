@@ -341,8 +341,17 @@ Hotfix feedback v2 — anti-duplicados en factura + descuento separados libre
     valida solo discount>=0 y discount<=subtotal (quitado max_discount).
     layaway_discount_value queda como legacy en el tipo. Tests de layawayCalc
     actualizados al modelo libre (18 tests)
-  - Pendiente del hotfix: P1 usuarios multi-tienda (deploy create-user + elegir
-    tiendas al crear), P4 devoluciones de compra (feature nueva), P5 separar
+  - PROBLEMA 1 (usuarios multi-tienda al crear): Edge Function create-user
+    acepta store_ids[] (antes store_id único): valida ≥1 tienda (400), vendedor
+    usa solo store_ids[0], admin inserta una fila por tienda en user_stores
+    (incl. base); profiles.store_id y current_store_id = primera tienda (base +
+    activa); rollback completo (user_stores → profiles → auth) y status 500 en
+    fallos internos del admin client. useConfigMutations: payload store_ids[].
+    UsersSection: selección de tienda según rol (vendedor = una/radio; admin =
+    múltiple/checkboxes con badge "principal" en la primera + ayuda); validación
+    ≥1 tienda; badge de conteo "Tiendas (N)" por admin vía useUserStoreAccess.
+    REQUIERE re-deploy: supabase functions deploy create-user
+  - Pendiente del hotfix: P4 devoluciones de compra (feature nueva), P5 separar
     devoluciones en el cuadre (migración campo estructurado en cash_expenses)
 
 Fixes de lógica financiera (test/financial-coverage) ✅
