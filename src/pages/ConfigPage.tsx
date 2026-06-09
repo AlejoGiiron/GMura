@@ -1,13 +1,28 @@
 import { useState } from 'react'
-import { Store, Users, Tag, CreditCard, Printer, type LucideIcon } from 'lucide-react'
+import {
+  Store,
+  Building2,
+  Users,
+  Tag,
+  CreditCard,
+  Printer,
+  type LucideIcon,
+} from 'lucide-react'
 import StoreSection from '@/components/config/StoreSection'
+import StoresSection from '@/components/config/StoresSection'
 import UsersSection from '@/components/config/UsersSection'
 import ProductsSection from '@/components/config/ProductsSection'
 import CajaSection from '@/components/config/CajaSection'
 import EtiquetasSection from '@/components/config/EtiquetasSection'
 import CategoriesManager from '@/components/config/CategoriesManager'
 
-type SectionId = 'tienda' | 'usuarios' | 'productos' | 'caja' | 'etiquetas'
+type SectionId =
+  | 'tienda'
+  | 'sucursales'
+  | 'usuarios'
+  | 'productos'
+  | 'caja'
+  | 'etiquetas'
 
 const SECTIONS: {
   id: SectionId
@@ -15,6 +30,7 @@ const SECTIONS: {
   Icon: LucideIcon
 }[] = [
   { id: 'tienda', label: 'Tienda', Icon: Store },
+  { id: 'sucursales', label: 'Sucursales', Icon: Building2 },
   { id: 'usuarios', label: 'Usuarios', Icon: Users },
   { id: 'productos', label: 'Productos', Icon: Tag },
   { id: 'caja', label: 'Caja', Icon: CreditCard },
@@ -66,6 +82,7 @@ export default function ConfigPage() {
           </h1>
           <p className="mt-0.5 text-sm text-[#737373]">
             {active === 'tienda' && 'Nombre, logo y datos de contacto de la tienda'}
+            {active === 'sucursales' && 'Crea y administra las sucursales de tu negocio'}
             {active === 'usuarios' && 'Gestiona el equipo y sus permisos de acceso'}
             {active === 'productos' && 'Tallas, colores, marcas y límite de devoluciones'}
             {active === 'caja' && 'Métodos de pago, motivos de ajuste y QR para pagos'}
@@ -75,6 +92,7 @@ export default function ConfigPage() {
 
         <div className="p-6">
           {active === 'tienda' && <StoreSection />}
+          {active === 'sucursales' && <StoresSection />}
           {active === 'usuarios' && (
             <div className="space-y-6">
               <UsersSection />
