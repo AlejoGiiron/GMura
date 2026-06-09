@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from './useAuth'
+import { getActiveStoreId } from './useActiveStoreId'
 import type { Variant, StockMovement, StockMovementType } from '@/types/database.types'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -39,7 +40,7 @@ export const MOV_PAGE_SIZE = 50
 
 export function useStockLevels() {
   const { profile } = useAuth()
-  const storeId = profile?.store_id ?? ''
+  const storeId = getActiveStoreId(profile)
 
   return useQuery({
     queryKey: ['inventory', 'stock-levels', storeId],
@@ -76,7 +77,7 @@ export function useStockLevels() {
 
 export function useStockMovements(filters: MovementFilters, page: number) {
   const { profile } = useAuth()
-  const storeId = profile?.store_id ?? ''
+  const storeId = getActiveStoreId(profile)
 
   return useQuery({
     queryKey: ['inventory', 'movements', storeId, filters, page],
@@ -115,7 +116,7 @@ export function useStockMovements(filters: MovementFilters, page: number) {
 
 export function useStoreProfiles() {
   const { profile } = useAuth()
-  const storeId = profile?.store_id ?? ''
+  const storeId = getActiveStoreId(profile)
 
   return useQuery({
     queryKey: ['profiles', storeId],

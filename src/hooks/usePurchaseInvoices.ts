@@ -1,6 +1,7 @@
 import { useQuery, keepPreviousData } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from './useAuth'
+import { getActiveStoreId } from './useActiveStoreId'
 import { useDebounce } from './useDebounce'
 import { daysOverdue } from '@/lib/invoices'
 import type {
@@ -112,7 +113,7 @@ interface RawListInvoice {
 
 export function useInvoiceList(filters: InvoiceListFilters = {}) {
   const { profile } = useAuth()
-  const storeId = profile?.store_id ?? ''
+  const storeId = getActiveStoreId(profile)
   const dq = useDebounce((filters.search ?? '').trim(), 300)
   const page = filters.page ?? 1
   const status = filters.status ?? 'all'
@@ -224,7 +225,7 @@ interface RawInvoiceDetail extends PurchaseInvoice {
 
 export function useInvoiceDetail(id: string | null) {
   const { profile } = useAuth()
-  const storeId = profile?.store_id ?? ''
+  const storeId = getActiveStoreId(profile)
 
   return useQuery({
     queryKey: ['purchase-invoices', 'detail', id, storeId],
@@ -320,7 +321,7 @@ export function useInvoiceDetail(id: string | null) {
 
 export function usePendingInvoices() {
   const { profile } = useAuth()
-  const storeId = profile?.store_id ?? ''
+  const storeId = getActiveStoreId(profile)
 
   return useQuery({
     queryKey: ['purchase-invoices', 'pending', storeId],
@@ -380,7 +381,7 @@ interface RawSearchVariant {
 
 export function usePurchaseVariantSearch(query: string) {
   const { profile } = useAuth()
-  const storeId = profile?.store_id ?? ''
+  const storeId = getActiveStoreId(profile)
   const dq = useDebounce(query.trim(), 300)
 
   return useQuery({

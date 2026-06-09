@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from './useAuth'
+import { getActiveStoreId } from './useActiveStoreId'
 import { useDebounce } from './useDebounce'
 import type { Customer, PaymentMethod, OrderStatus, ReturnType, ReturnStatus } from '@/types/database.types'
 
@@ -115,7 +116,7 @@ type RawReturnRow = {
 
 export function useCustomerSearch(query: string) {
   const { profile } = useAuth()
-  const storeId = profile?.store_id ?? ''
+  const storeId = getActiveStoreId(profile)
   const dq = useDebounce(query.trim(), 300)
 
   return useQuery({
@@ -140,7 +141,7 @@ export function useCustomerSearch(query: string) {
 
 export function useCustomerList(query: string) {
   const { profile } = useAuth()
-  const storeId = profile?.store_id ?? ''
+  const storeId = getActiveStoreId(profile)
   const dq = useDebounce(query.trim(), 300)
 
   return useQuery({
@@ -192,10 +193,10 @@ export function useCustomerList(query: string) {
 
 export function useCustomerProfile(customerId: string | null) {
   const { profile } = useAuth()
-  const storeId = profile?.store_id ?? ''
+  const storeId = getActiveStoreId(profile)
 
   return useQuery({
-    queryKey: ['customers', 'profile', customerId],
+    queryKey: ['customers', 'profile', customerId, storeId],
     queryFn: async (): Promise<CustomerProfile | null> => {
       if (!customerId) return null
 

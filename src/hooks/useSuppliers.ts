@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from './useAuth'
+import { getActiveStoreId } from './useActiveStoreId'
 import { useDebounce } from './useDebounce'
 import type {
   Supplier,
@@ -81,7 +82,7 @@ function aggregateInvoices(invoices: RawInvoiceLite[]) {
 
 export function useSupplierList(filters: SupplierListFilters = {}) {
   const { profile } = useAuth()
-  const storeId = profile?.store_id ?? ''
+  const storeId = getActiveStoreId(profile)
   const dq = useDebounce((filters.search ?? '').trim(), 300)
   const onlyActive = filters.isActive ?? true
 
@@ -129,7 +130,7 @@ interface RawInvoiceFull extends PurchaseInvoice {
 
 export function useSupplierDetail(id: string | null) {
   const { profile } = useAuth()
-  const storeId = profile?.store_id ?? ''
+  const storeId = getActiveStoreId(profile)
 
   return useQuery({
     queryKey: ['suppliers', 'detail', id, storeId],

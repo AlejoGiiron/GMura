@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from './useAuth'
+import { getActiveStoreId } from './useActiveStoreId'
 import { fmtCOP } from '@/lib/formatters'
 import type {
   Layaway,
@@ -73,7 +74,7 @@ export function useCreateLayaway() {
 
   return useMutation({
     mutationFn: async (input: CreateLayawayInput): Promise<Layaway> => {
-      const storeId = profile?.store_id
+      const storeId = getActiveStoreId(profile)
       const userId = profile?.id
       if (!storeId || !userId) {
         throw new Error('Sesión inválida. Vuelve a iniciar sesión.')
@@ -250,7 +251,7 @@ export function useAddLayawayPayment() {
 
   return useMutation({
     mutationFn: async (input: AddPaymentInput) => {
-      const storeId = profile?.store_id
+      const storeId = getActiveStoreId(profile)
       const userId = profile?.id
       if (!storeId || !userId) {
         throw new Error('Sesión inválida. Vuelve a iniciar sesión.')
@@ -314,7 +315,7 @@ export function useCancelLayaway() {
 
   return useMutation({
     mutationFn: async (input: CancelLayawayInput) => {
-      const storeId = profile?.store_id
+      const storeId = getActiveStoreId(profile)
       if (!storeId) throw new Error('Sesión inválida')
       const reason = input.cancellation_reason.trim()
       if (reason.length < 5) {
@@ -373,7 +374,7 @@ export function useCompleteLayaway() {
     mutationFn: async (
       input: CompleteLayawayInput,
     ): Promise<CompletedLayawayResult> => {
-      const storeId = profile?.store_id
+      const storeId = getActiveStoreId(profile)
       const userId = profile?.id
       if (!storeId || !userId) throw new Error('Sesión inválida')
 

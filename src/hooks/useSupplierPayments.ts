@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from './useAuth'
+import { getActiveStoreId } from './useActiveStoreId'
 import type { PaymentMethod } from '@/types/database.types'
 
 export interface ShiftSupplierPayment {
@@ -33,7 +34,7 @@ interface RawShiftPayment {
 // también aparecen como cash_expense (creados por trigger) en el cuadre.
 export function useShiftSupplierPayments(shiftId: string | null) {
   const { profile } = useAuth()
-  const storeId = profile?.store_id ?? ''
+  const storeId = getActiveStoreId(profile)
 
   return useQuery({
     queryKey: ['supplier-payments', 'shift', shiftId, storeId],

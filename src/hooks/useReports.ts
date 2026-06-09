@@ -3,6 +3,7 @@ import { format, subDays, startOfMonth } from 'date-fns'
 import toast from 'react-hot-toast'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from './useAuth'
+import { getActiveStoreId } from './useActiveStoreId'
 import type {
   DailySalesSummary,
   ProductPerformance,
@@ -28,7 +29,7 @@ export type ReportsFilters = {
 
 export function useReports({ from, to }: ReportsFilters) {
   const { profile } = useAuth()
-  const storeId = profile?.store_id ?? ''
+  const storeId = getActiveStoreId(profile)
 
   const fromDate = format(from, 'yyyy-MM-dd')
   const toDate   = format(to,   'yyyy-MM-dd')
@@ -118,7 +119,7 @@ export type DayComparison = {
 
 export function useDailySummary(date: Date) {
   const { profile } = useAuth()
-  const storeId    = profile?.store_id ?? ''
+  const storeId    = getActiveStoreId(profile)
   const dateStr    = format(date,             'yyyy-MM-dd')
   const prevStr    = format(subDays(date, 1), 'yyyy-MM-dd')
 
@@ -188,7 +189,7 @@ export type LayawayKpis = {
 
 export function useLayawaysSummary() {
   const { profile } = useAuth()
-  const storeId = profile?.store_id ?? ''
+  const storeId = getActiveStoreId(profile)
 
   return useQuery({
     queryKey: ['reports', 'layaways-summary', storeId],
@@ -243,7 +244,7 @@ export function useLayawaysSummary() {
 
 export function useExpiringLayaways() {
   const { profile } = useAuth()
-  const storeId = profile?.store_id ?? ''
+  const storeId = getActiveStoreId(profile)
 
   return useQuery({
     queryKey: ['reports', 'layaways-expiring', storeId],
@@ -299,7 +300,7 @@ interface RawExportLayaway {
 
 export function useLayawaysForExport() {
   const { profile } = useAuth()
-  const storeId = profile?.store_id ?? ''
+  const storeId = getActiveStoreId(profile)
 
   return useQuery({
     queryKey: ['reports', 'layaways-export', storeId],
@@ -346,7 +347,7 @@ export function useLayawaysForExport() {
 
 export function useInventoryReport() {
   const { profile } = useAuth()
-  const storeId = profile?.store_id ?? ''
+  const storeId = getActiveStoreId(profile)
 
   return useQuery({
     queryKey: ['reports', 'inventory', storeId],
@@ -411,7 +412,7 @@ interface RawPaymentForAvg {
 
 export function usePurchaseReport({ from, to }: ReportsFilters) {
   const { profile } = useAuth()
-  const storeId = profile?.store_id ?? ''
+  const storeId = getActiveStoreId(profile)
 
   const fromMonth = format(startOfMonth(from), 'yyyy-MM-dd')
   const fromDate  = format(from, 'yyyy-MM-dd')
@@ -533,7 +534,7 @@ export type SupplierBalancesData = {
 
 export function useSupplierBalances() {
   const { profile } = useAuth()
-  const storeId = profile?.store_id ?? ''
+  const storeId = getActiveStoreId(profile)
 
   return useQuery({
     queryKey: ['reports', 'supplier-balances', storeId],
@@ -597,7 +598,7 @@ interface RawExportInvoice {
 
 export function useInvoicesForExport({ from, to }: ReportsFilters) {
   const { profile } = useAuth()
-  const storeId = profile?.store_id ?? ''
+  const storeId = getActiveStoreId(profile)
 
   const fromDate = format(from, 'yyyy-MM-dd')
   const toDate   = format(to,   'yyyy-MM-dd')

@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from './useAuth'
+import { getActiveStoreId } from './useActiveStoreId'
 import toast from 'react-hot-toast'
 import type { Variant } from '@/types/database.types'
 
@@ -28,7 +29,7 @@ type UpdateVariantInput = {
 export function useVariantMutations(productId: string) {
   const { profile } = useAuth()
   const queryClient = useQueryClient()
-  const storeId = profile?.store_id ?? ''
+  const storeId = getActiveStoreId(profile)
 
   function invalidate() {
     void queryClient.invalidateQueries({ queryKey: ['variants', productId] })

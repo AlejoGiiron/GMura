@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from './useAuth'
+import { getActiveStoreId } from './useActiveStoreId'
 import toast from 'react-hot-toast'
 import type { Order, PaymentMethod } from '@/types/database.types'
 import { cartTotals } from '@/stores/cartStore'
@@ -20,7 +21,7 @@ export function useCreateOrder() {
 
   return useMutation({
     mutationFn: async (input: CreateOrderInput): Promise<Order> => {
-      const storeId = profile?.store_id
+      const storeId = getActiveStoreId(profile)
       const userId = profile?.id
 
       if (!storeId || !userId) {

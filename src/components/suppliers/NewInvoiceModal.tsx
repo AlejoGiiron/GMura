@@ -7,6 +7,7 @@ import { useCreateInvoice } from '@/hooks/useInvoiceMutations'
 import { useCurrentShift } from '@/hooks/useCashShift'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
+import { getActiveStoreId } from '@/hooks/useActiveStoreId'
 import { fmtCOP } from '@/lib/formatters'
 import { addDaysToDate, todayDateString } from '@/lib/invoices'
 import { PAYMENT_METHOD_KEYS, PAYMENT_METHODS } from '@/lib/paymentMethods'
@@ -136,7 +137,7 @@ export default function NewInvoiceModal({
   defaultSupplierId,
 }: NewInvoiceModalProps) {
   const { profile } = useAuth()
-  const storeId = profile?.store_id ?? ''
+  const storeId = getActiveStoreId(profile)
   const { data: suppliers = [] } = useSupplierList({ isActive: true })
   const { data: currentShift } = useCurrentShift()
   const createInvoice = useCreateInvoice()

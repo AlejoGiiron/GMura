@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from './useAuth'
+import { getActiveStoreId } from './useActiveStoreId'
 import toast from 'react-hot-toast'
 import type { Category } from '@/types/database.types'
 
@@ -19,7 +20,7 @@ type UpdateCategoryInput = {
 export function useCategoryMutations() {
   const { profile } = useAuth()
   const queryClient = useQueryClient()
-  const storeId = profile?.store_id ?? ''
+  const storeId = getActiveStoreId(profile)
 
   function invalidate() {
     void queryClient.invalidateQueries({ queryKey: ['categories', storeId] })

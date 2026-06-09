@@ -41,6 +41,7 @@ export interface Store {
   phone: string | null
   logo_url: string | null
   config: Record<string, unknown> | null
+  is_active: boolean
   created_at: string
   updated_at: string
 }

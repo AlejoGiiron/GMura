@@ -20,8 +20,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (error) throw error
       setProfile(data)
     } catch {
-      toast.error('Error al cargar el perfil. Vuelve a iniciar sesión.')
-      await supabase.auth.signOut()
+      // Un fallo de LECTURA del perfil (RLS, red, fila no visible un instante)
+      // NO debe cerrar la sesión. Solo cerramos si la SESIÓN ya no es válida
+      // (token expirado / refresh fallido). Así un problema transitorio no deja
+      // al usuario en un bucle de logout.
+      const {
+        data: { session },
+      } = await supabase.auth.getSession()
+      if (!session) {
+        // Autenticación realmente inválida → cerrar sesión.
+        await supabase.auth.signOut()
+      } else {
+        // Sesión válida pero el perfil no se pudo leer: mantener la sesión y
+        // avisar. (refreshProfile, el del switcher, ya solo avisa.)
+        toast.error(
+          'No se pudo cargar el perfil. Revisa tu conexión e intenta de nuevo.',
+        )
+      }
     } finally {
       setIsLoading(false)
     }

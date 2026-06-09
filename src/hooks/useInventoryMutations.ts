@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from './useAuth'
+import { getActiveStoreId } from './useActiveStoreId'
 import toast from 'react-hot-toast'
 import type { StockMovementType } from '@/types/database.types'
 
@@ -14,7 +15,7 @@ type AdjustStockInput = {
 export function useInventoryMutations() {
   const { profile } = useAuth()
   const queryClient = useQueryClient()
-  const storeId = profile?.store_id ?? ''
+  const storeId = getActiveStoreId(profile)
 
   function invalidate() {
     void queryClient.invalidateQueries({ queryKey: ['inventory'] })

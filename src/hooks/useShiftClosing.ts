@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from './useAuth'
+import { getActiveStoreId } from './useActiveStoreId'
 import { calculateShiftSummary, type SalesByMethod } from '@/lib/shiftCalc'
 import type {
   CashShift,
@@ -59,7 +60,7 @@ type RawConvertedOrder = {
 
 export function useShiftClosing(shiftId: string | null) {
   const { profile } = useAuth()
-  const storeId = profile?.store_id ?? ''
+  const storeId = getActiveStoreId(profile)
 
   return useQuery<ShiftClosingData | null>({
     queryKey: ['shift-closing', shiftId, storeId],

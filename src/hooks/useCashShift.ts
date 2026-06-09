@@ -1,12 +1,13 @@
 import { useQuery } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from './useAuth'
+import { getActiveStoreId } from './useActiveStoreId'
 import type { CashShift } from '@/types/database.types'
 
 // Turno actualmente abierto del usuario autenticado. Devuelve null si no hay.
 export function useCurrentShift() {
   const { profile } = useAuth()
-  const storeId = profile?.store_id ?? ''
+  const storeId = getActiveStoreId(profile)
   const userId = profile?.id ?? ''
 
   return useQuery<CashShift | null>({
@@ -33,7 +34,7 @@ export function useCurrentShift() {
 // Suma de ventas en efectivo del usuario actual desde la apertura del turno.
 export function useCashShiftSales(opened_at: string | null | undefined) {
   const { profile } = useAuth()
-  const storeId = profile?.store_id ?? ''
+  const storeId = getActiveStoreId(profile)
   const userId = profile?.id ?? ''
 
   return useQuery<number>({

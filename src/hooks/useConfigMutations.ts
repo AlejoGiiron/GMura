@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from './useAuth'
+import { getActiveStoreId } from './useActiveStoreId'
 import toast from 'react-hot-toast'
 import type { UserRole } from '@/types/database.types'
 import type { StoreConfig } from '@/types/config.types'
@@ -24,7 +25,7 @@ interface CreateUserInput {
 export function useConfigMutations() {
   const { profile } = useAuth()
   const queryClient = useQueryClient()
-  const storeId = profile?.store_id ?? ''
+  const storeId = getActiveStoreId(profile)
 
   function invalidateStore() {
     void queryClient.invalidateQueries({ queryKey: ['store', storeId] })

@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from './useAuth'
+import { getActiveStoreId } from './useActiveStoreId'
 import toast from 'react-hot-toast'
 import type { CashShift } from '@/types/database.types'
 
@@ -10,7 +11,7 @@ export function useCashShiftMutations() {
 
   const openShift = useMutation({
     mutationFn: async (opening_amount: number): Promise<CashShift> => {
-      const storeId = profile?.store_id
+      const storeId = getActiveStoreId(profile)
       const userId = profile?.id
       if (!storeId || !userId) {
         throw new Error('Sesión inválida. Vuelve a iniciar sesión.')

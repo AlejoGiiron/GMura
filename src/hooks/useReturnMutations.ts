@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from './useAuth'
+import { getActiveStoreId } from './useActiveStoreId'
 import toast from 'react-hot-toast'
 import { calculateExchangeAmounts } from '@/lib/returnCalc'
 import type { PaymentMethod, ReturnType, Return } from '@/types/database.types'
@@ -49,7 +50,7 @@ export function useCreateReturn() {
 
   return useMutation({
     mutationFn: async (input: CreateReturnInput): Promise<Return> => {
-      const storeId = profile?.store_id
+      const storeId = getActiveStoreId(profile)
       const userId = profile?.id
 
       if (!storeId || !userId) {

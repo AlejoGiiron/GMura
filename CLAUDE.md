@@ -318,8 +318,9 @@ Sidebar agrupado en secciones colapsables (feature/12-caja-completa) ✅
 - Configuración (tienda, usuarios, productos, caja, etiquetas)
 
 ## Estado actual del proyecto
-Última fase completada: Tanda de calidad (lint, tests, fixes financieros)
-En progreso: hotfix feedback v2 (códigos de barras, usuarios multi-tienda, devoluciones en caja)
+Última fase completada: hotfix feedback v2 (barcodes, descuento, usuarios multi-tienda)
+En progreso: feature - gestión de sucursales
+Siguiente: P5 - separar devoluciones en cuadre
 
 Hotfix feedback v2 — anti-duplicados en factura + descuento separados libre
 (hotfix/feedback-v2-barcode-users-returns) — parcial

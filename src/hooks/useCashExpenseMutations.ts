@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import toast from 'react-hot-toast'
 import { useAuth } from './useAuth'
+import { getActiveStoreId } from './useActiveStoreId'
 import { useCurrentShift } from './useCashShift'
 import { fmtCOP } from '@/lib/formatters'
 import type { CashExpense } from '@/types/database.types'
@@ -19,7 +20,7 @@ export function useRegisterExpense() {
 
   return useMutation({
     mutationFn: async (input: RegisterExpenseInput): Promise<CashExpense> => {
-      const storeId = profile?.store_id
+      const storeId = getActiveStoreId(profile)
       const userId = profile?.id
 
       if (!storeId || !userId) {
