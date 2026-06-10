@@ -44,6 +44,9 @@ export interface CashShiftReceiptProps {
   layawayPayments?: LayawayPaymentReceiptRow[]
   layawayPaymentsTotal?: number
   regularSalesTotal?: number
+  // Devoluciones (presentación aparte; no afectan el cuadre).
+  returnsIncome?: number
+  returnsExpense?: number
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -111,6 +114,18 @@ export function CashShiftReceipt(props: CashShiftReceiptProps) {
   const lpTotal = layawayPaymentsTotal ?? 0
   const lpRows = layawayPayments ?? []
   const overdraft = props.overdraft ?? 0
+
+  // Devoluciones: ingresos (órdenes con return_id) y reembolsos (cash_expenses
+  // kind='return'). Se muestran aparte; los egresos del recibo excluyen los
+  // reembolsos. El CUADRE de efectivo no cambia (sigue usando totalExpenses).
+  const returnsIncome = props.returnsIncome ?? 0
+  const returnsExpense = props.returnsExpense ?? 0
+  const hasReturns = returnsIncome > 0 || returnsExpense > 0
+  const regularExpenses = expenses.filter((e) => e.kind !== 'return')
+  const regularExpensesTotal = regularExpenses.reduce(
+    (sum, e) => sum + Number(e.amount),
+    0,
+  )
 
   const closedAt = shift.closed_at ? new Date(shift.closed_at) : printedAt
   const duration = fmtDuration(shift.opened_at, closedAt)
@@ -245,13 +260,40 @@ export function CashShiftReceipt(props: CashShiftReceiptProps) {
         </>
       )}
 
-      {/* Egresos */}
-      {expenses.length > 0 && (
+      {/* Devoluciones (ingresos y egresos por devolución/cambio, aparte) */}
+      {hasReturns && (
+        <>
+          <div style={monoLight}>{DIVIDER}</div>
+          <div style={sectionStyle}>
+            <div style={{ fontWeight: 700, marginBottom: 2 }}>DEVOLUCIONES</div>
+            <Line>
+              <span style={monoLight}>+ Ingresos (cobro dif):</span>
+              <span>{fmtCOP(returnsIncome)}</span>
+            </Line>
+            <Line>
+              <span style={monoLight}>- Reembolsos:</span>
+              <span>-{fmtCOP(returnsExpense)}</span>
+            </Line>
+            <div style={monoLight}>{SUBDIV}</div>
+            <Line>
+              <span style={{ fontWeight: 700 }}>Neto devoluciones:</span>
+              <span style={{ fontWeight: 700 }}>
+                {returnsIncome - returnsExpense >= 0
+                  ? `+${fmtCOP(returnsIncome - returnsExpense)}`
+                  : fmtCOP(returnsIncome - returnsExpense)}
+              </span>
+            </Line>
+          </div>
+        </>
+      )}
+
+      {/* Egresos (regulares; los reembolsos se muestran en Devoluciones) */}
+      {regularExpenses.length > 0 && (
         <>
           <div style={monoLight}>{DIVIDER}</div>
           <div style={sectionStyle}>
             <div style={{ fontWeight: 700, marginBottom: 2 }}>EGRESOS</div>
-            {expenses.map((e) => (
+            {regularExpenses.map((e) => (
               <Line key={e.id}>
                 <span style={monoLight}>
                   [{fmtHHmm(e.created_at)}] {e.reason}:
@@ -262,7 +304,9 @@ export function CashShiftReceipt(props: CashShiftReceiptProps) {
             <div style={monoLight}>{SUBDIV}</div>
             <Line>
               <span style={{ fontWeight: 700 }}>Total egresos:</span>
-              <span style={{ fontWeight: 700 }}>{fmtCOP(totalExpenses)}</span>
+              <span style={{ fontWeight: 700 }}>
+                {fmtCOP(regularExpensesTotal)}
+              </span>
             </Line>
           </div>
         </>

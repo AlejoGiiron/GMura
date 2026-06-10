@@ -34,6 +34,10 @@ export interface ShiftClosingData {
   layawayPayments: LayawayPaymentRow[]
   layawayPaymentsTotal: number
   regularSalesTotal: number
+  returnsIncome: number
+  returnsExpense: number
+  returnsNet: number
+  regularExpensesTotal: number
   storeName: string
   userName: string
 }
@@ -42,6 +46,7 @@ type RawOrder = {
   id: string
   total: number | string
   payment_method: PaymentMethod
+  return_id: string | null
 }
 
 type RawLayawayPayment = {
@@ -130,7 +135,7 @@ export function useShiftClosing(shiftId: string | null) {
       // 2. Órdenes del turno (excluyendo las generadas por completar separados)
       let oQuery = supabase
         .from('orders')
-        .select('id, total, payment_method')
+        .select('id, total, payment_method, return_id')
         .eq('store_id' as never, storeId)
         .eq('created_by' as never, shift.opened_by)
         .eq('status' as never, 'completed')
@@ -192,10 +197,11 @@ export function useShiftClosing(shiftId: string | null) {
           id: o.id,
           total: Number(o.total),
           payment_method: o.payment_method,
+          return_id: o.return_id,
         })),
         excludedOrderIds,
         layawayPayments,
-        expenses: expenses.map((e) => ({ amount: Number(e.amount) })),
+        expenses: expenses.map((e) => ({ amount: Number(e.amount), kind: e.kind })),
       })
 
       return {
@@ -211,6 +217,10 @@ export function useShiftClosing(shiftId: string | null) {
         layawayPayments,
         layawayPaymentsTotal: summary.layawayPaymentsTotal,
         regularSalesTotal: summary.regularSalesTotal,
+        returnsIncome: summary.returnsIncome,
+        returnsExpense: summary.returnsExpense,
+        returnsNet: summary.returnsNet,
+        regularExpensesTotal: summary.regularExpensesTotal,
         storeName,
         userName,
       }

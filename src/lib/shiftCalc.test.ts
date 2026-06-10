@@ -5,6 +5,7 @@ import {
   shiftDifference,
   type ShiftOrderInput,
   type ShiftLayawayPaymentInput,
+  type ShiftSummaryInput,
 } from './shiftCalc'
 
 function label(diff: number): 'CUADRADO' | 'SOBRANTE' | 'FALTANTE' {
@@ -17,8 +18,9 @@ function order(
   id: string,
   total: number,
   payment_method: ShiftOrderInput['payment_method'] = 'cash',
+  return_id: string | null = null,
 ): ShiftOrderInput {
-  return { id, total, payment_method }
+  return { id, total, payment_method, return_id }
 }
 
 function abono(
@@ -231,5 +233,120 @@ describe('reconcileCash + shiftDifference (Lógica B del cuadre)', () => {
     const diff = shiftDifference(10_000, rec)
     expect(diff).toBe(-8_000)
     expect(label(diff)).toBe('FALTANTE')
+  })
+})
+
+describe('calculateShiftSummary — devoluciones aparte (P5)', () => {
+  // Escenario del test manual: venta 50k; devolución -50k; cambio más caro
+  // (+10k cobrado); cambio más barato (-5k reembolsado). Todo en efectivo.
+  const escenario = (): ShiftSummaryInput => ({
+    openingAmount: 100_000,
+    orders: [
+      order('venta1', 50_000, 'cash'), // venta regular
+      order('dif', 10_000, 'cash', 'ret-caro'), // ingreso por cambio más caro
+      // las órdenes $0 de los cambios (mismo precio / más barato) no aportan
+    ],
+    layawayPayments: [],
+    expenses: [
+      { amount: 50_000, kind: 'return' }, // reembolso devolución
+      { amount: 5_000, kind: 'return' }, // reembolso diferencia barata
+    ],
+  })
+
+  it('clasifica ingresos y egresos de devolución sin tocarlos de ventas/egresos', () => {
+    const r = calculateShiftSummary(escenario())
+    // Ventas regulares: solo la venta de 50k (no el ingreso por cambio)
+    expect(r.regularSalesTotal).toBe(50_000)
+    expect(r.orderCount).toBe(1) // la orden con return_id no cuenta como venta
+    expect(r.salesByMethod.reduce((s, m) => s + m.total, 0)).toBe(50_000)
+    // Devoluciones
+    expect(r.returnsIncome).toBe(10_000)
+    expect(r.returnsExpense).toBe(55_000)
+    expect(r.returnsNet).toBe(-45_000)
+    // Egresos regulares (sin reembolsos)
+    expect(r.regularExpensesTotal).toBe(0)
+  })
+
+  it('INVARIANTE: expectedCash es idéntico con y sin la clasificación de devoluciones', () => {
+    const data = escenario()
+    const r = calculateShiftSummary(data)
+    // Cálculo "viejo" (sin distinguir devoluciones): todo el efectivo entra,
+    // todos los egresos restan.
+    const allCash =
+      data.orders.reduce(
+        (s, o) => s + (o.payment_method === 'cash' ? o.total : 0),
+        0,
+      ) +
+      data.layawayPayments.reduce(
+        (s, p) => s + (p.payment_method === 'cash' ? p.amount : 0),
+        0,
+      )
+    const allExpenses = data.expenses.reduce((s, e) => s + e.amount, 0)
+    const expectedOld = Math.max(0, data.openingAmount + allCash - allExpenses)
+    // 100k + (50k + 10k) - (50k + 5k) = 105k
+    expect(r.expectedCash).toBe(expectedOld)
+    expect(r.expectedCash).toBe(105_000)
+    expect(r.cashSales).toBe(60_000) // incluye el ingreso por cambio
+    expect(r.totalExpenses).toBe(55_000) // incluye los reembolsos
+    expect(r.overdraft).toBe(0)
+  })
+
+  it('un gasto normal (kind expense / sin kind) NO se clasifica como devolución', () => {
+    const r = calculateShiftSummary({
+      openingAmount: 100_000,
+      orders: [order('v', 80_000, 'cash')],
+      layawayPayments: [],
+      expenses: [
+        { amount: 20_000 }, // sin kind → 'expense'
+        { amount: 30_000, kind: 'expense' as const }, // p. ej. pago a proveedor
+      ],
+    })
+    expect(r.returnsExpense).toBe(0)
+    expect(r.returnsIncome).toBe(0)
+    expect(r.regularExpensesTotal).toBe(50_000)
+    expect(r.totalExpenses).toBe(50_000)
+    expect(r.expectedCash).toBe(130_000) // 100k + 80k - 50k
+  })
+
+  it('solo reembolso (sin ingreso por cambio)', () => {
+    const r = calculateShiftSummary({
+      openingAmount: 100_000,
+      orders: [order('v', 50_000, 'cash')],
+      layawayPayments: [],
+      expenses: [{ amount: 50_000, kind: 'return' as const }],
+    })
+    expect(r.returnsIncome).toBe(0)
+    expect(r.returnsExpense).toBe(50_000)
+    expect(r.returnsNet).toBe(-50_000)
+    expect(r.regularSalesTotal).toBe(50_000)
+    expect(r.expectedCash).toBe(100_000) // 100k + 50k - 50k
+  })
+
+  it('solo ingreso por cambio (sin reembolso)', () => {
+    const r = calculateShiftSummary({
+      openingAmount: 100_000,
+      orders: [order('dif', 10_000, 'cash', 'ret-x')],
+      layawayPayments: [],
+      expenses: [],
+    })
+    expect(r.returnsIncome).toBe(10_000)
+    expect(r.returnsExpense).toBe(0)
+    expect(r.returnsNet).toBe(10_000)
+    expect(r.regularSalesTotal).toBe(0)
+    expect(r.cashSales).toBe(10_000)
+    expect(r.expectedCash).toBe(110_000) // 100k + 10k
+  })
+
+  it('sin devoluciones: los campos nuevos quedan en 0 (compatibilidad)', () => {
+    const r = calculateShiftSummary({
+      openingAmount: 50_000,
+      orders: [order('v', 30_000, 'cash')],
+      layawayPayments: [],
+      expenses: [{ amount: 5_000 }],
+    })
+    expect(r.returnsIncome).toBe(0)
+    expect(r.returnsExpense).toBe(0)
+    expect(r.returnsNet).toBe(0)
+    expect(r.regularExpensesTotal).toBe(5_000)
   })
 })
