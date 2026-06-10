@@ -174,6 +174,9 @@ export function useCreateReturn() {
             total: exchange.orderTotal,
             payment_method: input.refundMethod,
             cash_received: null,
+            // Marca la orden como ingreso por devolución (diferencia de cambio),
+            // para mostrarla en la sección Devoluciones del cuadre, no en Ventas.
+            return_id: ret.id,
           } as never)
           .select()
           .single()
@@ -246,6 +249,10 @@ export function useCreateReturn() {
                 store_id: storeId,
                 amount: refundTotal,
                 reason,
+                // Categoriza el egreso como reembolso de devolución → sección
+                // Devoluciones del cuadre (separado de gastos normales).
+                kind: 'return',
+                return_id: ret.id,
                 notes: input.notes.trim() || null,
                 created_by: userId,
               } as never)

@@ -15,6 +15,9 @@ export interface ShiftOrderInput {
   id: string
   total: number
   payment_method: PaymentMethod
+  // Si la orden es la diferencia cobrada en un cambio, apunta a la devolución.
+  // Esas órdenes son INGRESO por devolución → se muestran aparte, no en ventas.
+  return_id?: string | null
 }
 
 export interface ShiftLayawayPaymentInput {
@@ -24,6 +27,8 @@ export interface ShiftLayawayPaymentInput {
 
 export interface ShiftExpenseInput {
   amount: number
+  // 'return' = reembolso de una devolución; 'expense' (default) = gasto normal.
+  kind?: 'expense' | 'return'
 }
 
 export interface ShiftSummaryInput {
@@ -50,6 +55,15 @@ export interface ShiftSummary {
   expectedCash: number
   overdraft: number
   orderCount: number
+  // ── Devoluciones (solo presentación; NO afectan expectedCash) ──────────────
+  // Ingreso por devoluciones = órdenes con return_id (diferencia cobrada en un
+  // cambio); su efectivo YA está dentro de cashSales.
+  returnsIncome: number
+  // Reembolsos = cash_expenses kind='return'; su monto YA está en totalExpenses.
+  returnsExpense: number
+  returnsNet: number
+  // Egresos "regulares" para mostrar (totalExpenses menos los reembolsos).
+  regularExpensesTotal: number
 }
 
 export interface CashReconciliation {
@@ -111,11 +125,25 @@ export function calculateShiftSummary(input: ShiftSummaryInput): ShiftSummary {
   let regularSalesTotal = 0
   let layawayPaymentsTotal = 0
   let cashSales = 0
+  let returnsIncome = 0
+  let regularOrderCount = 0
 
   for (const o of orders) {
     const t = o.total
-    regularSalesTotal += t
+    // Todo el efectivo cuenta para el cuadre (incluido el ingreso por cambio),
+    // por eso cashSales NO se ve afectado por la clasificación → expectedCash
+    // queda idéntico.
     if (o.payment_method === 'cash') cashSales += t
+
+    if (o.return_id) {
+      // Ingreso por devolución (diferencia de cambio): se muestra aparte, no
+      // entra a ventas regulares ni a salesByMethod.
+      returnsIncome += t
+      continue
+    }
+
+    regularOrderCount += 1
+    regularSalesTotal += t
     const prev = aggMap.get(o.payment_method) ?? emptyAgg()
     aggMap.set(o.payment_method, {
       count: prev.count + 1,
@@ -143,7 +171,17 @@ export function calculateShiftSummary(input: ShiftSummaryInput): ShiftSummary {
     .sort((a, b) => b.total - a.total)
 
   const totalSales = regularSalesTotal + layawayPaymentsTotal
-  const totalExpenses = input.expenses.reduce((sum, e) => sum + e.amount, 0)
+
+  // Egresos: el total (para el cuadre) es TODO; los reembolsos se separan solo
+  // para la presentación. totalExpenses NO cambia → expectedCash idéntico.
+  let totalExpenses = 0
+  let returnsExpense = 0
+  for (const e of input.expenses) {
+    totalExpenses += e.amount
+    if (e.kind === 'return') returnsExpense += e.amount
+  }
+  const regularExpensesTotal = totalExpenses - returnsExpense
+
   const { expectedCash, overdraft } = reconcileCash(
     input.openingAmount + cashSales,
     totalExpenses,
@@ -158,6 +196,10 @@ export function calculateShiftSummary(input: ShiftSummaryInput): ShiftSummary {
     totalExpenses,
     expectedCash,
     overdraft,
-    orderCount: orders.length,
+    orderCount: regularOrderCount,
+    returnsIncome,
+    returnsExpense,
+    returnsNet: returnsIncome - returnsExpense,
+    regularExpensesTotal,
   }
 }

@@ -112,6 +112,7 @@ export interface Order {
   payment_method: PaymentMethod
   cash_received: number | null
   order_number: number
+  return_id: string | null
   created_at: string
   updated_at: string
 }
@@ -171,12 +172,16 @@ export interface CashShift {
   updated_at: string
 }
 
+export type CashExpenseKind = 'expense' | 'return'
+
 export interface CashExpense {
   id: string
   shift_id: string
   store_id: string
   amount: number
   reason: string
+  kind: CashExpenseKind
+  return_id: string | null
   notes: string | null
   created_by: string
   created_at: string
@@ -443,10 +448,11 @@ export interface Database {
       }
       orders: {
         Row: Order
-        Insert: Omit<Order, 'id' | 'created_at' | 'order_number'> & {
+        Insert: Omit<Order, 'id' | 'created_at' | 'order_number' | 'return_id'> & {
           id?: string
           created_at?: string
           order_number?: number
+          return_id?: string | null
         }
         Update: Partial<Omit<Order, 'id'>>
       }
@@ -477,9 +483,11 @@ export interface Database {
       }
       cash_expenses: {
         Row: CashExpense
-        Insert: Omit<CashExpense, 'id' | 'created_at'> & {
+        Insert: Omit<CashExpense, 'id' | 'created_at' | 'kind' | 'return_id'> & {
           id?: string
           created_at?: string
+          kind?: CashExpenseKind
+          return_id?: string | null
         }
         Update: Partial<Omit<CashExpense, 'id'>>
       }

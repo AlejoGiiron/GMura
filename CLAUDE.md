@@ -318,10 +318,37 @@ Sidebar agrupado en secciones colapsables (feature/12-caja-completa) ✅
 - Configuración (tienda, usuarios, productos, caja, etiquetas)
 
 ## Estado actual del proyecto
-Última fase completada: hotfix feedback v2 (barcodes, descuento, usuarios multi-tienda)
-En progreso: feature - gestión de sucursales
-Siguiente: P5 - separar devoluciones en cuadre
+Última fase completada: P5 - devoluciones separadas en el cuadre de caja
+En progreso: —
 
+P5 — Devoluciones aparte en el cuadre (feature/returns-in-cash-shift) ✅
+  - Migración 017: cash_expenses.kind ('expense'|'return', text+CHECK — no ENUM,
+    consistente con los CHECK existentes de la tabla y extensible a
+    'supplier_payment' sin ALTER TYPE) + cash_expenses.return_id; orders.return_id
+    (ON DELETE SET NULL); índices; backfill de salidas históricas por prefijo
+    (reason LIKE 'Devolución%' → kind='return'). Entradas forward-only (sin señal
+    confiable para backfillear orders.return_id). RLS sin cambios
+  - database.types: CashExpense += kind/return_id, Order += return_id, Inserts
+    con los campos opcionales
+  - useReturnMutations: la orden del cambio setea return_id=ret.id; el cash_expense
+    del reembolso setea kind='return' + return_id (reason legible se mantiene)
+  - shiftCalc.calculateShiftSummary: clasifica returnsIncome (órdenes con
+    return_id), returnsExpense (cash_expenses kind='return'), returnsNet y
+    regularExpensesTotal. INVARIANTE: cashSales, totalExpenses y expectedCash son
+    IDÉNTICOS (la clasificación solo reagrupa para el display); regularSalesTotal/
+    salesByMethod/orderCount excluyen los ingresos por devolución. Blindado con
+    test de no-regresión de expectedCash
+  - useShiftClosing: fetch de orders.return_id y cash_expenses.kind; pasa a la
+    función pura y expone los nuevos campos. useShiftHistory NO se tocó (solo
+    alimenta la tabla con valores invariantes; el recibo del historial sale de
+    useShiftClosing)
+  - CashShiftReceipt: sección "DEVOLUCIONES" (+Ingresos / -Reembolsos / Neto),
+    visible solo si hay; VENTAS y EGRESOS excluyen lo mostrado ahí; el CUADRE DE
+    EFECTIVO queda aritméticamente idéntico. Mismo cambio en CloseShiftModal
+    (preview) y CashShiftsHistoryPage (reimpresión)
+  - 54 tests (16 de cuadre previos + 6 nuevos P5)
+
+Hotfix feedback v2 — anti-duplicados en factura + descuento separados libre
 Hotfix feedback v2 — anti-duplicados en factura + descuento separados libre
 (hotfix/feedback-v2-barcode-users-returns) — parcial
   - PROBLEMA 2 (productos duplicados al comprar): NewInvoiceModal muestra el

@@ -146,6 +146,8 @@ function ReprintReceiptModal({
                   storeName={closing.storeName}
                   userName={closing.userName}
                   printedAt={printedAtRef.current}
+                  returnsIncome={closing.returnsIncome}
+                  returnsExpense={closing.returnsExpense}
                 />
               </div>
             )}
@@ -186,6 +188,8 @@ function ReprintReceiptModal({
           storeName={closing.storeName}
           userName={closing.userName}
           printedAt={printedAtRef.current}
+          returnsIncome={closing.returnsIncome}
+          returnsExpense={closing.returnsExpense}
         />
       )}
     </>
