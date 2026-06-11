@@ -243,6 +243,7 @@ function SaleDetailRow({ detail }: { detail: SaleDetail }) {
       items: detail.items.map((it) => ({
         variant_id: it.variant_id,
         product_name: it.product_name,
+        brand: it.brand,
         size: it.size,
         color: it.color,
         qty: it.qty,
@@ -280,6 +281,11 @@ function SaleDetailRow({ detail }: { detail: SaleDetail }) {
                   }}
                 />
                 <div className="min-w-0 flex-1">
+                  {item.brand && (
+                    <p className="truncate text-[10px] font-semibold uppercase tracking-wider text-[#a8a29e]">
+                      {item.brand}
+                    </p>
+                  )}
                   <p className="truncate text-sm font-medium text-[#1a1a1a]">
                     {item.product_name}
                   </p>

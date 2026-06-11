@@ -52,6 +52,7 @@ export interface DraftItem {
   variant_id: string
   product_id: string
   name: string
+  brand: string | null
   size: string | null
   color: string | null
   unit_price: number
@@ -128,6 +129,11 @@ function VariantPicker({
             <p className="text-xs font-semibold uppercase tracking-widest text-slate-400">
               Agregar al separado
             </p>
+            {product.brand && (
+              <p className="mt-0.5 text-[10px] font-semibold uppercase tracking-wider text-[#a8a29e]">
+                {product.brand}
+              </p>
+            )}
             <h3 className="mt-0.5 text-base font-semibold text-slate-900">
               {product.name}
             </h3>
@@ -477,6 +483,7 @@ function ItemsStep({
       variant_id: variant.id,
       product_id: product.id,
       name: product.name,
+      brand: product.brand,
       size: variant.size,
       color: variant.color,
       unit_price: variant.price,
@@ -551,6 +558,11 @@ function ItemsStep({
                         </div>
                       )}
                     </div>
+                    {p.brand && (
+                      <p className="line-clamp-1 text-[9px] font-semibold uppercase tracking-wider text-[#a8a29e]">
+                        {p.brand}
+                      </p>
+                    )}
                     <p className="line-clamp-1 text-[12px] font-medium text-[#1a1a1a]">
                       {p.name}
                     </p>
@@ -595,6 +607,11 @@ function ItemsStep({
                       }}
                     />
                     <div className="min-w-0 flex-1">
+                      {it.brand && (
+                        <p className="truncate text-[10px] font-semibold uppercase tracking-wider text-[#a8a29e]">
+                          {it.brand}
+                        </p>
+                      )}
                       <p className="truncate text-[12.5px] font-medium text-[#1a1a1a]">
                         {it.name}
                       </p>

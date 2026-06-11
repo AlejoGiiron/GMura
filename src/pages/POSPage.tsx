@@ -467,6 +467,7 @@ function TicketModal({
     items: items.map((it) => ({
       variant_id: it.variant_id,
       product_name: it.name,
+      brand: it.brand,
       size: it.size,
       color: it.color,
       qty: it.qty,
@@ -1205,6 +1206,7 @@ export default function POSPage() {
       variant_id: it.variant_id,
       product_id: it.product_id,
       name: it.name,
+      brand: it.brand,
       size: it.size,
       color: it.color,
       unit_price: it.unit_price,

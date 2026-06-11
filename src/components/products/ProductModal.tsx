@@ -1,7 +1,9 @@
 import { useState, useRef, type ChangeEvent, type FormEvent } from 'react'
 import { X, Package } from 'lucide-react'
+import toast from 'react-hot-toast'
 import { useCategories } from '@/hooks/useProducts'
 import { useProductMutations } from '@/hooks/useProductMutations'
+import { useConfigMutations } from '@/hooks/useConfigMutations'
 import { useResolvedConfig } from '@/hooks/useConfig'
 import { DEFAULT_SIZE_TYPE_ID, findSizeType } from '@/lib/sizeTypes'
 import type { Product } from '@/types/database.types'
@@ -17,7 +19,10 @@ interface ProductModalProps {
 export default function ProductModal({ product, initialName, onClose, onSaved }: ProductModalProps) {
   const { data: categories = [] } = useCategories()
   const { create, update, uploadImage } = useProductMutations()
-  const sizeTypes = useResolvedConfig().size_types
+  const config = useResolvedConfig()
+  const sizeTypes = config.size_types
+  const brands = config.brands
+  const { updateStoreConfig } = useConfigMutations()
 
   const [name, setName] = useState(product?.name ?? initialName ?? '')
   const [brand, setBrand] = useState(product?.brand ?? '')
@@ -38,6 +43,22 @@ export default function ProductModal({ product, initialName, onClose, onSaved }:
 
   const fileRef = useRef<HTMLInputElement>(null)
   const isEdit = !!product
+
+  // La marca escrita no está en las marcas frecuentes configuradas (comparación
+  // case-insensitive) → ofrecer agregarla para reutilizarla en próximos productos.
+  const trimmedBrand = brand.trim()
+  const isNewBrand =
+    trimmedBrand.length > 0 &&
+    !brands.some((b) => b.toLowerCase() === trimmedBrand.toLowerCase())
+
+  async function handleAddBrandToConfig() {
+    try {
+      await updateStoreConfig.mutateAsync({ brands: [...brands, trimmedBrand] })
+      toast.success(`Marca "${trimmedBrand}" agregada a marcas frecuentes`)
+    } catch {
+      // toast de error ya lo muestra la mutación
+    }
+  }
 
   function handleFileChange(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
@@ -160,9 +181,25 @@ export default function ProductModal({ product, initialName, onClose, onSaved }:
               <input
                 value={brand}
                 onChange={(e) => setBrand(e.target.value)}
+                list="product-brand-options"
                 placeholder="Marca"
                 className="h-10 w-full rounded-lg border border-slate-200 px-3 text-sm outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100"
               />
+              <datalist id="product-brand-options">
+                {brands.map((b) => (
+                  <option key={b} value={b} />
+                ))}
+              </datalist>
+              {isNewBrand && (
+                <button
+                  type="button"
+                  onClick={() => void handleAddBrandToConfig()}
+                  disabled={updateStoreConfig.isPending}
+                  className="mt-1 text-[11px] font-medium text-violet-500 hover:text-violet-600 disabled:opacity-50"
+                >
+                  + Agregar “{trimmedBrand}” a marcas frecuentes
+                </button>
+              )}
             </div>
             <div>
               <label className="mb-1.5 block text-xs font-medium text-slate-600">Categoría</label>

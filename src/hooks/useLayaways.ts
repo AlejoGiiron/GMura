@@ -50,6 +50,7 @@ export interface LayawayDetailItem {
   qty: number
   unit_price: number
   product_name: string
+  brand: string | null
   size: string | null
   color: string | null
 }
@@ -105,7 +106,7 @@ interface RawDetailItem {
   variants: {
     size: string | null
     color: string | null
-    products: { name: string } | null
+    products: { name: string; brand: string | null } | null
   } | null
 }
 
@@ -272,7 +273,7 @@ export function useLayawayDetail(id: string | null) {
            customers(full_name, phone),
            profiles!layaways_created_by_fkey(full_name),
            layaway_items(id, variant_id, product_id, qty, unit_price,
-             variants(size, color, products(name))),
+             variants(size, color, products(name, brand))),
            layaway_payments(id, amount, payment_method, notes, created_at, created_by,
              profiles(full_name))`,
         )
@@ -290,6 +291,7 @@ export function useLayawayDetail(id: string | null) {
         qty: it.qty,
         unit_price: Number(it.unit_price) || 0,
         product_name: it.variants?.products?.name ?? 'Producto eliminado',
+        brand: it.variants?.products?.brand ?? null,
         size: it.variants?.size ?? null,
         color: it.variants?.color ?? null,
       }))

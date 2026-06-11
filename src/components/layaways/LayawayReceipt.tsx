@@ -116,6 +116,18 @@ export function LayawayReceipt({
         <div style={{ fontWeight: 700, marginBottom: 2 }}>ÍTEMS</div>
         {layaway.items.map((it) => (
           <div key={it.id} style={{ marginBottom: 2 }}>
+            {it.brand && (
+              <div
+                style={{
+                  ...monoLight,
+                  fontSize: 9,
+                  textTransform: 'uppercase',
+                  letterSpacing: 0.5,
+                }}
+              >
+                {it.brand}
+              </div>
+            )}
             <div>{it.product_name}</div>
             <div style={monoLight}>
               {[

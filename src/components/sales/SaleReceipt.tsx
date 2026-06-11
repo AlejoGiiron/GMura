@@ -14,6 +14,7 @@ const SUBDIV = '─────────────────────�
 export interface SaleReceiptItem {
   variant_id: string
   product_name: string
+  brand: string | null
   size: string | null
   color: string | null
   qty: number
@@ -130,6 +131,18 @@ export function SaleReceipt({ sale, storeName, printedAt }: SaleReceiptProps) {
         <div style={{ fontWeight: 700, marginBottom: 2 }}>ÍTEMS</div>
         {sale.items.map((it) => (
           <div key={it.variant_id} style={{ marginBottom: 2 }}>
+            {it.brand && (
+              <div
+                style={{
+                  ...monoLight,
+                  fontSize: 9,
+                  textTransform: 'uppercase',
+                  letterSpacing: 0.5,
+                }}
+              >
+                {it.brand}
+              </div>
+            )}
             <div>{it.product_name}</div>
             {(it.size || it.color) && (
               <div style={monoLight}>

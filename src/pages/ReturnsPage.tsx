@@ -269,6 +269,11 @@ function Step2Items({ order, returnQtys, onQtyChange, onBack, onNext }: Step2Pro
                   style={{ background: item.color ? getColorHex(item.color) : '#e2e8f0' }}
                 />
                 <div className="min-w-0 flex-1">
+                  {item.brand && (
+                    <p className="truncate text-[10px] font-semibold uppercase tracking-wider text-[#a8a29e]">
+                      {item.brand}
+                    </p>
+                  )}
                   <p className="truncate text-sm font-medium text-[#1a1a1a]">{item.product_name}</p>
                   <p className="text-xs text-[#737373]">
                     {[item.size ? `T.${item.size}` : null, item.color].filter(Boolean).join(' · ')}
@@ -537,6 +542,9 @@ function Step3Type({
                 {selectedItems.map((i) => (
                   <div key={i.id} className="flex items-center justify-between py-1.5">
                     <span className="truncate text-sm text-[#1a1a1a]">
+                      {i.brand ? (
+                        <span className="font-semibold uppercase text-[#a8a29e]">{i.brand} </span>
+                      ) : null}
                       {i.product_name}
                       {i.size ? ` T.${i.size}` : ''}
                       {i.color ? ` · ${i.color}` : ''}
@@ -799,11 +807,18 @@ function Step4Confirm({
                   className="h-4 w-4 shrink-0 rounded-full shadow-[0_0_0_1.5px_rgba(0,0,0,0.12)]"
                   style={{ background: i.color ? getColorHex(i.color) : '#e2e8f0' }}
                 />
-                <p className="min-w-0 flex-1 truncate text-sm font-medium text-[#1a1a1a]">
-                  {i.product_name}
-                  {i.size ? ` T.${i.size}` : ''}
-                  {i.color ? ` · ${i.color}` : ''}
-                </p>
+                <div className="min-w-0 flex-1">
+                  {i.brand && (
+                    <p className="truncate text-[10px] font-semibold uppercase tracking-wider text-[#a8a29e]">
+                      {i.brand}
+                    </p>
+                  )}
+                  <p className="truncate text-sm font-medium text-[#1a1a1a]">
+                    {i.product_name}
+                    {i.size ? ` T.${i.size}` : ''}
+                    {i.color ? ` · ${i.color}` : ''}
+                  </p>
+                </div>
                 <span className="shrink-0 text-xs text-[#737373]">×{returnQtys[i.variant_id]}</span>
                 <span className="shrink-0 font-mono text-sm font-semibold text-[#1a1a1a]">
                   {fmtCOP(i.unit_price * (returnQtys[i.variant_id] ?? 0))}
@@ -969,6 +984,9 @@ function ReturnTicketModal({
           {selectedItems.map((i) => (
             <div key={i.id} className="mb-1 flex justify-between text-xs">
               <span className="text-[#525252]">
+                {i.brand ? (
+                  <span className="font-semibold uppercase text-[#a8a29e]">{i.brand} </span>
+                ) : null}
                 {i.product_name}
                 {i.size ? ` T.${i.size}` : ''}
                 {i.color ? ` ${i.color}` : ''} × {returnQtys[i.variant_id]}
