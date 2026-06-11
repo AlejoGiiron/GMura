@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from './useAuth'
 import { getActiveStoreId } from './useActiveStoreId'
+import { bogotaDayStartToUtc, bogotaDayEndToUtc } from '@/lib/dates'
 import type { Variant, StockMovement, StockMovementType } from '@/types/database.types'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -96,10 +97,10 @@ export function useStockMovements(filters: MovementFilters, page: number) {
         query = query.eq('type' as never, filters.type)
       }
       if (filters.dateFrom) {
-        query = query.gte('created_at' as never, `${filters.dateFrom}T00:00:00`)
+        query = query.gte('created_at' as never, bogotaDayStartToUtc(filters.dateFrom))
       }
       if (filters.dateTo) {
-        query = query.lte('created_at' as never, `${filters.dateTo}T23:59:59`)
+        query = query.lte('created_at' as never, bogotaDayEndToUtc(filters.dateTo))
       }
 
       const { data, error, count } = await query

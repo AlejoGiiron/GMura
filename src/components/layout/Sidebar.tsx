@@ -303,7 +303,7 @@ export default function Sidebar() {
       </div>
 
       {/* Nav grupos */}
-      <nav className="flex flex-1 flex-col gap-2 overflow-y-auto px-3 pb-2">
+      <nav className="sidebar-scroll flex flex-1 flex-col gap-2 overflow-y-auto px-3 pb-2">
         {visibleGroups.map((group) => (
           <CollapsibleGroup
             key={group.id}

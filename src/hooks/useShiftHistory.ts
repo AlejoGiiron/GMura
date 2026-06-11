@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from './useAuth'
 import { getActiveStoreId } from './useActiveStoreId'
+import { bogotaDayStartToUtc, bogotaDayEndToUtc } from '@/lib/dates'
 import { reconcileCash, shiftDifference } from '@/lib/shiftCalc'
 import type { CashShift, Profile } from '@/types/database.types'
 
@@ -64,11 +65,13 @@ export function useShiftHistory(filters: ShiftHistoryFilters) {
       if (filters.cashierId !== 'all') {
         q = q.eq('opened_by' as never, filters.cashierId)
       }
+      // closed_at se guarda en UTC; convertimos los límites de la fecha civil
+      // de Bogotá a UTC para no excluir turnos cerrados de noche.
       if (filters.dateFrom) {
-        q = q.gte('closed_at' as never, `${filters.dateFrom}T00:00:00`)
+        q = q.gte('closed_at' as never, bogotaDayStartToUtc(filters.dateFrom))
       }
       if (filters.dateTo) {
-        q = q.lte('closed_at' as never, `${filters.dateTo}T23:59:59`)
+        q = q.lte('closed_at' as never, bogotaDayEndToUtc(filters.dateTo))
       }
 
       const { data, error, count } = await q
