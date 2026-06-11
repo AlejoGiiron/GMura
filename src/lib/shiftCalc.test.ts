@@ -69,6 +69,25 @@ describe('calculateShiftSummary', () => {
     expect(r.salesByMethod[0]).toMatchObject({ method: 'cash', total: 50_000, count: 1 })
   })
 
+  it('recargo Addi: el total con recargo cuenta como venta Addi y NO toca el efectivo', () => {
+    // La orden Addi llega con total ya incluido el recargo (subtotal 100k +
+    // recargo 15k = 115k). El recargo no es efectivo → expectedCash no cambia.
+    const r = calculateShiftSummary({
+      openingAmount: 100_000,
+      orders: [
+        order('o1', 50_000, 'cash'),
+        order('o2', 115_000, 'addi'),
+      ],
+      layawayPayments: [],
+      expenses: [],
+    })
+    const addi = r.salesByMethod.find((s) => s.method === 'addi')
+    expect(addi).toMatchObject({ method: 'addi', total: 115_000, count: 1 })
+    expect(r.totalSales).toBe(165_000) // 50.000 + 115.000 (recargo incluido)
+    expect(r.cashSales).toBe(50_000) // Addi no es efectivo
+    expect(r.expectedCash).toBe(150_000) // 100.000 + 50.000, intacto pese al recargo
+  })
+
   it('turno con gastos: esperado = apertura + ventas efectivo - gastos', () => {
     const r = calculateShiftSummary({
       openingAmount: 100_000,

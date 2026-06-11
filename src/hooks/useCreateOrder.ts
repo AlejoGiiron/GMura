@@ -13,6 +13,8 @@ export interface CreateOrderInput {
   customer_id: string | null
   payment_method: PaymentMethod
   cash_received?: number
+  // Recargo manual (ej. Addi). Se suma al total. Default 0.
+  surcharge?: number
 }
 
 export function useCreateOrder() {
@@ -43,7 +45,10 @@ export function useCreateOrder() {
         }
       }
 
-      const { subtotal, discountAmt, total } = cartTotals(input.items, input.discount)
+      const { subtotal, discountAmt } = cartTotals(input.items, input.discount)
+      // Recargo manual (ej. Addi). Se suma al total; nunca negativo.
+      const surcharge = Math.max(0, input.surcharge ?? 0)
+      const total = subtotal - discountAmt + surcharge
       if (total < 0) {
         throw new Error('El total no puede ser negativo')
       }
@@ -51,6 +56,7 @@ export function useCreateOrder() {
       console.info('[useCreateOrder] Creando orden…', {
         items: input.items.length,
         total,
+        surcharge,
         payment_method: input.payment_method,
       })
 
@@ -63,6 +69,7 @@ export function useCreateOrder() {
           status: 'completed',
           subtotal,
           discount: discountAmt,
+          surcharge,
           total,
           payment_method: input.payment_method,
           cash_received: input.cash_received ?? null,

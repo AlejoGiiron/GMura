@@ -81,6 +81,7 @@ export type SaleDetail = {
   status: OrderStatus
   subtotal: number
   discount: number
+  surcharge: number
   total: number
   payment_method: PaymentMethod
   cash_received: number | null
@@ -113,6 +114,7 @@ type RawOrderDetail = {
   status: string
   subtotal: number
   discount: number
+  surcharge: number
   total: number
   payment_method: string
   cash_received: number | null
@@ -325,7 +327,7 @@ export function useSaleDetail(orderId: string | null) {
       const { data: raw, error } = await supabase
         .from('orders')
         .select(`
-          id, order_number, created_at, status, subtotal, discount, total,
+          id, order_number, created_at, status, subtotal, discount, surcharge, total,
           payment_method, cash_received,
           customers(id, full_name, phone),
           order_items(
@@ -371,6 +373,7 @@ export function useSaleDetail(orderId: string | null) {
         status: order.status as OrderStatus,
         subtotal: order.subtotal,
         discount: order.discount,
+        surcharge: order.surcharge,
         total: order.total,
         payment_method: order.payment_method as PaymentMethod,
         cash_received: order.cash_received,

@@ -245,16 +245,24 @@ function suggestCashAmounts(total: number): number[] {
 }
 
 interface PaymentModalProps {
+  subtotal: number
+  discount: number
   total: number
   enabledMethods: PaymentMethod[]
   paymentQrUrl: string | null
-  onConfirm: (method: PaymentMethod, cashReceived?: number) => void
+  onConfirm: (
+    method: PaymentMethod,
+    cashReceived?: number,
+    surcharge?: number,
+  ) => void
   onLayaway: () => void
   onClose: () => void
   isPending: boolean
 }
 
 function PaymentModal({
+  subtotal,
+  discount,
   total,
   enabledMethods,
   paymentQrUrl,
@@ -268,10 +276,15 @@ function PaymentModal({
     enabledMethods.includes('cash') ? 'cash' : (enabledMethods[0] ?? 'cash'),
   )
   const [cashReceived, setCashReceived] = useState('')
+  // Recargo manual, SOLO aplica a Addi. Se reinicia al cambiar de método.
+  const [surchargeInput, setSurchargeInput] = useState('')
+
+  const surcharge = method === 'addi' ? Math.max(0, parseFloat(surchargeInput) || 0) : 0
+  const finalTotal = total + surcharge
 
   const cashAmt = parseFloat(cashReceived) || 0
-  const change = cashAmt - total
-  const canConfirm = method !== 'cash' || cashAmt >= total
+  const change = cashAmt - finalTotal
+  const canConfirm = method !== 'cash' || cashAmt >= finalTotal
 
   return (
     <div
@@ -288,7 +301,7 @@ function PaymentModal({
               Cobrar venta
             </p>
             <p className="mt-0.5 font-mono text-2xl font-bold text-slate-900">
-              {fmtCOP(total)}
+              {fmtCOP(finalTotal)}
             </p>
           </div>
           <button
@@ -337,20 +350,20 @@ function PaymentModal({
               placeholder="0"
               className="w-full rounded-xl border border-slate-200 px-4 py-3 font-mono text-lg font-semibold outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-100"
             />
-            {total > 0 && (
+            {finalTotal > 0 && (
               <div className="mt-2 flex flex-wrap gap-1.5">
                 <button
                   type="button"
-                  onClick={() => setCashReceived(String(total))}
+                  onClick={() => setCashReceived(String(finalTotal))}
                   className={`rounded-lg border px-2.5 py-1 text-xs font-semibold transition-colors ${
-                    cashAmt === total
+                    cashAmt === finalTotal
                       ? 'border-violet-600 bg-violet-50 text-violet-700'
                       : 'border-slate-200 bg-white text-slate-700 hover:border-violet-300 hover:bg-violet-50'
                   }`}
                 >
                   Exacto
                 </button>
-                {suggestCashAmounts(total).map((amt) => (
+                {suggestCashAmounts(finalTotal).map((amt) => (
                   <button
                     key={amt}
                     type="button"
@@ -366,7 +379,7 @@ function PaymentModal({
                 ))}
               </div>
             )}
-            {cashAmt >= total && (
+            {cashAmt >= finalTotal && (
               <p className="mt-2 text-sm text-green-600">
                 Cambio:{' '}
                 <span className="font-semibold">{fmtCOP(change)}</span>
@@ -389,8 +402,50 @@ function PaymentModal({
         )}
 
         {method === 'addi' && (
-          <div className="mb-5 rounded-xl border border-pink-100 bg-pink-50/50 p-4 text-center">
-            <p className="text-xs text-slate-700">
+          <div className="mb-5 space-y-3">
+            <div>
+              <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-500">
+                Recargo Addi
+              </label>
+              <div className="relative">
+                <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 font-mono text-lg font-semibold text-slate-400">
+                  $
+                </span>
+                <input
+                  autoFocus
+                  type="number"
+                  min={0}
+                  value={surchargeInput}
+                  onChange={(e) => setSurchargeInput(e.target.value)}
+                  placeholder="0"
+                  className="w-full rounded-xl border border-slate-200 py-3 pl-8 pr-4 font-mono text-lg font-semibold outline-none focus:border-pink-500 focus:ring-2 focus:ring-pink-100"
+                />
+              </div>
+            </div>
+
+            {/* Desglose en vivo */}
+            <div className="space-y-1 rounded-xl border border-pink-100 bg-pink-50/50 p-4 text-sm">
+              <div className="flex justify-between text-slate-600">
+                <span>Productos</span>
+                <span className="font-mono">{fmtCOP(subtotal)}</span>
+              </div>
+              {discount > 0 && (
+                <div className="flex justify-between text-slate-600">
+                  <span>Descuento</span>
+                  <span className="font-mono">-{fmtCOP(discount)}</span>
+                </div>
+              )}
+              <div className="flex justify-between text-slate-600">
+                <span>Recargo Addi</span>
+                <span className="font-mono">+{fmtCOP(surcharge)}</span>
+              </div>
+              <div className="flex justify-between border-t border-pink-100 pt-1.5 font-semibold text-slate-900">
+                <span>Total</span>
+                <span className="font-mono">{fmtCOP(finalTotal)}</span>
+              </div>
+            </div>
+
+            <p className="text-center text-xs text-slate-500">
               Pago en cuotas con Addi — confirma desde la app del cliente
             </p>
           </div>
@@ -398,7 +453,13 @@ function PaymentModal({
 
         <button
           disabled={!canConfirm || isPending}
-          onClick={() => onConfirm(method, method === 'cash' ? cashAmt : undefined)}
+          onClick={() =>
+            onConfirm(
+              method,
+              method === 'cash' ? cashAmt : undefined,
+              surcharge,
+            )
+          }
           className="flex w-full items-center justify-center gap-2 rounded-xl bg-violet-600 py-3.5 text-sm font-semibold text-white transition-opacity disabled:cursor-not-allowed disabled:opacity-40 hover:bg-violet-700"
         >
           {isPending ? (
@@ -458,6 +519,7 @@ function TicketModal({
     created_at: order.created_at,
     subtotal,
     discount: discountAmt,
+    surcharge: order.surcharge,
     total: order.total,
     payment_method: order.payment_method,
     cash_received: order.cash_received,
@@ -1173,14 +1235,25 @@ export default function POSPage() {
     toast.success(`${product.name} agregado`)
   }
 
-  const handleConfirmPayment = (method: PaymentMethod, cashReceived?: number) => {
+  const handleConfirmPayment = (
+    method: PaymentMethod,
+    cashReceived?: number,
+    surcharge?: number,
+  ) => {
     const snapshot = {
       items: [...items],
       discount: { ...discount },
       customer: selectedCustomer,
     }
     createOrder.mutate(
-      { items, discount, customer_id, payment_method: method, cash_received: cashReceived },
+      {
+        items,
+        discount,
+        customer_id,
+        payment_method: method,
+        cash_received: cashReceived,
+        surcharge,
+      },
       {
         onSuccess: (order) => {
           setShowPayment(false)
@@ -1371,6 +1444,8 @@ export default function POSPage() {
 
       {showPayment && (
         <PaymentModal
+          subtotal={cartTotals(items, discount).subtotal}
+          discount={cartTotals(items, discount).discountAmt}
           total={cartTotals(items, discount).total}
           enabledMethods={migrateLegacyPaymentMethods(config.payment_methods)}
           paymentQrUrl={config.payment_qr_url}

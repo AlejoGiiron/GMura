@@ -31,6 +31,7 @@ export interface SaleReceiptData {
   created_at: string | Date
   subtotal: number
   discount: number
+  surcharge: number
   total: number
   payment_method: PaymentMethod
   cash_received: number | null
@@ -173,6 +174,12 @@ export function SaleReceipt({ sale, storeName, printedAt }: SaleReceiptProps) {
           <Line>
             <span style={monoLight}>Descuento:</span>
             <span>-{fmtCOP(sale.discount)}</span>
+          </Line>
+        )}
+        {sale.surcharge > 0 && (
+          <Line>
+            <span style={monoLight}>Recargo Addi:</span>
+            <span>+{fmtCOP(sale.surcharge)}</span>
           </Line>
         )}
         <div style={monoLight}>{SUBDIV}</div>
