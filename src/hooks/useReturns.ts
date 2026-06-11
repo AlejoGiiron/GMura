@@ -17,6 +17,7 @@ export type FoundOrderItem = {
   unit_price: number
   qty_returned: number
   product_name: string
+  brand: string | null
   size: string | null
   color: string | null
 }
@@ -103,7 +104,7 @@ type RawOrderDetail = {
     variants: {
       size: string | null
       color: string | null
-      products: { name: string }
+      products: { name: string; brand: string | null }
     } | null
   }[]
 }
@@ -230,7 +231,7 @@ export function useOrderDetail(orderId: string | null) {
           customers(full_name, phone),
           order_items(
             id, variant_id, product_id, qty, unit_price,
-            variants(size, color, products(name))
+            variants(size, color, products(name, brand))
           )
         `)
         .eq('id' as never, orderId)
@@ -274,6 +275,7 @@ export function useOrderDetail(orderId: string | null) {
           unit_price: oi.unit_price,
           qty_returned: qtyReturnedByVariant[oi.variant_id] ?? 0,
           product_name: oi.variants?.products?.name ?? 'Producto eliminado',
+          brand: oi.variants?.products?.brand ?? null,
           size: oi.variants?.size ?? null,
           color: oi.variants?.color ?? null,
         })),

@@ -50,6 +50,7 @@ export interface InvoiceItemDetail {
   variant_id: string
   product_id: string
   product_name: string
+  brand: string | null
   size: string | null
   color: string | null
   sku: string | null
@@ -201,7 +202,7 @@ interface RawDetailItem {
   subtotal: number
   update_cost: boolean
   variants: { size: string | null; color: string | null; sku: string | null } | null
-  products: { name: string } | null
+  products: { name: string; brand: string | null } | null
 }
 
 interface RawDetailPayment {
@@ -240,7 +241,7 @@ export function useInvoiceDetail(id: string | null) {
            profiles(full_name),
            purchase_invoice_items(
              id, variant_id, product_id, qty, unit_cost, subtotal, update_cost,
-             variants(size, color, sku), products(name)
+             variants(size, color, sku), products(name, brand)
            ),
            supplier_payments(
              id, amount, payment_date, payment_method, reference, notes,
@@ -260,6 +261,7 @@ export function useInvoiceDetail(id: string | null) {
           variant_id: it.variant_id,
           product_id: it.product_id,
           product_name: it.products?.name ?? 'Producto eliminado',
+          brand: it.products?.brand ?? null,
           size: it.variants?.size ?? null,
           color: it.variants?.color ?? null,
           sku: it.variants?.sku ?? null,

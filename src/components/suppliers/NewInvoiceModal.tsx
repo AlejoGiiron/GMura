@@ -27,6 +27,7 @@ interface ItemForm {
   variant_id: string
   product_id: string
   product_name: string
+  brand: string | null
   size: string | null
   color: string | null
   sku: string | null
@@ -210,6 +211,7 @@ export default function NewInvoiceModal({
     variant_id: string
     product_id: string
     product_name: string
+    brand: string | null
     size: string | null
     color: string | null
     sku: string | null
@@ -230,6 +232,7 @@ export default function NewInvoiceModal({
           variant_id: opt.variant_id,
           product_id: opt.product_id,
           product_name: opt.product_name,
+          brand: opt.brand,
           size: opt.size,
           color: opt.color,
           sku: opt.sku,
@@ -329,6 +332,7 @@ export default function NewInvoiceModal({
         variant_id: v.id,
         product_id: product.id,
         product_name: product.name,
+        brand: product.brand,
         size: v.size,
         color: v.color,
         sku: v.sku,
@@ -533,6 +537,7 @@ export default function NewInvoiceModal({
                               variant_id: r.id,
                               product_id: r.product_id,
                               product_name: r.product_name,
+                              brand: r.brand,
                               size: r.size,
                               color: r.color,
                               sku: r.sku,
@@ -596,6 +601,11 @@ export default function NewInvoiceModal({
                       {items.map((it) => (
                         <tr key={it.key} className="border-t border-[#f5f4f1]">
                           <td className="px-3 py-2">
+                            {it.brand && (
+                              <p className="text-[10px] font-semibold uppercase tracking-wider text-[#a8a29e]">
+                                {it.brand}
+                              </p>
+                            )}
                             <p className="font-medium text-[#1a1a1a]">{it.product_name}</p>
                             <p className="text-[11px] text-[#a8a29e]">
                               {it.size ? `T.${it.size}` : ''}

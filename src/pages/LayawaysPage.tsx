@@ -330,6 +330,11 @@ function ItemsCard({ items }: { items: LayawayDetail['items'] }) {
               }}
             />
             <div className="min-w-0 flex-1">
+              {it.brand && (
+                <p className="truncate text-[10px] font-semibold uppercase tracking-wider text-[#a8a29e]">
+                  {it.brand}
+                </p>
+              )}
               <p className="truncate text-sm font-medium text-[#1a1a1a]">
                 {it.product_name}
               </p>
