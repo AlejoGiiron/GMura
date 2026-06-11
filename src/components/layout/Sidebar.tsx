@@ -13,6 +13,7 @@ import {
   BarChart3,
   BarChart2,
   Wallet,
+  Receipt,
   Settings,
   ChevronDown,
   LogOut,
@@ -105,6 +106,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { label: 'Reportes', path: '/reportes', icon: BarChart2 },
       { label: 'Historial de caja', path: '/caja/historial', icon: Wallet },
+      { label: 'Historial de gastos', path: '/gastos/historial', icon: Receipt },
       { label: 'Configuración', path: '/configuracion', icon: Settings },
     ],
   },

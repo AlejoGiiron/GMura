@@ -12,6 +12,7 @@ import CustomersPage from '@/pages/CustomersPage'
 import ReportsPage from '@/pages/ReportsPage'
 import ConfigPage from '@/pages/ConfigPage'
 import CashShiftsHistoryPage from '@/pages/CashShiftsHistoryPage'
+import ExpenseHistoryPage from '@/pages/ExpenseHistoryPage'
 import LayawaysPage from '@/pages/LayawaysPage'
 import SuppliersPage from '@/pages/SuppliersPage'
 
@@ -64,6 +65,14 @@ export default function App() {
             element={
               <ProtectedRoute allowedRoles={['admin']}>
                 <CashShiftsHistoryPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="gastos/historial"
+            element={
+              <ProtectedRoute allowedRoles={['admin']}>
+                <ExpenseHistoryPage />
               </ProtectedRoute>
             }
           />
