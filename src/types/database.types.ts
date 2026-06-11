@@ -108,6 +108,7 @@ export interface Order {
   status: OrderStatus
   subtotal: number
   discount: number
+  surcharge: number
   total: number
   payment_method: PaymentMethod
   cash_received: number | null
@@ -448,11 +449,15 @@ export interface Database {
       }
       orders: {
         Row: Order
-        Insert: Omit<Order, 'id' | 'created_at' | 'order_number' | 'return_id'> & {
+        Insert: Omit<
+          Order,
+          'id' | 'created_at' | 'order_number' | 'return_id' | 'surcharge'
+        > & {
           id?: string
           created_at?: string
           order_number?: number
           return_id?: string | null
+          surcharge?: number
         }
         Update: Partial<Omit<Order, 'id'>>
       }

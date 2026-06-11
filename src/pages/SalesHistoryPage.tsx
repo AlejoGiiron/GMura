@@ -231,6 +231,7 @@ function SaleDetailRow({ detail }: { detail: SaleDetail }) {
       created_at: detail.created_at,
       subtotal: detail.subtotal,
       discount: detail.discount,
+      surcharge: detail.surcharge,
       total: detail.total,
       payment_method: detail.payment_method,
       cash_received: detail.cash_received,
@@ -369,6 +370,12 @@ function SaleDetailRow({ detail }: { detail: SaleDetail }) {
                 <div className="flex justify-between text-green-700">
                   <span>Descuento</span>
                   <span className="font-mono">-{fmtCOP(detail.discount)}</span>
+                </div>
+              )}
+              {detail.surcharge > 0 && (
+                <div className="flex justify-between text-[#525252]">
+                  <span>Recargo Addi</span>
+                  <span className="font-mono">+{fmtCOP(detail.surcharge)}</span>
                 </div>
               )}
               <div className="flex justify-between border-t border-[#f5f4f1] pt-1.5 font-semibold text-[#1a1a1a]">
