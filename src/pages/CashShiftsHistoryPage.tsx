@@ -18,6 +18,7 @@ import {
   type ShiftHistoryRow,
 } from '@/hooks/useShiftHistory'
 import { useShiftClosing } from '@/hooks/useShiftClosing'
+import { useMyStores } from '@/hooks/useStores'
 import {
   CashShiftReceipt,
   CashShiftReceiptPrint,
@@ -256,6 +257,8 @@ export default function CashShiftsHistoryPage() {
 
   const { data, isLoading } = useShiftHistory(filters)
   const { data: cashiers = [] } = useStoreCashiers()
+  const { data: myStores = [] } = useMyStores()
+  const activeStoreName = myStores.find((s) => s.is_current)?.store_name ?? null
 
   const rows = data?.rows ?? []
   const totalCount = data?.totalCount ?? 0
@@ -274,6 +277,8 @@ export default function CashShiftsHistoryPage() {
               Historial de caja
             </p>
             <p className="text-xs text-[#737373]">
+              {activeStoreName ? `Turnos de ${activeStoreName}` : 'Turnos de la tienda activa'}
+              {' · '}
               {filters.dateFrom} → {filters.dateTo}
             </p>
           </div>

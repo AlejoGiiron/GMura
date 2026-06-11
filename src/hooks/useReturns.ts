@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from './useAuth'
 import { getActiveStoreId } from './useActiveStoreId'
+import { bogotaDayStartToUtc, bogotaDayEndToUtc } from '@/lib/dates'
 import { useDebounce } from './useDebounce'
 import toast from 'react-hot-toast'
 import type { PaymentMethod, ReturnType, ReturnStatus } from '@/types/database.types'
@@ -307,10 +308,10 @@ export function useReturnHistory(filters: ReturnHistoryFilters) {
         q = q.eq('type' as never, filters.type)
       }
       if (filters.dateFrom) {
-        q = q.gte('created_at' as never, `${filters.dateFrom}T00:00:00`)
+        q = q.gte('created_at' as never, bogotaDayStartToUtc(filters.dateFrom))
       }
       if (filters.dateTo) {
-        q = q.lte('created_at' as never, `${filters.dateTo}T23:59:59`)
+        q = q.lte('created_at' as never, bogotaDayEndToUtc(filters.dateTo))
       }
 
       const { data, error } = await q

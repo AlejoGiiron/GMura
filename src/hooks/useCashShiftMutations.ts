@@ -90,6 +90,10 @@ export function useCashShiftMutations() {
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['cash-shifts'] })
+      // El historial usa su propia key; sin esto no se refresca al cerrar
+      // (el match por prefijo de ['cash-shifts'] no la cubre).
+      void queryClient.invalidateQueries({ queryKey: ['shift-history'] })
+      void queryClient.invalidateQueries({ queryKey: ['shift-closing'] })
       toast.success('Turno cerrado')
     },
     onError: (err: Error) => toast.error(err.message),

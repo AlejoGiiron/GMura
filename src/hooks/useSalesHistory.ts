@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from './useAuth'
 import { getActiveStoreId } from './useActiveStoreId'
+import { bogotaDayStartToUtc, bogotaDayEndToUtc } from '@/lib/dates'
 import { useDebounce } from './useDebounce'
 import type {
   OrderStatus,
@@ -182,10 +183,10 @@ export function useSalesHistory(filters: SalesHistoryFilters) {
         q = q.eq('status' as never, filters.status)
       }
       if (filters.dateFrom) {
-        q = q.gte('created_at' as never, `${filters.dateFrom}T00:00:00`)
+        q = q.gte('created_at' as never, bogotaDayStartToUtc(filters.dateFrom))
       }
       if (filters.dateTo) {
-        q = q.lte('created_at' as never, `${filters.dateTo}T23:59:59`)
+        q = q.lte('created_at' as never, bogotaDayEndToUtc(filters.dateTo))
       }
 
       if (dq.length >= 1) {
@@ -267,10 +268,10 @@ export function useSalesSummary(filters: SalesHistoryFilters) {
         oq = oq.eq('status' as never, filters.status)
       }
       if (filters.dateFrom) {
-        oq = oq.gte('created_at' as never, `${filters.dateFrom}T00:00:00`)
+        oq = oq.gte('created_at' as never, bogotaDayStartToUtc(filters.dateFrom))
       }
       if (filters.dateTo) {
-        oq = oq.lte('created_at' as never, `${filters.dateTo}T23:59:59`)
+        oq = oq.lte('created_at' as never, bogotaDayEndToUtc(filters.dateTo))
       }
 
       const { data: orders, error } = await oq
@@ -288,10 +289,10 @@ export function useSalesSummary(filters: SalesHistoryFilters) {
         .eq('status' as never, 'completed')
 
       if (filters.dateFrom) {
-        rq = rq.gte('created_at' as never, `${filters.dateFrom}T00:00:00`)
+        rq = rq.gte('created_at' as never, bogotaDayStartToUtc(filters.dateFrom))
       }
       if (filters.dateTo) {
-        rq = rq.lte('created_at' as never, `${filters.dateTo}T23:59:59`)
+        rq = rq.lte('created_at' as never, bogotaDayEndToUtc(filters.dateTo))
       }
 
       const { count: returnsCount, error: rErr } = await rq
