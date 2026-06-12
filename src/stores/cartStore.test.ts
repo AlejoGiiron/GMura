@@ -1,8 +1,15 @@
-import { describe, it, expect } from 'vitest'
-import { cartTotals, type CartItem, type Discount } from './cartStore'
+import { describe, it, expect, beforeEach } from 'vitest'
+import {
+  cartTotals,
+  orderTotals,
+  clampItemPrice,
+  minFinalPrice,
+  useCartStore,
+  type CartItem,
+} from './cartStore'
 
 function item(
-  fields: Partial<CartItem> & { unit_price: number; qty: number },
+  fields: Partial<CartItem> & { list_price: number; qty: number },
 ): CartItem {
   return {
     variant_id: fields.variant_id ?? 'v1',
@@ -11,70 +18,230 @@ function item(
     brand: fields.brand ?? null,
     size: fields.size ?? null,
     color: fields.color ?? null,
-    unit_price: fields.unit_price,
+    // Por defecto sin descuento: unit_price = list_price.
+    unit_price: fields.unit_price ?? fields.list_price,
+    list_price: fields.list_price,
     qty: fields.qty,
     stock_qty: fields.stock_qty ?? 99,
   }
 }
 
-const sinDescuento: Discount = { value: 0 }
+// ── cartTotals ────────────────────────────────────────────────────────────────
 
 describe('cartTotals', () => {
   it('carrito vacío devuelve subtotal, descuento y total en 0', () => {
-    expect(cartTotals([], sinDescuento)).toEqual({
-      subtotal: 0,
+    expect(cartTotals([])).toEqual({ subtotal: 0, discountAmt: 0, total: 0 })
+  })
+
+  it('ítem sin descuento (unit = list): subtotal = total, descuento 0', () => {
+    const items = [item({ list_price: 10_000, qty: 2 })]
+    expect(cartTotals(items)).toEqual({
+      subtotal: 20_000,
       discountAmt: 0,
-      total: 0,
+      total: 20_000,
     })
   })
 
-  it('un ítem con cantidad 2 a $10.000 da subtotal $20.000', () => {
-    const items = [item({ unit_price: 10_000, qty: 2 })]
-    const { subtotal, discountAmt, total } = cartTotals(items, sinDescuento)
-    expect(subtotal).toBe(20_000)
-    expect(discountAmt).toBe(0)
-    expect(total).toBe(20_000)
-  })
-
-  it('suma correctamente varios ítems', () => {
+  it('varios ítems sin descuento suman bien', () => {
     const items = [
-      item({ variant_id: 'a', unit_price: 15_000, qty: 1 }),
-      item({ variant_id: 'b', unit_price: 25_000, qty: 2 }),
-      item({ variant_id: 'c', unit_price: 5_000, qty: 3 }),
+      item({ variant_id: 'a', list_price: 15_000, qty: 1 }),
+      item({ variant_id: 'b', list_price: 25_000, qty: 2 }),
+      item({ variant_id: 'c', list_price: 5_000, qty: 3 }),
     ]
     // 15.000 + 50.000 + 15.000 = 80.000
-    expect(cartTotals(items, sinDescuento).subtotal).toBe(80_000)
-    expect(cartTotals(items, sinDescuento).total).toBe(80_000)
+    const t = cartTotals(items)
+    expect(t.subtotal).toBe(80_000)
+    expect(t.total).toBe(80_000)
+    expect(t.discountAmt).toBe(0)
   })
 
-  it('aplica un descuento fijo: total = subtotal - descuento', () => {
-    const items = [item({ unit_price: 50_000, qty: 2 })] // 100.000
-    const { subtotal, discountAmt, total } = cartTotals(items, { value: 15_000 })
-    expect(subtotal).toBe(100_000)
-    expect(discountAmt).toBe(15_000)
-    expect(total).toBe(85_000)
+  it('descuento por línea: subtotal catálogo, total final, descuento derivado', () => {
+    // Catálogo 50.000, vendido a 30.000, qty 2.
+    const items = [item({ list_price: 50_000, unit_price: 30_000, qty: 2 })]
+    const t = cartTotals(items)
+    expect(t.subtotal).toBe(100_000) // 50.000 · 2
+    expect(t.total).toBe(60_000) // 30.000 · 2
+    expect(t.discountAmt).toBe(40_000) // 100.000 − 60.000
   })
 
-  it('un descuento mayor al subtotal no deja el total por debajo de 0 (clamp)', () => {
-    const items = [item({ unit_price: 20_000, qty: 1 })] // 20.000
-    const { subtotal, discountAmt, total } = cartTotals(items, { value: 50_000 })
-    expect(subtotal).toBe(20_000)
-    expect(discountAmt).toBe(20_000) // descuento limitado al subtotal
-    expect(total).toBe(0)
-  })
-
-  it('un descuento negativo se trata como 0', () => {
-    const items = [item({ unit_price: 30_000, qty: 1 })]
-    const { discountAmt, total } = cartTotals(items, { value: -5_000 })
-    expect(discountAmt).toBe(0)
-    expect(total).toBe(30_000)
-  })
-
-  it('calcula bien precios con decimales', () => {
+  it('varios ítems con distintos descuentos por línea', () => {
     const items = [
-      item({ variant_id: 'a', unit_price: 1_500.5, qty: 2 }), // 3.001
-      item({ variant_id: 'b', unit_price: 999.99, qty: 3 }), // 2.999,97
+      item({ variant_id: 'a', list_price: 50_000, unit_price: 30_000, qty: 1 }), // -20.000
+      item({ variant_id: 'b', list_price: 20_000, unit_price: 20_000, qty: 2 }), // sin desc
+      item({ variant_id: 'c', list_price: 40_000, unit_price: 35_000, qty: 1 }), // -5.000
     ]
-    expect(cartTotals(items, sinDescuento).subtotal).toBeCloseTo(6_000.97, 2)
+    const t = cartTotals(items)
+    expect(t.subtotal).toBe(50_000 + 40_000 + 40_000) // 130.000
+    expect(t.total).toBe(30_000 + 40_000 + 35_000) // 105.000
+    expect(t.discountAmt).toBe(25_000)
+  })
+
+  it('redondeo: total = Σ round(unit·qty), discount = subtotal − total', () => {
+    const items = [
+      item({ variant_id: 'a', list_price: 1_500.5, unit_price: 1_000.5, qty: 2 }),
+      item({ variant_id: 'b', list_price: 999.99, unit_price: 999.99, qty: 3 }),
+    ]
+    // subtotal = round(3001) + round(2999.97) = 3001 + 3000 = 6001
+    // total    = round(2001) + round(2999.97) = 2001 + 3000 = 5001
+    const t = cartTotals(items)
+    expect(t.subtotal).toBe(6_001)
+    expect(t.total).toBe(5_001)
+    expect(t.discountAmt).toBe(1_000)
+    // El descuento cierra exacto: subtotal − total
+    expect(t.discountAmt).toBe(t.subtotal - t.total)
+  })
+})
+
+// ── orderTotals (derivación de la orden) ──────────────────────────────────────
+
+describe('orderTotals', () => {
+  it('deriva subtotal catálogo, descuento y total sin recargo', () => {
+    const items = [
+      item({ variant_id: 'a', list_price: 50_000, unit_price: 30_000, qty: 2 }), // -40.000
+      item({ variant_id: 'b', list_price: 20_000, unit_price: 20_000, qty: 1 }), // sin desc
+    ]
+    const r = orderTotals(items)
+    expect(r.subtotal).toBe(120_000) // 50k·2 + 20k
+    expect(r.discount).toBe(40_000) // subtotal − Σ unit·qty (80.000)
+    expect(r.surcharge).toBe(0)
+    expect(r.total).toBe(80_000) // Σ unit·qty + 0
+    // El descuento cierra exacto: subtotal − total_productos
+    expect(r.discount).toBe(r.subtotal - (r.total - r.surcharge))
+  })
+
+  it('suma el recargo al total sin afectar subtotal/descuento', () => {
+    const items = [item({ list_price: 50_000, unit_price: 30_000, qty: 1 })]
+    const r = orderTotals(items, 15_000)
+    expect(r.subtotal).toBe(50_000)
+    expect(r.discount).toBe(20_000)
+    expect(r.surcharge).toBe(15_000)
+    expect(r.total).toBe(45_000) // 30.000 final + 15.000 recargo
+  })
+
+  it('recargo negativo se trata como 0', () => {
+    const items = [item({ list_price: 10_000, unit_price: 10_000, qty: 1 })]
+    const r = orderTotals(items, -5_000)
+    expect(r.surcharge).toBe(0)
+    expect(r.total).toBe(10_000)
+  })
+
+  it('redondeo exacto: discount = subtotal − total_productos', () => {
+    const items = [
+      item({ variant_id: 'a', list_price: 1_500.5, unit_price: 1_000.5, qty: 2 }),
+      item({ variant_id: 'b', list_price: 999.99, unit_price: 999.99, qty: 3 }),
+    ]
+    const r = orderTotals(items, 100)
+    const totalProductos = r.total - r.surcharge
+    expect(r.subtotal).toBe(6_001) // round(3001)+round(2999.97)
+    expect(totalProductos).toBe(5_001) // round(2001)+round(2999.97)
+    expect(r.discount).toBe(1_000)
+    expect(r.discount).toBe(r.subtotal - totalProductos)
+  })
+
+  it('acepta líneas mínimas (PricedLine), como las del separado', () => {
+    // DraftItem/NewLayawayItem no son CartItem completos: basta con
+    // list_price/unit_price/qty (la firma PricedLine).
+    const lines = [
+      { list_price: 50_000, unit_price: 30_000, qty: 2 },
+      { list_price: 20_000, unit_price: 20_000, qty: 1 },
+    ]
+    const r = orderTotals(lines) // separados: sin recargo
+    expect(r.subtotal).toBe(120_000)
+    expect(r.discount).toBe(40_000)
+    expect(r.surcharge).toBe(0)
+    expect(r.total).toBe(80_000)
+  })
+})
+
+// ── clamp del tope (función pura) ─────────────────────────────────────────────
+
+describe('clampItemPrice / minFinalPrice (tope)', () => {
+  it('minFinalPrice = max(0, list − tope)', () => {
+    expect(minFinalPrice(50_000, 30_000)).toBe(20_000)
+    expect(minFinalPrice(25_000, 30_000)).toBe(0) // tope mayor que el precio
+    expect(minFinalPrice(50_000, 0)).toBe(50_000) // sin descuento
+  })
+
+  it('clampa al mínimo: no se puede bajar por debajo de (list − tope)', () => {
+    // list 50.000, tope 30.000 → mínimo 20.000
+    expect(clampItemPrice(10_000, 50_000, 30_000)).toBe(20_000)
+  })
+
+  it('clampa al catálogo: no se puede subir por encima de list', () => {
+    expect(clampItemPrice(60_000, 50_000, 30_000)).toBe(50_000)
+  })
+
+  it('tope = 0 → el precio final queda fijo en list', () => {
+    expect(clampItemPrice(10_000, 50_000, 0)).toBe(50_000)
+    expect(clampItemPrice(50_000, 50_000, 0)).toBe(50_000)
+  })
+
+  it('tope ≥ list → el precio final puede llegar a 0', () => {
+    expect(clampItemPrice(0, 25_000, 30_000)).toBe(0)
+    expect(clampItemPrice(5_000, 25_000, 30_000)).toBe(5_000)
+  })
+
+  it('valor no finito cae al catálogo (sin descuento)', () => {
+    expect(clampItemPrice(NaN, 50_000, 30_000)).toBe(50_000)
+  })
+})
+
+// ── setItemPrice (acción del store) ───────────────────────────────────────────
+
+describe('useCartStore.setItemPrice', () => {
+  beforeEach(() => {
+    useCartStore.setState({ items: [], customer_id: null })
+  })
+
+  function addCatalogItem(variant_id: string, listPrice: number, stock = 99) {
+    useCartStore.getState().addItem({
+      variant_id,
+      product_id: 'p1',
+      name: 'Producto',
+      brand: null,
+      size: null,
+      color: null,
+      unit_price: listPrice,
+      list_price: listPrice,
+      stock_qty: stock,
+    })
+  }
+
+  it('un ítem nuevo arranca con unit_price = list_price', () => {
+    addCatalogItem('a', 50_000)
+    expect(useCartStore.getState().items[0].unit_price).toBe(50_000)
+  })
+
+  it('aplica el precio final clampeado al mínimo del tope', () => {
+    addCatalogItem('a', 50_000)
+    useCartStore.getState().setItemPrice('a', 10_000, 30_000) // mínimo 20.000
+    expect(useCartStore.getState().items[0].unit_price).toBe(20_000)
+  })
+
+  it('clampa al catálogo si se intenta subir el precio', () => {
+    addCatalogItem('a', 50_000)
+    useCartStore.getState().setItemPrice('a', 70_000, 30_000)
+    expect(useCartStore.getState().items[0].unit_price).toBe(50_000)
+  })
+
+  it('tope 0 → no se puede modificar (queda en list)', () => {
+    addCatalogItem('a', 50_000)
+    useCartStore.getState().setItemPrice('a', 30_000, 0)
+    expect(useCartStore.getState().items[0].unit_price).toBe(50_000)
+  })
+
+  it('tope ≥ list → permite llegar a 0', () => {
+    addCatalogItem('a', 25_000)
+    useCartStore.getState().setItemPrice('a', 0, 30_000)
+    expect(useCartStore.getState().items[0].unit_price).toBe(0)
+  })
+
+  it('solo afecta la línea del variant indicado', () => {
+    addCatalogItem('a', 50_000)
+    addCatalogItem('b', 40_000)
+    useCartStore.getState().setItemPrice('a', 30_000, 30_000)
+    const items = useCartStore.getState().items
+    expect(items.find((i) => i.variant_id === 'a')!.unit_price).toBe(30_000)
+    expect(items.find((i) => i.variant_id === 'b')!.unit_price).toBe(40_000)
   })
 })

@@ -377,6 +377,8 @@ export default function ProductsSection() {
   const [colors, setColors] = useState<StoreColorConfig[]>([])
   const [brands, setBrands] = useState<string[]>([])
   const [returnDays, setReturnDays] = useState(30)
+  // String de dígitos para el tope de descuento por ítem (formato de miles).
+  const [maxItemDiscount, setMaxItemDiscount] = useState('0')
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
@@ -385,7 +387,10 @@ export default function ProductsSection() {
     setColors(config.colors)
     setBrands(config.brands)
     setReturnDays(config.return_days_limit)
+    setMaxItemDiscount(String(config.max_item_discount ?? 0))
   }, [store, config])
+
+  const maxItemDiscountNum = Math.max(0, parseInt(maxItemDiscount || '0', 10) || 0)
 
   async function handleSave() {
     const cleaned = sizeTypes
@@ -402,6 +407,7 @@ export default function ProductsSection() {
         colors,
         brands,
         return_days_limit: returnDays,
+        max_item_discount: maxItemDiscountNum,
       })
       toast.success('Configuración de productos guardada')
     } catch {
@@ -469,6 +475,32 @@ export default function ProductsSection() {
               días desde la compra
             </div>
           </div>
+        </div>
+        <div className="px-5 py-5">
+          <p className="mb-2 text-[11px] font-semibold uppercase tracking-[.05em] text-[#737373]">
+            Tope de descuento por ítem
+          </p>
+          <div className="flex h-10 w-44 items-center gap-1 rounded-lg border border-[#ebe9e6] bg-white px-3 focus-within:border-violet-400 focus-within:ring-2 focus-within:ring-violet-100">
+            <span className="text-sm font-medium text-[#a8a29e]">$</span>
+            <input
+              value={
+                maxItemDiscountNum === 0
+                  ? ''
+                  : maxItemDiscountNum.toLocaleString('es-CO')
+              }
+              onChange={(e) =>
+                setMaxItemDiscount(e.target.value.replace(/\D/g, ''))
+              }
+              inputMode="numeric"
+              placeholder="0"
+              className="w-full bg-transparent text-right font-mono text-sm tabular-nums outline-none"
+            />
+          </div>
+          <p className="mt-1.5 text-[11px] text-[#a8a29e]">
+            Rebaja máxima permitida por ítem al vender o crear separados. En $0,
+            no se permite descuento. El vendedor no podrá bajar el precio de un
+            producto por debajo de (precio − este tope).
+          </p>
         </div>
       </div>
 

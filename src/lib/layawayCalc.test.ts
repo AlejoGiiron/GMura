@@ -1,39 +1,9 @@
 import { describe, it, expect } from 'vitest'
 import {
-  calculateMaxDiscount,
   calculateRequiredInitialPayment,
   isLayawayOverdue,
   daysUntilExpiry,
 } from './layawayCalc'
-
-describe('calculateMaxDiscount (descuento libre, sin tope configurado)', () => {
-  it("modo 'none' devuelve 0 (descuento no permitido)", () => {
-    expect(
-      calculateMaxDiscount(100_000, { layaway_discount_mode: 'none' }),
-    ).toBe(0)
-  })
-
-  it("modo 'fixed' permite descontar hasta el subtotal completo", () => {
-    expect(
-      calculateMaxDiscount(100_000, { layaway_discount_mode: 'fixed' }),
-    ).toBe(100_000)
-    expect(
-      calculateMaxDiscount(45_000, { layaway_discount_mode: 'fixed' }),
-    ).toBe(45_000)
-  })
-
-  it('subtotal 0 devuelve 0', () => {
-    expect(
-      calculateMaxDiscount(0, { layaway_discount_mode: 'fixed' }),
-    ).toBe(0)
-  })
-
-  it('subtotal negativo devuelve 0', () => {
-    expect(
-      calculateMaxDiscount(-100, { layaway_discount_mode: 'fixed' }),
-    ).toBe(0)
-  })
-})
 
 describe('calculateRequiredInitialPayment', () => {
   it("modo 'none' devuelve 0", () => {

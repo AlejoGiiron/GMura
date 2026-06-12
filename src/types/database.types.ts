@@ -124,7 +124,11 @@ export interface OrderItem {
   variant_id: string
   product_id: string
   qty: number
+  // Precio FINAL vendido por unidad (con descuento por ítem aplicado).
   unit_price: number
+  // Precio de CATÁLOGO por unidad al momento de la venta (referencia).
+  // Siempre se setea al insertar; unit_price <= list_price.
+  list_price: number
   created_at: string
 }
 
@@ -215,7 +219,11 @@ export interface LayawayItem {
   variant_id: string
   product_id: string
   qty: number
+  // Precio FINAL por unidad (con descuento por ítem aplicado).
   unit_price: number
+  // Precio de CATÁLOGO por unidad al crear el separado (referencia).
+  // Siempre se setea al insertar; unit_price <= list_price.
+  list_price: number
 }
 
 export interface LayawayPayment {

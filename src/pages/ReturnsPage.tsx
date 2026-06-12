@@ -30,6 +30,7 @@ import {
   type ExchangeVariantOption,
 } from '@/hooks/useReturns'
 import { useCreateReturn, type ExchangeItemInput } from '@/hooks/useReturnMutations'
+import { ADDI_RETURN_BLOCK_MSG } from '@/lib/returnCalc'
 import { useResolvedConfig } from '@/hooks/useConfig'
 import type { PaymentMethod, ReturnType, Return } from '@/types/database.types'
 
@@ -105,6 +106,11 @@ function Step1Search({
 
   useEffect(() => {
     if (!detail) return
+    if (detail.payment_method === 'addi') {
+      toast.error(ADDI_RETURN_BLOCK_MSG)
+      setSelectedId(null)
+      return
+    }
     const age = differenceInDays(new Date(), new Date(detail.created_at))
     if (age > returnDaysLimit) {
       toast.error(`Esta orden tiene ${age} días. El límite es ${returnDaysLimit} días.`)
@@ -1270,6 +1276,11 @@ export default function ReturnsPage() {
     if (!shouldPreload || !preloadDetail || !preloadOrderId) return
     preloadAttemptedRef.current = preloadOrderId
 
+    if (preloadDetail.payment_method === 'addi') {
+      toast.error(ADDI_RETURN_BLOCK_MSG)
+      setSearchParams({}, { replace: true })
+      return
+    }
     const age = differenceInDays(new Date(), new Date(preloadDetail.created_at))
     if (age > returnDaysLimit) {
       toast.error(

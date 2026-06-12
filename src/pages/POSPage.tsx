@@ -21,7 +21,8 @@ import {
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useCartStore, cartTotals } from '@/stores/cartStore'
-import type { CartItem, Discount } from '@/stores/cartStore'
+import type { CartItem } from '@/stores/cartStore'
+import { ItemPriceField } from '@/components/pos/ItemPriceField'
 import {
   usePOSSearch,
   usePOSProducts,
@@ -497,7 +498,6 @@ function PaymentModal({
 interface TicketModalProps {
   order: Order
   items: CartItem[]
-  discount: Discount
   customer: Customer | null
   storeName: string
   onClose: () => void
@@ -506,12 +506,11 @@ interface TicketModalProps {
 function TicketModal({
   order,
   items,
-  discount,
   customer,
   storeName,
   onClose,
 }: TicketModalProps) {
-  const { subtotal, discountAmt } = cartTotals(items, discount)
+  const { subtotal, discountAmt } = cartTotals(items)
   const printedAtRef = useRef(new Date())
 
   const sale: SaleReceiptData = {
@@ -534,6 +533,7 @@ function TicketModal({
       color: it.color,
       qty: it.qty,
       unit_price: it.unit_price,
+      list_price: it.list_price,
     })),
   }
 
@@ -907,6 +907,83 @@ function CustomerSearchInput({ selected, onSelect }: CustomerSearchInputProps) {
   )
 }
 
+// ── Cart line (con precio final editable por ítem) ────────────────────────────
+
+interface CartLineProps {
+  item: CartItem
+  maxItemDiscount: number
+  onSetQty: (variantId: string, qty: number) => void
+  onSetPrice: (variantId: string, finalPrice: number) => void
+  onRemove: (variantId: string) => void
+}
+
+function CartLine({
+  item,
+  maxItemDiscount,
+  onSetQty,
+  onSetPrice,
+  onRemove,
+}: CartLineProps) {
+  return (
+    <div className="flex items-center gap-3 px-5 py-3">
+      <div
+        className="h-4 w-4 shrink-0 rounded-full shadow-[0_0_0_1.5px_rgba(0,0,0,0.12)]"
+        style={{ background: item.color ? getColorHex(item.color) : '#e2e8f0' }}
+      />
+      <div className="min-w-0 flex-1">
+        {item.brand && (
+          <p className="truncate text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+            {item.brand}
+          </p>
+        )}
+        <p className="truncate text-sm font-medium text-slate-900">{item.name}</p>
+        {(item.size || item.color) && (
+          <p className="truncate text-xs text-slate-400">
+            {[item.size ? `T.${item.size}` : null, item.color]
+              .filter(Boolean)
+              .join(' · ')}
+          </p>
+        )}
+
+        <ItemPriceField
+          listPrice={item.list_price}
+          unitPrice={item.unit_price}
+          maxItemDiscount={maxItemDiscount}
+          onCommit={(finalPrice) => onSetPrice(item.variant_id, finalPrice)}
+        />
+      </div>
+
+      <div className="flex h-7 items-center overflow-hidden rounded-lg border border-slate-200">
+        <button
+          onClick={() => onSetQty(item.variant_id, item.qty - 1)}
+          className="flex h-full w-7 items-center justify-center text-slate-500 hover:bg-slate-50"
+        >
+          <Minus size={11} />
+        </button>
+        <span className="w-6 text-center text-xs font-semibold tabular-nums">
+          {item.qty}
+        </span>
+        <button
+          onClick={() => onSetQty(item.variant_id, item.qty + 1)}
+          disabled={item.qty >= item.stock_qty}
+          className="flex h-full w-7 items-center justify-center text-slate-500 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          <Plus size={11} />
+        </button>
+      </div>
+      <span className="w-20 text-right font-mono text-sm font-semibold text-slate-800">
+        {fmtCOP(item.unit_price * item.qty)}
+      </span>
+      <button
+        onClick={() => onRemove(item.variant_id)}
+        className="text-slate-300 hover:text-slate-600"
+      >
+        <X size={14} />
+      </button>
+    </div>
+  )
+}
+
 // ── Cart Panel ────────────────────────────────────────────────────────────────
 
 interface CartPanelProps {
@@ -921,8 +998,9 @@ function CartPanel({
   setSelectedCustomer,
 }: CartPanelProps) {
   const store = useCartStore()
-  const { items, discount, customer_id } = store
-  const { subtotal, discountAmt, total } = cartTotals(items, discount)
+  const { items, customer_id } = store
+  const maxItemDiscount = useResolvedConfig().max_item_discount
+  const { subtotal, discountAmt, total } = cartTotals(items)
 
   const handleSelectCustomer = useCallback(
     (c: Customer | null) => {
@@ -981,55 +1059,16 @@ function CartPanel({
         ) : (
           <div className="divide-y divide-slate-50">
             {items.map((item) => (
-              <div key={item.variant_id} className="flex items-center gap-3 px-5 py-3">
-                <div
-                  className="h-4 w-4 shrink-0 rounded-full shadow-[0_0_0_1.5px_rgba(0,0,0,0.12)]"
-                  style={{
-                    background: item.color ? getColorHex(item.color) : '#e2e8f0',
-                  }}
-                />
-                <div className="min-w-0 flex-1">
-                  {item.brand && (
-                    <p className="truncate text-[10px] font-semibold uppercase tracking-wider text-slate-400">
-                      {item.brand}
-                    </p>
-                  )}
-                  <p className="truncate text-sm font-medium text-slate-900">{item.name}</p>
-                  <p className="text-xs text-slate-400">
-                    {[item.size ? `T.${item.size}` : null, item.color]
-                      .filter(Boolean)
-                      .join(' · ')}{' '}
-                    · {fmtCOP(item.unit_price)} c/u
-                  </p>
-                </div>
-                <div className="flex h-7 items-center overflow-hidden rounded-lg border border-slate-200">
-                  <button
-                    onClick={() => store.setQty(item.variant_id, item.qty - 1)}
-                    className="flex h-full w-7 items-center justify-center text-slate-500 hover:bg-slate-50"
-                  >
-                    <Minus size={11} />
-                  </button>
-                  <span className="w-6 text-center text-xs font-semibold tabular-nums">
-                    {item.qty}
-                  </span>
-                  <button
-                    onClick={() => store.setQty(item.variant_id, item.qty + 1)}
-                    disabled={item.qty >= item.stock_qty}
-                    className="flex h-full w-7 items-center justify-center text-slate-500 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
-                  >
-                    <Plus size={11} />
-                  </button>
-                </div>
-                <span className="w-20 text-right font-mono text-sm font-semibold text-slate-800">
-                  {fmtCOP(item.unit_price * item.qty)}
-                </span>
-                <button
-                  onClick={() => store.removeItem(item.variant_id)}
-                  className="text-slate-300 hover:text-slate-600"
-                >
-                  <X size={14} />
-                </button>
-              </div>
+              <CartLine
+                key={item.variant_id}
+                item={item}
+                maxItemDiscount={maxItemDiscount}
+                onSetQty={store.setQty}
+                onSetPrice={(variantId, finalPrice) =>
+                  store.setItemPrice(variantId, finalPrice, maxItemDiscount)
+                }
+                onRemove={store.removeItem}
+              />
             ))}
           </div>
         )}
@@ -1037,42 +1076,20 @@ function CartPanel({
 
       {/* Totals */}
       <div className="border-t border-slate-200 bg-slate-50 px-5 pb-5 pt-4">
-        <div className="mb-3 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-1.5 text-sm text-slate-500">
-            <Tag size={13} /> Descuento
-          </div>
-          <div className="flex h-8 items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5">
-            <span className="text-sm font-medium text-slate-400">$</span>
-            <input
-              type="number"
-              min={0}
-              max={subtotal}
-              value={discount.value === 0 ? '' : discount.value}
-              onChange={(e) =>
-                store.setDiscount({
-                  value: Math.min(Math.max(0, Number(e.target.value) || 0), subtotal),
-                })
-              }
-              placeholder="0"
-              className="w-20 bg-transparent text-right text-sm font-semibold outline-none"
-            />
-          </div>
-        </div>
-
-        <div className="space-y-1 text-sm">
-          <div className="flex justify-between text-slate-500">
-            <span>Subtotal</span>
-            <span className="font-mono">{fmtCOP(subtotal)}</span>
-          </div>
-          {discountAmt > 0 && (
+        {discountAmt > 0 && (
+          <div className="mb-3 space-y-1 text-sm">
+            <div className="flex justify-between text-slate-500">
+              <span>Subtotal</span>
+              <span className="font-mono">{fmtCOP(subtotal)}</span>
+            </div>
             <div className="flex justify-between text-green-600">
               <span>Descuento</span>
               <span className="font-mono">-{fmtCOP(discountAmt)}</span>
             </div>
-          )}
-        </div>
+          </div>
+        )}
 
-        <div className="my-3 flex items-baseline justify-between border-t border-dashed border-slate-200 pt-3">
+        <div className="mb-3 flex items-baseline justify-between border-t border-dashed border-slate-200 pt-3">
           <span className="text-sm font-semibold text-slate-700">Total</span>
           <span className="font-mono text-2xl font-bold tracking-tight text-slate-900">
             {fmtCOP(total)}
@@ -1096,7 +1113,6 @@ function CartPanel({
 type CompletedSale = {
   order: Order
   items: CartItem[]
-  discount: Discount
   customer: Customer | null
 }
 
@@ -1120,7 +1136,7 @@ export default function POSPage() {
   const { data: categories = [] } = useCategories()
   const { data: storeData } = useStoreConfig()
   const config = useResolvedConfig()
-  const { items, discount, customer_id, addItem, clear } = useCartStore()
+  const { items, customer_id, addItem, clear } = useCartStore()
   const createOrder = useCreateOrder()
   const { data: currentShift, isLoading: loadingShift } = useCurrentShift()
 
@@ -1163,6 +1179,7 @@ export default function POSPage() {
         size: match.variant.size,
         color: match.variant.color,
         unit_price: match.variant.price,
+        list_price: match.variant.price,
         stock_qty: match.variant.stock_qty,
       })
 
@@ -1207,6 +1224,7 @@ export default function POSPage() {
         size: match.variant.size,
         color: match.variant.color,
         unit_price: match.variant.price,
+        list_price: match.variant.price,
         stock_qty: match.variant.stock_qty,
       })
       setQuery('')
@@ -1229,6 +1247,7 @@ export default function POSPage() {
       size: variant.size,
       color: variant.color,
       unit_price: variant.price,
+      list_price: variant.price,
       stock_qty: variant.stock_qty,
     })
     setPickerProduct(null)
@@ -1241,14 +1260,16 @@ export default function POSPage() {
     surcharge?: number,
   ) => {
     const snapshot = {
+      // items son CartItem (incluyen list_price) → el tachado del ticket viaja
+      // en el snapshot desde ya (el render del tachado es fase 9).
       items: [...items],
-      discount: { ...discount },
       customer: selectedCustomer,
     }
     createOrder.mutate(
       {
+        // El descuento vive en los unit_price de cada ítem (no hay descuento
+        // global); useCreateOrder deriva subtotal/discount/total de los ítems.
         items,
-        discount,
         customer_id,
         payment_method: method,
         cash_received: cashReceived,
@@ -1283,6 +1304,7 @@ export default function POSPage() {
       size: it.size,
       color: it.color,
       unit_price: it.unit_price,
+      list_price: it.list_price,
       qty: it.qty,
       available: Math.max(it.stock_qty, it.qty),
     }))
@@ -1444,9 +1466,9 @@ export default function POSPage() {
 
       {showPayment && (
         <PaymentModal
-          subtotal={cartTotals(items, discount).subtotal}
-          discount={cartTotals(items, discount).discountAmt}
-          total={cartTotals(items, discount).total}
+          subtotal={cartTotals(items).subtotal}
+          discount={cartTotals(items).discountAmt}
+          total={cartTotals(items).total}
           enabledMethods={migrateLegacyPaymentMethods(config.payment_methods)}
           paymentQrUrl={config.payment_qr_url}
           onConfirm={handleConfirmPayment}
@@ -1468,7 +1490,6 @@ export default function POSPage() {
         <TicketModal
           order={completedSale.order}
           items={completedSale.items}
-          discount={completedSale.discount}
           customer={completedSale.customer}
           storeName={storeData?.name ?? 'G-Mura'}
           onClose={handleTicketClose}

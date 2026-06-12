@@ -59,6 +59,7 @@ export type SaleDetailItem = {
   product_id: string
   qty: number
   unit_price: number
+  list_price: number
   product_name: string
   brand: string | null
   size: string | null
@@ -125,6 +126,7 @@ type RawOrderDetail = {
     product_id: string
     qty: number
     unit_price: number
+    list_price: number
     variants: {
       size: string | null
       color: string | null
@@ -331,7 +333,7 @@ export function useSaleDetail(orderId: string | null) {
           payment_method, cash_received,
           customers(id, full_name, phone),
           order_items(
-            id, variant_id, product_id, qty, unit_price,
+            id, variant_id, product_id, qty, unit_price, list_price,
             variants(size, color, products(name, brand))
           )
         `)
@@ -390,6 +392,7 @@ export function useSaleDetail(orderId: string | null) {
           product_id: oi.product_id,
           qty: oi.qty,
           unit_price: oi.unit_price,
+          list_price: oi.list_price,
           product_name: oi.variants?.products?.name ?? 'Producto eliminado',
           brand: oi.variants?.products?.brand ?? null,
           size: oi.variants?.size ?? null,

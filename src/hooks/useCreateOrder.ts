@@ -2,14 +2,17 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from './useAuth'
 import { getActiveStoreId } from './useActiveStoreId'
+import { useResolvedConfig } from './useConfig'
 import toast from 'react-hot-toast'
+import { fmtCOP } from '@/lib/formatters'
 import type { Order, PaymentMethod } from '@/types/database.types'
-import { cartTotals } from '@/stores/cartStore'
-import type { CartItem, Discount } from '@/stores/cartStore'
+import { orderTotals, minFinalPrice } from '@/stores/cartStore'
+import type { CartItem } from '@/stores/cartStore'
 
 export interface CreateOrderInput {
+  // Cada ítem lleva unit_price (precio final vendido) y list_price (catálogo).
+  // El descuento se deriva por ítem; ya no hay descuento global de cabecera.
   items: CartItem[]
-  discount: Discount
   customer_id: string | null
   payment_method: PaymentMethod
   cash_received?: number
@@ -20,6 +23,7 @@ export interface CreateOrderInput {
 export function useCreateOrder() {
   const { profile } = useAuth()
   const queryClient = useQueryClient()
+  const maxItemDiscount = useResolvedConfig().max_item_discount
 
   return useMutation({
     mutationFn: async (input: CreateOrderInput): Promise<Order> => {
@@ -40,15 +44,36 @@ export function useCreateOrder() {
         if (item.qty <= 0) {
           throw new Error(`Cantidad inválida para ${item.name}`)
         }
-        if (item.unit_price < 0) {
+        if (item.unit_price < 0 || item.list_price < 0) {
           throw new Error(`Precio inválido para ${item.name}`)
+        }
+        // Defensa del modelo por ítem (el store ya clampa; esto atrapa
+        // anomalías antes de que el CHECK de la BD rechace el insert):
+        //  · el precio final no puede superar el catálogo (CHECK unit <= list)
+        //  · ni bajar del mínimo permitido por el tope configurado
+        if (item.unit_price > item.list_price) {
+          throw new Error(
+            `Precio inválido para ${item.name}: el precio final (${fmtCOP(
+              item.unit_price,
+            )}) no puede superar el de catálogo (${fmtCOP(item.list_price)}).`,
+          )
+        }
+        const minFinal = minFinalPrice(item.list_price, maxItemDiscount)
+        if (item.unit_price < minFinal) {
+          throw new Error(
+            `Descuento no permitido para ${item.name}: el precio mínimo es ${fmtCOP(
+              minFinal,
+            )}.`,
+          )
         }
       }
 
-      const { subtotal, discountAmt } = cartTotals(input.items, input.discount)
-      // Recargo manual (ej. Addi). Se suma al total; nunca negativo.
-      const surcharge = Math.max(0, input.surcharge ?? 0)
-      const total = subtotal - discountAmt + surcharge
+      // Totales derivados de los ítems (subtotal catálogo, descuento derivado,
+      // total = finales + recargo). Misma fórmula/redondeo que el carrito.
+      const { subtotal, discount, surcharge, total } = orderTotals(
+        input.items,
+        input.surcharge,
+      )
       if (total < 0) {
         throw new Error('El total no puede ser negativo')
       }
@@ -68,7 +93,7 @@ export function useCreateOrder() {
           created_by: userId,
           status: 'completed',
           subtotal,
-          discount: discountAmt,
+          discount,
           surcharge,
           total,
           payment_method: input.payment_method,
@@ -95,7 +120,10 @@ export function useCreateOrder() {
           variant_id: item.variant_id,
           product_id: item.product_id,
           qty: item.qty,
+          // unit_price = precio FINAL vendido; list_price = catálogo (NOT NULL
+          // en la BD). list_price es obligatorio: el `as never` lo ocultaría.
           unit_price: item.unit_price,
+          list_price: item.list_price,
         })) as never,
       )
 

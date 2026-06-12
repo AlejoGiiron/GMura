@@ -18,7 +18,9 @@ export interface SaleReceiptItem {
   size: string | null
   color: string | null
   qty: number
+  // unit_price = precio FINAL vendido; list_price = catálogo (para el tachado).
   unit_price: number
+  list_price: number
 }
 
 export interface SaleReceiptCustomer {
@@ -150,6 +152,14 @@ export function SaleReceipt({ sale, storeName, printedAt }: SaleReceiptProps) {
                 {[it.size ? `T:${it.size}` : null, it.color ? `C:${it.color}` : null]
                   .filter(Boolean)
                   .join(' ')}
+              </div>
+            )}
+            {it.list_price > it.unit_price && (
+              <div style={{ ...monoLight, fontSize: 9 }}>
+                Antes:{' '}
+                <span style={{ textDecoration: 'line-through' }}>
+                  {fmtCOP(it.list_price)}
+                </span>
               </div>
             )}
             <Line>

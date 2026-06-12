@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest'
-import { calculateExchangeAmounts, sumLines, type ReturnLine } from './returnCalc'
+import {
+  calculateExchangeAmounts,
+  sumLines,
+  isReturnablePayment,
+  type ReturnLine,
+} from './returnCalc'
 
 function line(unit_price: number, qty = 1): ReturnLine {
   return { unit_price, qty }
@@ -12,6 +17,37 @@ describe('sumLines', () => {
 
   it('lista vacía da 0', () => {
     expect(sumLines([])).toBe(0)
+  })
+})
+
+describe('reembolso usa el precio FINAL vendido (no el catálogo)', () => {
+  it('una prenda vendida con descuento se reembolsa al precio CON descuento', () => {
+    // Catálogo $50.000, vendida a $30.000 (unit_price = final). El reembolso
+    // de la devolución suma unit_price·qty → reembolsa $30.000, no $50.000.
+    const refund = sumLines([line(30_000, 1)])
+    expect(refund).toBe(30_000)
+  })
+
+  it('crédito del cambio = precio final de lo devuelto; ítem nuevo a catálogo', () => {
+    // Devuelve una prenda comprada con descuento a $30.000 y lleva una nueva
+    // a catálogo $40.000 → paga solo la diferencia $10.000.
+    const a = calculateExchangeAmounts([line(30_000)], [line(40_000)])
+    expect(a.returnedTotal).toBe(30_000) // crédito = lo realmente pagado
+    expect(a.exchangeTotal).toBe(40_000) // ítem nuevo a catálogo
+    expect(a.orderTotal).toBe(10_000) // solo la diferencia
+    expect(a.refundDue).toBe(0)
+  })
+})
+
+describe('isReturnablePayment (bloqueo de Addi)', () => {
+  it('addi NO es devolvible/cambiable', () => {
+    expect(isReturnablePayment('addi')).toBe(false)
+  })
+
+  it('efectivo, tarjeta y transferencia sí lo son', () => {
+    expect(isReturnablePayment('cash')).toBe(true)
+    expect(isReturnablePayment('card')).toBe(true)
+    expect(isReturnablePayment('transfer')).toBe(true)
   })
 })
 

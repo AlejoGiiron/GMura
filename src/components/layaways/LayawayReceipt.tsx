@@ -137,6 +137,14 @@ export function LayawayReceipt({
                 .filter(Boolean)
                 .join(' ')}
             </div>
+            {it.list_price > it.unit_price && (
+              <div style={{ ...monoLight, fontSize: 9 }}>
+                Antes:{' '}
+                <span style={{ textDecoration: 'line-through' }}>
+                  {fmtCOP(it.list_price)}
+                </span>
+              </div>
+            )}
             <Line>
               <span style={monoLight}>
                 {' '}
@@ -147,6 +155,18 @@ export function LayawayReceipt({
           </div>
         ))}
         <div style={monoLight}>{SUBDIV}</div>
+        {layaway.discount > 0 && (
+          <>
+            <Line>
+              <span style={monoLight}>Subtotal:</span>
+              <span>{fmtCOP(layaway.subtotal)}</span>
+            </Line>
+            <Line>
+              <span style={monoLight}>Descuento:</span>
+              <span>-{fmtCOP(layaway.discount)}</span>
+            </Line>
+          </>
+        )}
         <Line>
           <span style={{ fontWeight: 700 }}>Total:</span>
           <span style={{ fontWeight: 700 }}>{fmtCOP(layaway.total)}</span>

@@ -28,19 +28,6 @@ export function calculateRequiredInitialPayment(
   return 0
 }
 
-/**
- * Descuento máximo permitido sobre un subtotal. El descuento de separados es
- * LIBRE (sin tope configurado): si está permitido (mode 'fixed'), el único
- * límite lógico es el propio subtotal; si no está permitido ('none'), es 0.
- */
-export function calculateMaxDiscount(
-  subtotal: number,
-  config: Pick<StoreConfig, 'layaway_discount_mode'>,
-): number {
-  if (subtotal <= 0) return 0
-  return config.layaway_discount_mode === 'fixed' ? subtotal : 0
-}
-
 /** Devuelve true si el separado venció y sigue activo. */
 export function isLayawayOverdue(
   layaway: Pick<Layaway, 'expires_at' | 'status'>,

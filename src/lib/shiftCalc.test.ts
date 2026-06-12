@@ -88,6 +88,22 @@ describe('calculateShiftSummary', () => {
     expect(r.expectedCash).toBe(150_000) // 100.000 + 50.000, intacto pese al recargo
   })
 
+  it('descuento por ítem: el cuadre usa el total REAL cobrado, no el catálogo', () => {
+    // Catálogo $100.000, vendido con descuento por ítem a $70.000 en efectivo.
+    // orders.total ya es el final ($70.000): el cuadre lo toma tal cual; el
+    // catálogo no es visible para el cuadre.
+    const r = calculateShiftSummary({
+      openingAmount: 100_000,
+      orders: [order('o1', 70_000, 'cash')],
+      layawayPayments: [],
+      expenses: [],
+    })
+    expect(r.cashSales).toBe(70_000) // real cobrado, no 100.000
+    expect(r.totalSales).toBe(70_000)
+    expect(r.expectedCash).toBe(170_000) // 100.000 + 70.000
+    expect(r.salesByMethod[0]).toMatchObject({ method: 'cash', total: 70_000 })
+  })
+
   it('turno con gastos: esperado = apertura + ventas efectivo - gastos', () => {
     const r = calculateShiftSummary({
       openingAmount: 100_000,

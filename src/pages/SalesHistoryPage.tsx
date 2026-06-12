@@ -249,6 +249,7 @@ function SaleDetailRow({ detail }: { detail: SaleDetail }) {
         color: it.color,
         qty: it.qty,
         unit_price: it.unit_price,
+        list_price: it.list_price,
       })),
     }),
     [detail],
