@@ -37,6 +37,8 @@ export const DEFAULT_CONFIG: StoreConfig = {
   layaway_initial_payment_mode: 'none',
   layaway_initial_payment_value: 0,
   layaway_default_days: 90,
+  // Default seguro: 0 = no se permite descuento hasta que el admin lo configure.
+  max_item_discount: 0,
   layaway_discount_mode: 'none',
   layaway_discount_value: 0,
 }

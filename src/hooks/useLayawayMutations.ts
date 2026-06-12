@@ -3,7 +3,9 @@ import toast from 'react-hot-toast'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from './useAuth'
 import { getActiveStoreId } from './useActiveStoreId'
+import { useResolvedConfig } from './useConfig'
 import { fmtCOP } from '@/lib/formatters'
+import { cartTotals, orderTotals, minFinalPrice } from '@/stores/cartStore'
 import type {
   Layaway,
   Order,
@@ -16,14 +18,16 @@ export interface NewLayawayItem {
   variant_id: string
   product_id: string
   qty: number
+  // unit_price = precio FINAL (con descuento por ítem); list_price = catálogo.
   unit_price: number
+  list_price: number
 }
 
 export interface CreateLayawayInput {
   customer_id: string
+  // El descuento vive en los unit_price por ítem; ya no hay descuento global.
   items: NewLayawayItem[]
   expires_at: string // ISO
-  discount?: number
   initial_payment?: {
     amount: number
     method: PaymentMethod
@@ -71,6 +75,7 @@ function invalidateLayawayWriteQueries(
 export function useCreateLayaway() {
   const { profile } = useAuth()
   const queryClient = useQueryClient()
+  const maxItemDiscount = useResolvedConfig().max_item_discount
 
   return useMutation({
     mutationFn: async (input: CreateLayawayInput): Promise<Layaway> => {
@@ -92,31 +97,29 @@ export function useCreateLayaway() {
         if (it.qty <= 0) {
           throw new Error('La cantidad debe ser mayor a cero')
         }
-        if (it.unit_price < 0) {
+        if (it.unit_price < 0 || it.list_price < 0) {
           throw new Error('El precio no puede ser negativo')
         }
-      }
-      const subtotal = input.items.reduce(
-        (s, it) => s + it.qty * it.unit_price,
-        0,
-      )
-      if (subtotal <= 0) {
-        throw new Error('El total del separado debe ser mayor a cero')
+        // Defensa del modelo por ítem (mismo criterio que useCreateOrder):
+        // el final no supera el catálogo ni baja del mínimo del tope.
+        if (it.unit_price > it.list_price) {
+          throw new Error(
+            `El precio final (${fmtCOP(it.unit_price)}) no puede superar el de catálogo (${fmtCOP(it.list_price)}).`,
+          )
+        }
+        const minFinal = minFinalPrice(it.list_price, maxItemDiscount)
+        if (it.unit_price < minFinal) {
+          throw new Error(
+            `Descuento no permitido: el precio mínimo por ítem es ${fmtCOP(minFinal)}.`,
+          )
+        }
       }
 
-      // Descuento libre: solo se valida que no sea negativo ni supere el
-      // subtotal (el tope configurado se eliminó).
-      const rawDiscount = input.discount ?? 0
-      if (rawDiscount < 0) {
-        throw new Error('El descuento no puede ser negativo')
-      }
-      if (rawDiscount > subtotal) {
-        throw new Error('El descuento no puede superar el subtotal')
-      }
-      const discount = Math.round(rawDiscount)
-      const total = subtotal - discount
+      // Totales derivados de los ítems (sin recargo en separados):
+      // subtotal = Σ list·qty, discount = subtotal − Σ unit·qty, total = Σ unit·qty.
+      const { subtotal, discountAmt: discount, total } = cartTotals(input.items)
       if (total <= 0) {
-        throw new Error('El total con descuento debe ser mayor a cero')
+        throw new Error('El total del separado debe ser mayor a cero')
       }
 
       // Pre-check de stock disponible (defensa en profundidad; el trigger
@@ -194,7 +197,10 @@ export function useCreateLayaway() {
           variant_id: it.variant_id,
           product_id: it.product_id,
           qty: it.qty,
+          // unit_price = final; list_price = catálogo (NOT NULL en la BD).
+          // list_price es obligatorio: el `as never` lo ocultaría.
           unit_price: it.unit_price,
+          list_price: it.list_price,
         })) as never,
       )
 
@@ -383,7 +389,7 @@ export function useCompleteLayaway() {
         .from('layaways')
         .select(
           `*,
-           layaway_items(id, variant_id, product_id, qty, unit_price),
+           layaway_items(id, variant_id, product_id, qty, unit_price, list_price),
            layaway_payments(id, amount, payment_method, created_at)`,
         )
         .eq('id' as never, input.id)
@@ -398,6 +404,7 @@ export function useCompleteLayaway() {
           product_id: string
           qty: number
           unit_price: number
+          list_price: number
         }>
         layaway_payments: Array<{
           id: string
@@ -467,9 +474,13 @@ export function useCompleteLayaway() {
         sortedPayments[0]?.payment_method ??
         ('cash' as PaymentMethod)
 
-      // 5. INSERT orden
-      const orderSubtotal = Number(la.subtotal ?? la.total)
-      const orderDiscount = Number(la.discount ?? 0)
+      // 5. INSERT orden — totales DERIVADOS de los ítems del separado (sin
+      // recargo), idénticos en forma a una venta normal por ítem.
+      const {
+        subtotal: orderSubtotal,
+        discount: orderDiscount,
+        total: orderTotal,
+      } = orderTotals(la.layaway_items, 0)
       const { data: orderRow, error: orderErr } = await supabase
         .from('orders')
         .insert({
@@ -479,7 +490,7 @@ export function useCompleteLayaway() {
           status: 'completed',
           subtotal: orderSubtotal,
           discount: orderDiscount,
-          total: la.total,
+          total: orderTotal,
           payment_method: lastMethod,
           cash_received: null,
         } as never)
@@ -500,7 +511,10 @@ export function useCompleteLayaway() {
           variant_id: it.variant_id,
           product_id: it.product_id,
           qty: it.qty,
+          // Propaga el precio FINAL y el catálogo del separado a la orden.
+          // list_price es obligatorio (NOT NULL); el `as never` lo ocultaría.
           unit_price: it.unit_price,
+          list_price: it.list_price,
         })) as never,
       )
       if (oiErr) {

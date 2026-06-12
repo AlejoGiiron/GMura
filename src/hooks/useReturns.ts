@@ -14,7 +14,11 @@ export type FoundOrderItem = {
   variant_id: string
   product_id: string
   qty: number
+  // Precio FINAL realmente vendido (con descuento por ítem). El reembolso usa
+  // este valor: la devolución reembolsa lo que el cliente pagó, no el catálogo.
   unit_price: number
+  // Precio de catálogo (para mostrar tachado en la UI/ticket).
+  list_price: number
   qty_returned: number
   product_name: string
   brand: string | null
@@ -101,6 +105,7 @@ type RawOrderDetail = {
     product_id: string
     qty: number
     unit_price: number
+    list_price: number
     variants: {
       size: string | null
       color: string | null
@@ -230,7 +235,7 @@ export function useOrderDetail(orderId: string | null) {
           id, order_number, created_at, total, payment_method, customer_id,
           customers(full_name, phone),
           order_items(
-            id, variant_id, product_id, qty, unit_price,
+            id, variant_id, product_id, qty, unit_price, list_price,
             variants(size, color, products(name, brand))
           )
         `)
@@ -273,6 +278,7 @@ export function useOrderDetail(orderId: string | null) {
           product_id: oi.product_id,
           qty: oi.qty,
           unit_price: oi.unit_price,
+          list_price: oi.list_price,
           qty_returned: qtyReturnedByVariant[oi.variant_id] ?? 0,
           product_name: oi.variants?.products?.name ?? 'Producto eliminado',
           brand: oi.variants?.products?.brand ?? null,

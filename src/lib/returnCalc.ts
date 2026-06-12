@@ -28,6 +28,15 @@ export function sumLines(lines: ReturnLine[]): number {
   return lines.reduce((sum, l) => sum + l.qty * l.unit_price, 0)
 }
 
+// Las ventas financiadas con Addi no admiten devoluciones ni cambios.
+export const ADDI_RETURN_BLOCK_MSG =
+  'Las ventas pagadas con Addi no admiten devoluciones ni cambios por el acuerdo de financiación.'
+
+// true si una orden con ese método de pago puede devolverse/cambiarse.
+export function isReturnablePayment(paymentMethod: string): boolean {
+  return paymentMethod !== 'addi'
+}
+
 export function calculateExchangeAmounts(
   returnItems: ReturnLine[],
   exchangeItems: ReturnLine[],

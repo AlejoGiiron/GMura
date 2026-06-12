@@ -37,10 +37,14 @@ export interface StoreConfig {
   layaway_initial_payment_mode: LayawayInitialPaymentMode
   layaway_initial_payment_value: number
   layaway_default_days: number
-  // 'none' = no permitido, 'fixed' = permitido (descuento en pesos LIBRE al
-  // crear el separado; el único límite es el subtotal).
+  // Tope de descuento por ítem (en pesos): rebaja máxima permitida por unidad
+  // al vender o crear separados. Límite DURO. 0 = no se permite descuento.
+  // El precio final mínimo de un ítem es max(0, list_price - max_item_discount).
+  max_item_discount: number
+  // @deprecated — reemplazado por el descuento por ítem (max_item_discount).
+  // Ya no se configura ni se muestra; se conserva en el tipo para no romper
+  // datos guardados. La lógica de separados se reemplaza en la fase 7.
   layaway_discount_mode: LayawayDiscountMode
-  // Legacy: antes era el tope máximo de descuento. Ya no se usa para validar;
-  // se conserva por compatibilidad con datos guardados.
+  // @deprecated — ver layaway_discount_mode.
   layaway_discount_value: number
 }

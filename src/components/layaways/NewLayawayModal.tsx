@@ -23,10 +23,9 @@ import {
   type NewLayawayItem,
 } from '@/hooks/useLayawayMutations'
 import { useLayawayDetail } from '@/hooks/useLayaways'
-import {
-  calculateMaxDiscount,
-  calculateRequiredInitialPayment,
-} from '@/lib/layawayCalc'
+import { calculateRequiredInitialPayment } from '@/lib/layawayCalc'
+import { cartTotals, clampItemPrice } from '@/stores/cartStore'
+import { ItemPriceField } from '@/components/pos/ItemPriceField'
 import {
   usePOSSearch,
   type POSProduct,
@@ -55,7 +54,9 @@ export interface DraftItem {
   brand: string | null
   size: string | null
   color: string | null
+  // unit_price = precio FINAL editable; list_price = catálogo.
   unit_price: number
+  list_price: number
   qty: number
   available: number
 }
@@ -463,13 +464,17 @@ function QuickCreateInline({
 
 function ItemsStep({
   items,
+  maxItemDiscount,
   onAdd,
   onSetQty,
+  onSetPrice,
   onRemove,
 }: {
   items: DraftItem[]
+  maxItemDiscount: number
   onAdd: (item: DraftItem) => void
   onSetQty: (variantId: string, qty: number) => void
+  onSetPrice: (variantId: string, finalPrice: number) => void
   onRemove: (variantId: string) => void
 }) {
   const [query, setQuery] = useState('')
@@ -486,7 +491,9 @@ function ItemsStep({
       brand: product.brand,
       size: variant.size,
       color: variant.color,
+      // Arranca sin descuento: final = catálogo.
       unit_price: variant.price,
+      list_price: variant.price,
       qty: 1,
       available: variant.stock_qty,
     })
@@ -615,12 +622,21 @@ function ItemsStep({
                       <p className="truncate text-[12.5px] font-medium text-[#1a1a1a]">
                         {it.name}
                       </p>
-                      <p className="text-[11px] text-[#737373]">
-                        {[it.size ? `T.${it.size}` : null, it.color]
-                          .filter(Boolean)
-                          .join(' · ')}{' '}
-                        · {fmtCOP(it.unit_price)} c/u
-                      </p>
+                      {(it.size || it.color) && (
+                        <p className="text-[11px] text-[#737373]">
+                          {[it.size ? `T.${it.size}` : null, it.color]
+                            .filter(Boolean)
+                            .join(' · ')}
+                        </p>
+                      )}
+                      <ItemPriceField
+                        listPrice={it.list_price}
+                        unitPrice={it.unit_price}
+                        maxItemDiscount={maxItemDiscount}
+                        onCommit={(finalPrice) =>
+                          onSetPrice(it.variant_id, finalPrice)
+                        }
+                      />
                     </div>
                     <div className="flex h-7 items-center overflow-hidden rounded-lg border border-[#ebe9e6]">
                       <button
@@ -680,10 +696,9 @@ function ItemsStep({
 // ── Confirm step ──────────────────────────────────────────────────────────────
 
 interface ConfirmStepProps {
+  // subtotal = catálogo; discount = derivado (Σ rebajas por ítem); total = final.
   subtotal: number
-  discount: string
-  setDiscount: (v: string) => void
-  showDiscount: boolean
+  discount: number
   total: number
   required: number
   amount: string
@@ -698,8 +713,6 @@ interface ConfirmStepProps {
 function ConfirmStep({
   subtotal,
   discount,
-  setDiscount,
-  showDiscount,
   total,
   required,
   amount,
@@ -711,11 +724,6 @@ function ConfirmStep({
   enabledMethods,
 }: ConfirmStepProps) {
   const parsedAmount = parseCOP(amount)
-  const parsedDiscount = parseCOP(discount)
-  // Descuento libre: el único límite es el subtotal; >50% solo advierte.
-  const effectiveDiscount = Math.min(parsedDiscount, subtotal)
-  const overSubtotal = parsedDiscount > subtotal
-  const over50 = !overSubtotal && parsedDiscount > subtotal * 0.5
   const visibleMethods = PAYMENT_METHOD_KEYS.filter((m) =>
     enabledMethods.includes(m),
   )
@@ -728,15 +736,17 @@ function ConfirmStep({
           Resumen
         </p>
         <div className="space-y-1 text-sm">
-          <div className="flex justify-between text-[#525252]">
-            <span>Subtotal</span>
-            <span className="font-mono">{fmtCOP(subtotal)}</span>
-          </div>
-          {effectiveDiscount > 0 && (
-            <div className="flex justify-between text-green-700">
-              <span>Descuento</span>
-              <span className="font-mono">-{fmtCOP(effectiveDiscount)}</span>
-            </div>
+          {discount > 0 && (
+            <>
+              <div className="flex justify-between text-[#525252]">
+                <span>Subtotal</span>
+                <span className="font-mono">{fmtCOP(subtotal)}</span>
+              </div>
+              <div className="flex justify-between text-green-700">
+                <span>Descuento</span>
+                <span className="font-mono">-{fmtCOP(discount)}</span>
+              </div>
+            </>
           )}
           <div className="flex items-baseline justify-between border-t border-[#ebe9e6] pt-1.5">
             <span className="text-[11px] font-semibold uppercase tracking-[.05em] text-[#737373]">
@@ -748,47 +758,6 @@ function ConfirmStep({
           </div>
         </div>
       </div>
-
-      {/* Descuento (solo si está habilitado en config) — monto libre */}
-      {showDiscount && (
-        <div>
-          <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[.05em] text-[#737373]">
-            Descuento
-          </label>
-          <div className="flex items-center gap-2 rounded-lg border border-[#ebe9e6] px-3 focus-within:border-violet-400 focus-within:ring-2 focus-within:ring-violet-100">
-            <span className="text-sm text-[#737373]">$</span>
-            <input
-              value={discount}
-              onChange={(e) => setDiscount(e.target.value.replace(/\D/g, ''))}
-              placeholder="0"
-              inputMode="numeric"
-              className="h-10 flex-1 bg-transparent font-mono text-base outline-none"
-            />
-            <span className="text-xs text-[#a8a29e]">COP</span>
-          </div>
-          {parsedDiscount > 0 && (
-            <div className="mt-2">
-              <button
-                type="button"
-                onClick={() => setDiscount('')}
-                className="rounded-lg border border-[#ebe9e6] bg-white px-2.5 py-1 text-xs font-semibold text-[#525252] hover:border-red-300 hover:bg-red-50"
-              >
-                Quitar descuento
-              </button>
-            </div>
-          )}
-          {overSubtotal ? (
-            <p className="mt-1.5 text-[11px] text-red-600">
-              El descuento no puede superar el valor del separado (
-              {fmtCOP(subtotal)}).
-            </p>
-          ) : over50 ? (
-            <p className="mt-1.5 text-[11px] text-amber-600">
-              Este descuento supera el 50% del valor del separado.
-            </p>
-          ) : null}
-        </div>
-      )}
 
       {/* Card destacado: abono mínimo */}
       {required > 0 && (
@@ -960,7 +929,6 @@ export function NewLayawayModal({ prefill, onClose, onCreated }: Props) {
   )
   const [notes, setNotes] = useState('')
   const [amount, setAmount] = useState('')
-  const [discount, setDiscount] = useState('')
   const [method, setMethod] = useState<PaymentMethod>(
     enabledMethods.includes('cash') ? 'cash' : (enabledMethods[0] ?? 'cash'),
   )
@@ -970,20 +938,14 @@ export function NewLayawayModal({ prefill, onClose, onCreated }: Props) {
   const create = useCreateLayaway()
   const createdDetail = useLayawayDetail(createdLayawayId)
 
-  const subtotal = items.reduce((s, it) => s + it.unit_price * it.qty, 0)
-  const maxDiscount = useMemo(
-    () => calculateMaxDiscount(subtotal, config),
-    [subtotal, config],
-  )
-  const rawDiscount = parseCOP(discount)
-  const parsedDiscount = Math.min(rawDiscount, maxDiscount)
-  const total = Math.max(0, subtotal - parsedDiscount)
+  const maxItemDiscount = config.max_item_discount
+  // Totales derivados por ítem: subtotal = catálogo, total = final,
+  // discount = Σ rebajas por ítem (informativo). Misma fórmula que el POS.
+  const { subtotal, discountAmt: itemDiscount, total } = cartTotals(items)
   const requiredInitial = useMemo(
     () => calculateRequiredInitialPayment(total, config),
     [total, config],
   )
-  // El descuento es libre: basta con que esté permitido en la config.
-  const showDiscount = config.layaway_discount_mode !== 'none'
 
   // Pre-fill amount con el requerido cuando se llega al paso 3
   useEffect(() => {
@@ -1037,27 +999,36 @@ export function NewLayawayModal({ prefill, onClose, onCreated }: Props) {
     setItems((prev) => prev.filter((p) => p.variant_id !== variantId))
   }
 
+  function handleSetPrice(variantId: string, finalPrice: number) {
+    setItems((prev) =>
+      prev.map((p) =>
+        p.variant_id === variantId
+          ? {
+              ...p,
+              unit_price: clampItemPrice(finalPrice, p.list_price, maxItemDiscount),
+            }
+          : p,
+      ),
+    )
+  }
+
   const canNext =
     (step === 0 && !!customer && new Date(expiresAt).getTime() > Date.now()) ||
     (step === 1 && items.length > 0) ||
     step === 2
 
   const parsedAmount = parseCOP(amount)
-  const discountOk = rawDiscount <= maxDiscount && rawDiscount >= 0
   const canSubmit =
     step === 2 &&
     parsedAmount >= requiredInitial &&
     parsedAmount <= total &&
     total > 0 &&
-    discountOk &&
     !create.isPending
 
   function handleSubmit() {
     if (!customer) return
     if (!canSubmit) {
-      if (rawDiscount > subtotal) {
-        toast.error('El descuento no puede superar el valor del separado')
-      } else if (parsedAmount < requiredInitial) {
+      if (parsedAmount < requiredInitial) {
         toast.error(`Abono mínimo requerido: ${fmtCOP(requiredInitial)}`)
       }
       return
@@ -1069,11 +1040,12 @@ export function NewLayawayModal({ prefill, onClose, onCreated }: Props) {
           variant_id: it.variant_id,
           product_id: it.product_id,
           qty: it.qty,
+          // unit_price = final; list_price = catálogo (obligatorio para la BD).
           unit_price: it.unit_price,
+          list_price: it.list_price,
         })),
         expires_at: new Date(expiresAt + 'T23:59:59-05:00').toISOString(),
         notes,
-        discount: parsedDiscount,
         initial_payment:
           parsedAmount > 0
             ? { amount: parsedAmount, method }
@@ -1268,8 +1240,10 @@ export function NewLayawayModal({ prefill, onClose, onCreated }: Props) {
             <div className="min-h-[400px]">
               <ItemsStep
                 items={items}
+                maxItemDiscount={maxItemDiscount}
                 onAdd={handleAddItem}
                 onSetQty={handleSetQty}
+                onSetPrice={handleSetPrice}
                 onRemove={handleRemove}
               />
             </div>
@@ -1278,9 +1252,7 @@ export function NewLayawayModal({ prefill, onClose, onCreated }: Props) {
           {step === 2 && (
             <ConfirmStep
               subtotal={subtotal}
-              discount={discount}
-              setDiscount={setDiscount}
-              showDiscount={showDiscount}
+              discount={itemDiscount}
               total={total}
               required={requiredInitial}
               amount={amount}

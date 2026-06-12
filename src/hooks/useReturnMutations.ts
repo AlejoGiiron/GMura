@@ -3,7 +3,11 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from './useAuth'
 import { getActiveStoreId } from './useActiveStoreId'
 import toast from 'react-hot-toast'
-import { calculateExchangeAmounts } from '@/lib/returnCalc'
+import {
+  calculateExchangeAmounts,
+  isReturnablePayment,
+  ADDI_RETURN_BLOCK_MSG,
+} from '@/lib/returnCalc'
 import type { PaymentMethod, ReturnType, Return } from '@/types/database.types'
 
 // ── Input types ───────────────────────────────────────────────────────────────
@@ -69,6 +73,25 @@ export function useCreateReturn() {
       }
       if (input.type === 'exchange' && input.exchangeItems.some((e) => e.qty <= 0)) {
         throw new Error('La cantidad de cambio debe ser mayor a 0')
+      }
+
+      // Bloqueo de Addi (defensa en profundidad; la UI ya bloquea antes).
+      // Las ventas financiadas con Addi no admiten devoluciones ni cambios.
+      const { data: origOrder, error: origErr } = await supabase
+        .from('orders')
+        .select('payment_method')
+        .eq('id' as never, input.original_order_id)
+        .eq('store_id' as never, storeId)
+        .single()
+      if (origErr || !origOrder) {
+        throw new Error('No se pudo verificar la orden original')
+      }
+      if (
+        !isReturnablePayment(
+          (origOrder as { payment_method: string }).payment_method,
+        )
+      ) {
+        throw new Error(ADDI_RETURN_BLOCK_MSG)
       }
 
       // Paso 1 — Verificar stock de variantes nuevas (agrupando duplicados)
@@ -199,7 +222,11 @@ export function useCreateReturn() {
             variant_id: i.variant_id,
             product_id: i.product_id,
             qty: i.qty,
+            // El ítem NUEVO del cambio va a precio de catálogo (sin redescuento):
+            // unit_price = list_price = i.unit_price. list_price es obligatorio
+            // (NOT NULL); el `as never` lo ocultaría.
             unit_price: i.unit_price,
+            list_price: i.unit_price,
           })) as never,
         )
 

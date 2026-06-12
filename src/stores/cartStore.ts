@@ -7,30 +7,51 @@ export interface CartItem {
   brand: string | null
   size: string | null
   color: string | null
+  // Precio FINAL editable (con descuento por ítem aplicado). Arranca igual a
+  // list_price (sin descuento) y se baja con setItemPrice respetando el tope.
   unit_price: number
+  // Precio de catálogo del ítem (referencia para el tope y el tachado).
+  list_price: number
   qty: number
   stock_qty: number
 }
 
-export interface Discount {
-  value: number
+// Precio final mínimo permitido para un ítem dado el tope (en pesos):
+// minFinal = max(0, list_price - tope). El tope (max_item_discount) vive en la
+// config; se pasa como argumento para que el store garantice el clamp.
+export function minFinalPrice(listPrice: number, maxItemDiscount: number): number {
+  return Math.max(0, listPrice - Math.max(0, maxItemDiscount))
+}
+
+// Clampa un precio final propuesto al rango permitido [minFinal, list_price].
+export function clampItemPrice(
+  finalPrice: number,
+  listPrice: number,
+  maxItemDiscount: number,
+): number {
+  const min = minFinalPrice(listPrice, maxItemDiscount)
+  const fp = Number.isFinite(finalPrice) ? finalPrice : listPrice
+  return Math.round(Math.min(Math.max(fp, min), listPrice))
 }
 
 interface CartStore {
   items: CartItem[]
-  discount: Discount
   customer_id: string | null
   addItem: (item: Omit<CartItem, 'qty'>) => void
   removeItem: (variant_id: string) => void
   setQty: (variant_id: string, qty: number) => void
-  setDiscount: (discount: Discount) => void
+  // Fija el precio FINAL de la línea, clampeado a [max(0, list-tope), list].
+  setItemPrice: (
+    variant_id: string,
+    finalPrice: number,
+    maxItemDiscount: number,
+  ) => void
   setCustomer: (id: string | null) => void
   clear: () => void
 }
 
 export const useCartStore = create<CartStore>((set) => ({
   items: [],
-  discount: { value: 0 },
   customer_id: null,
 
   addItem: (newItem) =>
@@ -45,7 +66,13 @@ export const useCartStore = create<CartStore>((set) => ({
         }
       }
       if (newItem.stock_qty <= 0) return s
-      return { items: [...s.items, { ...newItem, qty: 1 }] }
+      // Un ítem nuevo arranca sin descuento: unit_price = list_price.
+      return {
+        items: [
+          ...s.items,
+          { ...newItem, unit_price: newItem.list_price, qty: 1 },
+        ],
+      }
     }),
 
   removeItem: (variant_id) =>
@@ -61,15 +88,57 @@ export const useCartStore = create<CartStore>((set) => ({
       }
     }),
 
-  setDiscount: (discount) => set({ discount }),
+  setItemPrice: (variant_id, finalPrice, maxItemDiscount) =>
+    set((s) => ({
+      items: s.items.map((i) =>
+        i.variant_id === variant_id
+          ? {
+              ...i,
+              unit_price: clampItemPrice(finalPrice, i.list_price, maxItemDiscount),
+            }
+          : i,
+      ),
+    })),
+
   setCustomer: (id) => set({ customer_id: id }),
-  clear: () => set({ items: [], discount: { value: 0 }, customer_id: null }),
+  clear: () => set({ items: [], customer_id: null }),
 }))
 
-export function cartTotals(items: CartItem[], discount: Discount) {
-  const subtotal = items.reduce((s, i) => s + i.unit_price * i.qty, 0)
-  // Descuento solo como monto fijo en COP, nunca mayor al subtotal.
-  const discountAmt = Math.min(Math.max(0, discount.value), subtotal)
-  const total = Math.max(0, subtotal - discountAmt)
+// Línea con precio catálogo y precio final, mínimo común para calcular totales.
+// Tanto CartItem (POS) como DraftItem/NewLayawayItem (separados) la satisfacen,
+// así que la misma fórmula sirve para ventas y separados.
+export interface PricedLine {
+  list_price: number
+  unit_price: number
+  qty: number
+}
+
+/**
+ * Totales con descuento por ítem:
+ *   subtotal    = Σ round(list_price · qty)   (valor de catálogo)
+ *   total       = Σ round(unit_price · qty)    (valor final cobrado)
+ *   discountAmt = subtotal − total             (descuento total, derivado)
+ *
+ * Se redondea por línea antes de sumar para que el cuadre sea exacto (sin
+ * drift) y discountAmt = subtotal − total cierre siempre.
+ */
+export function cartTotals(items: PricedLine[]) {
+  const subtotal = items.reduce((s, i) => s + Math.round(i.list_price * i.qty), 0)
+  const total = items.reduce((s, i) => s + Math.round(i.unit_price * i.qty), 0)
+  const discountAmt = Math.max(0, subtotal - total)
   return { subtotal, discountAmt, total }
+}
+
+/**
+ * Totales DERIVADOS de una orden a partir de sus ítems (con list_price y
+ * unit_price final) y el recargo. Reutiliza cartTotals para que la fórmula de
+ * redondeo sea idéntica a la del carrito y el cuadre cierre exacto:
+ *   subtotal = Σ round(list·qty)
+ *   discount = subtotal − Σ round(unit·qty)   (derivado, ≥ 0)
+ *   total    = Σ round(unit·qty) + surcharge
+ */
+export function orderTotals(items: PricedLine[], surcharge = 0) {
+  const { subtotal, discountAmt, total } = cartTotals(items)
+  const sc = Math.max(0, surcharge)
+  return { subtotal, discount: discountAmt, surcharge: sc, total: total + sc }
 }

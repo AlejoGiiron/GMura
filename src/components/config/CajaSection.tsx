@@ -18,10 +18,7 @@ import {
 } from '@/lib/paymentMethods'
 import { useExpenseCountByReason } from '@/hooks/useCashExpenses'
 import type { PaymentMethod } from '@/types/database.types'
-import type {
-  LayawayDiscountMode,
-  LayawayInitialPaymentMode,
-} from '@/types/config.types'
+import type { LayawayInitialPaymentMode } from '@/types/config.types'
 
 const MAX_LAYAWAY_DAYS = 180
 
@@ -118,8 +115,6 @@ export default function CajaSection() {
   const [layawayInitialMode, setLayawayInitialMode] =
     useState<LayawayInitialPaymentMode>('none')
   const [layawayInitialValue, setLayawayInitialValue] = useState('')
-  const [layawayDiscountMode, setLayawayDiscountMode] =
-    useState<LayawayDiscountMode>('none')
   const [layawayDefaultDays, setLayawayDefaultDays] = useState('')
   const [saving, setSaving] = useState(false)
 
@@ -131,7 +126,6 @@ export default function CajaSection() {
     setExpenseReasons(config.expense_reasons)
     setLayawayInitialMode(config.layaway_initial_payment_mode)
     setLayawayInitialValue(String(config.layaway_initial_payment_value ?? 0))
-    setLayawayDiscountMode(config.layaway_discount_mode)
     setLayawayDefaultDays(String(config.layaway_default_days ?? 90))
   }, [store, config])
 
@@ -220,7 +214,6 @@ export default function CajaSection() {
         expense_reasons: expenseReasons,
         layaway_initial_payment_mode: layawayInitialMode,
         layaway_initial_payment_value: initialValue,
-        layaway_discount_mode: layawayDiscountMode,
         layaway_default_days: daysParsed,
       })
       toast.success('Configuración de caja guardada')
@@ -431,27 +424,6 @@ export default function CajaSection() {
             )}
             <p className="mt-1 text-[11px] text-[#a8a29e]">
               Cobro mínimo al crear el separado. 0 = no exige abono inicial.
-            </p>
-          </div>
-
-          {/* Descuento aplicable — solo monto fijo */}
-          <div className="mb-4">
-            <label className="flex cursor-pointer items-center gap-2.5">
-              <input
-                type="checkbox"
-                checked={layawayDiscountMode === 'fixed'}
-                onChange={(e) =>
-                  setLayawayDiscountMode(e.target.checked ? 'fixed' : 'none')
-                }
-                className="h-4 w-4 cursor-pointer rounded accent-violet-500"
-              />
-              <span className="text-xs font-medium text-[#525252]">
-                Permitir descuento en separados
-              </span>
-            </label>
-            <p className="mt-1.5 pl-[26px] text-[11px] text-[#a8a29e]">
-              Si está activo, el vendedor podrá aplicar un descuento en pesos al
-              crear un separado.
             </p>
           </div>
 
