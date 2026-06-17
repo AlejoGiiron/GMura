@@ -61,15 +61,17 @@ function BarcodeSvg({ code, height = 28, width = 1.2, onError }: BarcodeSvgProps
 interface LabelCardProps {
   variant: Variant
   productName: string
+  brand?: string | null
   size: LabelSize
   onBarcodeError?: () => void
 }
 
-function LabelCard({ variant, productName, size, onBarcodeError }: LabelCardProps) {
+function LabelCard({ variant, productName, brand, size, onBarcodeError }: LabelCardProps) {
   // Mismo helper de escalado que la vista previa de Config (EtiquetasSection):
   // lo que el admin ve en la preview = lo que sale impreso.
   const s = deriveLabelStyle(size)
   const code = variant.barcode ?? variant.sku ?? variant.id.slice(-10)
+  const brandLabel = brand?.trim()
   const truncName =
     productName.length > 22 ? `${productName.slice(0, 21)}…` : productName
   const detail = [variant.size && `T.${variant.size}`, variant.color]
@@ -94,9 +96,26 @@ function LabelCard({ variant, productName, size, onBarcodeError }: LabelCardProp
         background: '#fff',
       }}
     >
-      <p style={{ fontSize: s.nameFs, fontWeight: 700, lineHeight: 1.1, margin: 0 }}>
-        {truncName}
-      </p>
+      <div>
+        {brandLabel && (
+          <p
+            style={{
+              fontSize: s.brandFs,
+              fontWeight: 600,
+              textTransform: 'uppercase',
+              letterSpacing: '0.04em',
+              color: '#888',
+              lineHeight: 1,
+              margin: 0,
+            }}
+          >
+            {brandLabel}
+          </p>
+        )}
+        <p style={{ fontSize: s.nameFs, fontWeight: 700, lineHeight: 1.1, margin: 0 }}>
+          {truncName}
+        </p>
+      </div>
       {detail && (
         <p style={{ fontSize: s.detailFs, color: '#555', lineHeight: 1, margin: 0 }}>
           {detail}
@@ -126,6 +145,7 @@ function LabelCard({ variant, productName, size, onBarcodeError }: LabelCardProp
 
 interface LabelPrintModalProps {
   productName: string
+  brand?: string | null
   variants: Variant[]
   onClose: () => void
 }
@@ -137,6 +157,7 @@ interface LabelItem {
 
 export default function LabelPrintModal({
   productName,
+  brand,
   variants,
   onClose,
 }: LabelPrintModalProps) {
@@ -271,6 +292,7 @@ export default function LabelPrintModal({
               key={key}
               variant={variant}
               productName={productName}
+              brand={brand}
               size={activeSize}
               onBarcodeError={reportBarcodeError}
             />
@@ -377,6 +399,7 @@ export default function LabelPrintModal({
                 <LabelCard
                   variant={items[0].variant}
                   productName={productName}
+                  brand={brand}
                   size={activeSize}
                   onBarcodeError={reportBarcodeError}
                 />

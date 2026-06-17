@@ -318,8 +318,10 @@ Sidebar agrupado en secciones colapsables (feature/12-caja-completa) ✅
 - Configuración (tienda, usuarios, productos, caja, etiquetas)
 
 ## Estado actual del proyecto
-Última fase completada: tamaños de etiqueta parametrizables
-(label_sizes en config, escalado proporcional, gestor en Config)
+Última fase completada: etiquetas — marca sobre el nombre + letra base
++20% afinable (FONT_SCALE en labelSizes.ts, brandFs escalado, marca
+desde products.brand omitida si no hay). Previo: tamaños de etiqueta
+parametrizables (label_sizes en config, escalado proporcional, gestor)
 En progreso: feature - marca (autocompletar + en todos los documentos)
 Siguiente: Addi recargo, historial de gastos, descuento por ítem
 

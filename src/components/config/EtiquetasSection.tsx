@@ -14,6 +14,7 @@ import {
 import type { LabelSize, LabelFields } from '@/types/config.types'
 
 const SAMPLE_CODE = '7890123456789'
+const SAMPLE_BRAND = 'Marca'
 // Alto mínimo sensato (mm) por coherencia con el ancho escaneable.
 const MIN_HEIGHT = 10
 
@@ -56,11 +57,26 @@ function LabelPreview({ size, fields }: { size: LabelSize; fields: LabelFields }
         fontFamily: 'system-ui, sans-serif',
       }}
     >
-      {fields.name && (
-        <p style={{ fontSize: s.nameFs, fontWeight: 700, lineHeight: 1.1, margin: 0 }}>
-          Producto ejemplo
+      <div>
+        <p
+          style={{
+            fontSize: s.brandFs,
+            fontWeight: 600,
+            textTransform: 'uppercase',
+            letterSpacing: '0.04em',
+            color: '#888',
+            lineHeight: 1,
+            margin: 0,
+          }}
+        >
+          {SAMPLE_BRAND}
         </p>
-      )}
+        {fields.name && (
+          <p style={{ fontSize: s.nameFs, fontWeight: 700, lineHeight: 1.1, margin: 0 }}>
+            Producto ejemplo
+          </p>
+        )}
+      </div>
       {fields.size_color && (
         <p style={{ fontSize: s.detailFs, color: '#555', lineHeight: 1, margin: 0 }}>
           T.M · Negro

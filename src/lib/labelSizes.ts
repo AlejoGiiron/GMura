@@ -33,11 +33,23 @@ export const MIN_BARCODE_H = 13
 export const WARN_WIDTH = 30
 export const MIN_WIDTH = 20
 
-// Medidas base (= valores históricos a factor 1.0).
+// Multiplicador global del tamaño de fuente sobre las bases históricas.
+// AFÍNALO AQUÍ tras ver la impresión física: 1.20 = +20% (subir a 1.3 para
+// más grande, bajar a 1.15 para más chico). Solo afecta a las fuentes; el
+// padding, el borde y el código de barras no dependen de esto.
+export const FONT_SCALE = 1.2
+
+// La marca se imprime sobre el nombre, un poco más pequeña: 80% del nombre.
+const BRAND_RATIO = 0.8
+
+// Medidas base de fuente (valores históricos originales, a factor 1.0 y
+// FONT_SCALE 1.0). El tamaño de fuente efectivo es BASE * FONT_SCALE * factor.
 const BASE_NAME_PT = 5.5
 const BASE_DETAIL_PT = 4.5
 const BASE_SKU_PT = 4
 const BASE_PRICE_PT = 6.5
+// El padding, borde y barcode mantienen las bases históricas (escalan solo por
+// factor, sin FONT_SCALE).
 const BASE_PAD_Y_MM = 1
 const BASE_PAD_X_MM = 1.5
 const BASE_BORDER_MM = 0.3
@@ -57,6 +69,7 @@ export interface LabelStyle {
   height: string
   padding: string
   border: string
+  brandFs: string
   nameFs: string
   detailFs: string
   skuFs: string
@@ -76,15 +89,19 @@ export function deriveLabelStyle(size: LabelSize): LabelStyle {
     MAX_FACTOR,
   )
 
+  // Las fuentes escalan por factor Y por FONT_SCALE; el resto solo por factor.
+  const fontFactor = FONT_SCALE * factor
+
   return {
     width: `${size.width_mm}mm`,
     height: `${size.height_mm}mm`,
     padding: `${round2(BASE_PAD_Y_MM * factor)}mm ${round2(BASE_PAD_X_MM * factor)}mm`,
     border: `${round2(BASE_BORDER_MM * factor)}mm solid #ccc`,
-    nameFs: `${round2(BASE_NAME_PT * factor)}pt`,
-    detailFs: `${round2(BASE_DETAIL_PT * factor)}pt`,
-    skuFs: `${round2(BASE_SKU_PT * factor)}pt`,
-    priceFs: `${round2(BASE_PRICE_PT * factor)}pt`,
+    brandFs: `${round2(BASE_NAME_PT * BRAND_RATIO * fontFactor)}pt`,
+    nameFs: `${round2(BASE_NAME_PT * fontFactor)}pt`,
+    detailFs: `${round2(BASE_DETAIL_PT * fontFactor)}pt`,
+    skuFs: `${round2(BASE_SKU_PT * fontFactor)}pt`,
+    priceFs: `${round2(BASE_PRICE_PT * fontFactor)}pt`,
     barcodeHeight: Math.max(MIN_BARCODE_H, Math.round(BASE_BARCODE_H * factor)),
     barcodeWidth: Math.max(1, Math.round(BASE_BARCODE_W * factor)),
     factor,
