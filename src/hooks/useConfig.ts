@@ -7,6 +7,7 @@ import type { Store, Profile } from '@/types/database.types'
 import type { StoreConfig } from '@/types/config.types'
 import { migrateLegacyPaymentMethods } from '@/lib/paymentMethods'
 import { DEFAULT_SIZE_TYPES } from '@/lib/sizeTypes'
+import { DEFAULT_LABEL_SIZES, DEFAULT_LABEL_SIZE_ID, findLabelSize } from '@/lib/labelSizes'
 
 export const DEFAULT_CONFIG: StoreConfig = {
   timezone: 'America/Bogota',
@@ -32,7 +33,8 @@ export const DEFAULT_CONFIG: StoreConfig = {
   payment_methods: ['cash', 'card', 'transfer', 'addi'],
   expense_reasons: ['Mercado', 'Servicios', 'Domicilio', 'Imprevisto', 'Otro'],
   payment_qr_url: null,
-  label_format: '38x25',
+  label_sizes: DEFAULT_LABEL_SIZES,
+  label_default_size_id: DEFAULT_LABEL_SIZE_ID,
   label_fields: { sku: true, name: true, size_color: true, price: true },
   layaway_initial_payment_mode: 'none',
   layaway_initial_payment_value: 0,
@@ -51,6 +53,18 @@ export function resolveConfig(raw: Record<string, unknown> | null | undefined): 
     : DEFAULT_CONFIG.payment_methods
   const legacyQrUrl =
     r.payment_qr_url !== undefined ? r.payment_qr_url : (r.nequi_qr_url ?? null)
+  // Tamaños de etiqueta: seeding de los 3 base si la tienda no tiene ninguno.
+  const labelSizes =
+    Array.isArray(r.label_sizes) && r.label_sizes.length > 0
+      ? r.label_sizes
+      : DEFAULT_LABEL_SIZES
+  // Predeterminado: usa el id guardado; si no, mapea el label_format legacy
+  // (cuyos valores '38x25'/'50x30'/'58x40' son los ids de los base); valida
+  // que exista y, si no, cae al primer tamaño disponible.
+  const defaultCandidate = r.label_default_size_id ?? r.label_format ?? DEFAULT_LABEL_SIZE_ID
+  const labelDefaultSizeId = findLabelSize(labelSizes, defaultCandidate)
+    ? defaultCandidate
+    : labelSizes[0].id
   return {
     ...DEFAULT_CONFIG,
     ...r,
@@ -69,6 +83,8 @@ export function resolveConfig(raw: Record<string, unknown> | null | undefined): 
         : DEFAULT_CONFIG.expense_reasons,
     payment_methods: legacyMethods,
     payment_qr_url: legacyQrUrl,
+    label_sizes: labelSizes,
+    label_default_size_id: labelDefaultSizeId,
     label_fields: r.label_fields
       ? { ...DEFAULT_CONFIG.label_fields, ...r.label_fields }
       : DEFAULT_CONFIG.label_fields,

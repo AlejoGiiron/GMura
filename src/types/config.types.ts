@@ -10,7 +10,19 @@ export interface LabelFields {
   price: boolean
 }
 
+/**
+ * @deprecated Reemplazado por LabelSize + label_sizes. Se conserva el tipo
+ * únicamente para que la migración lazy en resolveConfig pueda leer el
+ * label_format de configuraciones viejas y mapearlo a un label_default_size_id.
+ */
 export type LabelFormat = '38x25' | '50x30' | '58x40'
+
+export interface LabelSize {
+  id: string
+  name: string
+  width_mm: number
+  height_mm: number
+}
 
 export interface SizeTypeConfig {
   id: string
@@ -32,7 +44,14 @@ export interface StoreConfig {
   payment_methods: string[]
   expense_reasons: string[]
   payment_qr_url: string | null
-  label_format: LabelFormat
+  label_sizes: LabelSize[]
+  label_default_size_id: string
+  /**
+   * @deprecated Reemplazado por label_sizes + label_default_size_id. Solo se
+   * conserva opcional para que la migración lazy lea config vieja; no se
+   * escribe ni se muestra. El precio/escalado real sale de label_sizes.
+   */
+  label_format?: LabelFormat
   label_fields: LabelFields
   layaway_initial_payment_mode: LayawayInitialPaymentMode
   layaway_initial_payment_value: number
