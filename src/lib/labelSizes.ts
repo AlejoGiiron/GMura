@@ -34,10 +34,10 @@ export const WARN_WIDTH = 30
 export const MIN_WIDTH = 20
 
 // Multiplicador global del tamaño de fuente sobre las bases históricas.
-// AFÍNALO AQUÍ tras ver la impresión física: 1.30 = +30% (subir para más
-// grande, bajar a 1.2 para más chico). Solo afecta a las fuentes; el
-// padding, el borde y el código de barras no dependen de esto.
-export const FONT_SCALE = 1.3
+// AFÍNALO AQUÍ tras ver la impresión física: 1.40 = +40% (subir para más
+// grande, bajar para más chico). Solo afecta a las fuentes; el padding, el
+// borde y el código de barras no dependen de esto.
+export const FONT_SCALE = 1.4
 
 // La marca se imprime sobre el nombre, un poco más pequeña: 80% del nombre.
 const BRAND_RATIO = 0.8
