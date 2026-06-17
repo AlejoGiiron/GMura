@@ -62,6 +62,11 @@ export function useConfigMutations() {
       if ('payment_qr_url' in config && 'nequi_qr_url' in merged) {
         delete (merged as Record<string, unknown>).nequi_qr_url
       }
+      // Limpia la clave legacy label_format cuando se actualizan los tamaños
+      // de etiqueta (reemplazada por label_sizes + label_default_size_id).
+      if ('label_sizes' in config && 'label_format' in merged) {
+        delete (merged as Record<string, unknown>).label_format
+      }
       const { error } = await supabase
         .from('stores')
         .update({ config: merged } as never)

@@ -6,22 +6,10 @@ import { fmtCOP } from '@/lib/formatters'
 import { generateBarcode } from '@/lib/products'
 import { useResolvedConfig } from '@/hooks/useConfig'
 import { useVariantMutations } from '@/hooks/useVariantMutations'
-import type { LabelFormat } from '@/types/config.types'
+import { deriveLabelStyle, findLabelSize } from '@/lib/labelSizes'
+import type { LabelSize } from '@/types/config.types'
 import type { Variant } from '@/types/database.types'
 
-const FORMAT_LABEL: Record<LabelFormat, string> = {
-  '38x25': '38 × 25 mm',
-  '50x30': '50 × 30 mm',
-  '58x40': '58 × 40 mm',
-}
-
-const FORMAT_DIMS: Record<LabelFormat, { width: string; height: string }> = {
-  '38x25': { width: '38mm', height: '25mm' },
-  '50x30': { width: '50mm', height: '30mm' },
-  '58x40': { width: '58mm', height: '40mm' },
-}
-
-const FALLBACK_FORMAT: LabelFormat = '38x25'
 const PRINT_STYLE_ID = 'gmura-label-print-style'
 const PRINT_CONTAINER_ID = 'gmura-label-print'
 
@@ -73,12 +61,14 @@ function BarcodeSvg({ code, height = 28, width = 1.2, onError }: BarcodeSvgProps
 interface LabelCardProps {
   variant: Variant
   productName: string
-  format: LabelFormat
+  size: LabelSize
   onBarcodeError?: () => void
 }
 
-function LabelCard({ variant, productName, format, onBarcodeError }: LabelCardProps) {
-  const dims = FORMAT_DIMS[format]
+function LabelCard({ variant, productName, size, onBarcodeError }: LabelCardProps) {
+  // Mismo helper de escalado que la vista previa de Config (EtiquetasSection):
+  // lo que el admin ve en la preview = lo que sale impreso.
+  const s = deriveLabelStyle(size)
   const code = variant.barcode ?? variant.sku ?? variant.id.slice(-10)
   const truncName =
     productName.length > 22 ? `${productName.slice(0, 21)}…` : productName
@@ -90,10 +80,10 @@ function LabelCard({ variant, productName, format, onBarcodeError }: LabelCardPr
     <div
       className="label-card"
       style={{
-        width: dims.width,
-        height: dims.height,
-        border: '0.3mm solid #ccc',
-        padding: '1mm 1.5mm',
+        width: s.width,
+        height: s.height,
+        border: s.border,
+        padding: s.padding,
         boxSizing: 'border-box',
         overflow: 'hidden',
         display: 'flex',
@@ -104,22 +94,27 @@ function LabelCard({ variant, productName, format, onBarcodeError }: LabelCardPr
         background: '#fff',
       }}
     >
-      <p style={{ fontSize: '5.5pt', fontWeight: 700, lineHeight: 1.1, margin: 0 }}>
+      <p style={{ fontSize: s.nameFs, fontWeight: 700, lineHeight: 1.1, margin: 0 }}>
         {truncName}
       </p>
       {detail && (
-        <p style={{ fontSize: '4.5pt', color: '#555', lineHeight: 1, margin: 0 }}>
+        <p style={{ fontSize: s.detailFs, color: '#555', lineHeight: 1, margin: 0 }}>
           {detail}
         </p>
       )}
       <div style={{ flex: 1, minHeight: 0, display: 'flex', alignItems: 'center' }}>
-        <BarcodeSvg code={code} height={24} width={1} onError={onBarcodeError} />
+        <BarcodeSvg
+          code={code}
+          height={s.barcodeHeight}
+          width={s.barcodeWidth}
+          onError={onBarcodeError}
+        />
       </div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
-        <p style={{ fontSize: '4pt', color: '#666', fontFamily: 'monospace', margin: 0 }}>
+        <p style={{ fontSize: s.skuFs, color: '#666', fontFamily: 'monospace', margin: 0 }}>
           {(variant.sku ?? code).slice(0, 14)}
         </p>
-        <p style={{ fontSize: '6.5pt', fontWeight: 700, margin: 0 }}>
+        <p style={{ fontSize: s.priceFs, fontWeight: 700, margin: 0 }}>
           {fmtCOP(variant.price)}
         </p>
       </div>
@@ -146,10 +141,12 @@ export default function LabelPrintModal({
   onClose,
 }: LabelPrintModalProps) {
   const config = useResolvedConfig()
-  const labelFormat: LabelFormat = FORMAT_DIMS[config.label_format]
-    ? config.label_format
-    : FALLBACK_FORMAT
-  const formatLabel = FORMAT_LABEL[labelFormat]
+  // Tamaño activo: el predeterminado de la tienda. label_sizes nunca está vacío
+  // (seeding en resolveConfig), por lo que el fallback al primero es seguro.
+  const activeSize: LabelSize =
+    findLabelSize(config.label_sizes, config.label_default_size_id) ??
+    config.label_sizes[0]
+  const formatLabel = `${activeSize.name} · ${activeSize.width_mm} × ${activeSize.height_mm} mm`
 
   const productId = variants[0]?.product_id ?? ''
   const { update } = useVariantMutations(productId)
@@ -274,7 +271,7 @@ export default function LabelPrintModal({
               key={key}
               variant={variant}
               productName={productName}
-              format={labelFormat}
+              size={activeSize}
               onBarcodeError={reportBarcodeError}
             />
           ))}
@@ -380,7 +377,7 @@ export default function LabelPrintModal({
                 <LabelCard
                   variant={items[0].variant}
                   productName={productName}
-                  format={labelFormat}
+                  size={activeSize}
                   onBarcodeError={reportBarcodeError}
                 />
               )}
