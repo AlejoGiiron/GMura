@@ -18,19 +18,23 @@ const size = (width_mm: number, height_mm: number): LabelSize => ({
 })
 
 describe('deriveLabelStyle', () => {
-  it('38×25 → factor 1.0 y medidas idénticas a las históricas (no-regresión)', () => {
+  it('38×25 → factor 1.0: caja/barcode históricos y fuentes con FONT_SCALE 1.2 (no-regresión)', () => {
     const s = deriveLabelStyle(size(38, 25))
     expect(s.factor).toBe(1)
     expect(s.width).toBe('38mm')
     expect(s.height).toBe('25mm')
+    // Caja, borde y barcode NO dependen de FONT_SCALE: valores históricos.
     expect(s.padding).toBe('1mm 1.5mm')
     expect(s.border).toBe('0.3mm solid #ccc')
-    expect(s.nameFs).toBe('5.5pt')
-    expect(s.detailFs).toBe('4.5pt')
-    expect(s.skuFs).toBe('4pt')
-    expect(s.priceFs).toBe('6.5pt')
     expect(s.barcodeHeight).toBe(24)
     expect(s.barcodeWidth).toBe(1)
+    // Fuentes base × FONT_SCALE (1.2): +20% sobre el original.
+    expect(s.nameFs).toBe('6.6pt') // 5.5 × 1.2
+    expect(s.detailFs).toBe('5.4pt') // 4.5 × 1.2
+    expect(s.skuFs).toBe('4.8pt') // 4 × 1.2
+    expect(s.priceFs).toBe('7.8pt') // 6.5 × 1.2
+    // Marca: 80% del nombre. 5.5 × 0.8 × 1.2 = 5.28
+    expect(s.brandFs).toBe('5.28pt')
   })
 
   it('50×30 → factor 1.2', () => {
@@ -42,13 +46,15 @@ describe('deriveLabelStyle', () => {
 
   it('50×30 (factor ≠ 1) escala padding y border explícitamente', () => {
     const s = deriveLabelStyle(size(50, 30))
-    // padding base '1mm 1.5mm' × 1.2 = '1.2mm 1.8mm'
+    // padding base '1mm 1.5mm' × factor 1.2 = '1.2mm 1.8mm' (sin FONT_SCALE)
     expect(s.padding).toBe('1.2mm 1.8mm')
-    // border base '0.3mm' × 1.2 = '0.36mm'
+    // border base '0.3mm' × factor 1.2 = '0.36mm' (sin FONT_SCALE)
     expect(s.border).toBe('0.36mm solid #ccc')
-    // fuentes base × 1.2
-    expect(s.nameFs).toBe('6.6pt')
-    expect(s.priceFs).toBe('7.8pt')
+    // fuentes base × factor 1.2 × FONT_SCALE 1.2 = × 1.44
+    expect(s.nameFs).toBe('7.92pt') // 5.5 × 1.44
+    expect(s.priceFs).toBe('9.36pt') // 6.5 × 1.44
+    // marca: 5.5 × 0.8 × 1.44 = 6.336 → 6.34
+    expect(s.brandFs).toBe('6.34pt')
   })
 
   it('58×40 → factor ≈ 1.526 (limitado por el ancho)', () => {

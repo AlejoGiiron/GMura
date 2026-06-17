@@ -584,6 +584,7 @@ export default function VariantsPanel({ product, onClose }: VariantsPanelProps) 
       {labelVariants && (
         <LabelPrintModal
           productName={product.name}
+          brand={product.brand}
           variants={labelVariants}
           onClose={() => setLabelVariants(null)}
         />
