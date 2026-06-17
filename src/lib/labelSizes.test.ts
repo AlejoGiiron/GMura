@@ -28,13 +28,13 @@ describe('deriveLabelStyle', () => {
     expect(s.border).toBe('0.3mm solid #ccc')
     expect(s.barcodeHeight).toBe(24)
     expect(s.barcodeWidth).toBe(1)
-    // Fuentes base × FONT_SCALE (1.2): +20% sobre el original.
-    expect(s.nameFs).toBe('6.6pt') // 5.5 × 1.2
-    expect(s.detailFs).toBe('5.4pt') // 4.5 × 1.2
-    expect(s.skuFs).toBe('4.8pt') // 4 × 1.2
-    expect(s.priceFs).toBe('7.8pt') // 6.5 × 1.2
-    // Marca: 80% del nombre. 5.5 × 0.8 × 1.2 = 5.28
-    expect(s.brandFs).toBe('5.28pt')
+    // Fuentes base × FONT_SCALE (1.3): +30% sobre el original.
+    expect(s.nameFs).toBe('7.15pt') // 5.5 × 1.3
+    expect(s.detailFs).toBe('5.85pt') // 4.5 × 1.3
+    expect(s.skuFs).toBe('5.2pt') // 4 × 1.3
+    expect(s.priceFs).toBe('8.45pt') // 6.5 × 1.3
+    // Marca: 80% del nombre. 5.5 × 0.8 × 1.3 = 5.72
+    expect(s.brandFs).toBe('5.72pt')
   })
 
   it('50×30 → factor 1.2', () => {
@@ -50,11 +50,11 @@ describe('deriveLabelStyle', () => {
     expect(s.padding).toBe('1.2mm 1.8mm')
     // border base '0.3mm' × factor 1.2 = '0.36mm' (sin FONT_SCALE)
     expect(s.border).toBe('0.36mm solid #ccc')
-    // fuentes base × factor 1.2 × FONT_SCALE 1.2 = × 1.44
-    expect(s.nameFs).toBe('7.92pt') // 5.5 × 1.44
-    expect(s.priceFs).toBe('9.36pt') // 6.5 × 1.44
-    // marca: 5.5 × 0.8 × 1.44 = 6.336 → 6.34
-    expect(s.brandFs).toBe('6.34pt')
+    // fuentes base × factor 1.2 × FONT_SCALE 1.3 = × 1.56
+    expect(s.nameFs).toBe('8.58pt') // 5.5 × 1.56
+    expect(s.priceFs).toBe('10.14pt') // 6.5 × 1.56
+    // marca: 5.5 × 0.8 × 1.56 = 6.864 → 6.86
+    expect(s.brandFs).toBe('6.86pt')
   })
 
   it('58×40 → factor ≈ 1.526 (limitado por el ancho)', () => {
