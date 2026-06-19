@@ -49,3 +49,14 @@ export function stockState(qty: number, minStock: number): 'out' | 'low' | 'ok' 
   if (qty <= minStock) return 'low'
   return 'ok'
 }
+
+// Rango de precios de las variantes ACTIVAS de un producto. Devuelve null si no
+// hay variantes activas (no se muestra precio). Si min === max, todas valen lo
+// mismo y la UI muestra un solo precio. El formateo (fmtCOP) queda en la UI.
+export function priceRange(
+  variants: { price: number; is_active: boolean }[],
+): { min: number; max: number } | null {
+  const prices = variants.filter((v) => v.is_active).map((v) => v.price)
+  if (prices.length === 0) return null
+  return { min: Math.min(...prices), max: Math.max(...prices) }
+}

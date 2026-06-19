@@ -6,7 +6,7 @@ import type { Category, Product, Variant } from '@/types/database.types'
 
 export type ProductWithDetails = Product & {
   categories: Pick<Category, 'id' | 'name' | 'color'> | null
-  variants: Pick<Variant, 'id' | 'stock_qty' | 'is_active'>[]
+  variants: Pick<Variant, 'id' | 'stock_qty' | 'is_active' | 'price'>[]
 }
 
 export function useProducts() {
@@ -18,7 +18,7 @@ export function useProducts() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('products')
-        .select('*, categories(id, name, color), variants(id, stock_qty, is_active)')
+        .select('*, categories(id, name, color), variants(id, stock_qty, is_active, price)')
         .eq('store_id' as never, storeId)
         .order('name')
       if (error) throw error

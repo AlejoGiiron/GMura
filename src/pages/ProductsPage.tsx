@@ -6,7 +6,7 @@ import { useVariantMutations } from '@/hooks/useVariantMutations'
 import ProductModal from '@/components/products/ProductModal'
 import VariantsPanel from '@/components/products/VariantsPanel'
 import { fmtCOP } from '@/lib/formatters'
-import { getColorHex, sortSizes, stockState } from '@/lib/products'
+import { getColorHex, sortSizes, stockState, priceRange } from '@/lib/products'
 import type { ProductWithDetails } from '@/hooks/useProducts'
 import type { Product, Variant } from '@/types/database.types'
 
@@ -514,6 +514,13 @@ export default function ProductsPage() {
             const activeVariants = p.variants.filter((v) => v.is_active)
             const oos = activeVariants.filter((v) => v.stock_qty === 0).length
             const isSel = p.id === selectedId
+            const range = priceRange(p.variants)
+            const priceLabel = range
+              ? range.min === range.max
+                ? fmtCOP(range.min)
+                : `${fmtCOP(range.min)} – ${fmtCOP(range.max)}`
+              : null
+            const description = p.description?.trim()
             return (
               <button
                 key={p.id}
@@ -536,8 +543,13 @@ export default function ProductsPage() {
                 </div>
                 {/* Info */}
                 <div className="min-w-0 flex-1">
+                  {p.brand && (
+                    <p className="truncate text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                      {p.brand}
+                    </p>
+                  )}
                   <p className="truncate text-[13.5px] font-medium text-slate-900">{p.name}</p>
-                  <p className="flex items-center gap-1.5 text-[11px] text-slate-400">
+                  <p className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[11px] text-slate-400">
                     <span>{activeVariants.length} var.</span>
                     {oos > 0 && (
                       <>
@@ -545,7 +557,16 @@ export default function ProductsPage() {
                         <span className="font-medium text-red-500">{oos} OOS</span>
                       </>
                     )}
+                    {priceLabel && (
+                      <>
+                        <span className="h-1 w-1 rounded-full bg-slate-300" />
+                        <span className="font-mono tabular-nums text-slate-500">{priceLabel}</span>
+                      </>
+                    )}
                   </p>
+                  {description && (
+                    <p className="truncate text-[11px] text-slate-400">{description}</p>
+                  )}
                 </div>
               </button>
             )
