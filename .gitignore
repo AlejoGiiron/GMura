@@ -4,6 +4,12 @@
 .env.*.local
 !.env.example
 
+# Backups de BD (credencial real + dumps con datos de cliente — NUNCA al repo)
+.env.backup
+!.env.backup.example
+backups/*
+!backups/REGISTRO.md
+
 # Node
 node_modules/
 .pnpm-store/
