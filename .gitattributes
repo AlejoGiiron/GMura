@@ -1,0 +1,2 @@
+# Fuerza LF en scripts shell (evita el error \r al correrlos en Git Bash / WSL)
+*.sh text eol=lf
