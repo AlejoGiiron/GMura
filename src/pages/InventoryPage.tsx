@@ -15,6 +15,7 @@ import { format } from 'date-fns'
 import { useStockLevels, useStockMovements, useStoreProfiles, MOV_PAGE_SIZE } from '@/hooks/useInventory'
 import type { MovementFilters, VariantRow } from '@/hooks/useInventory'
 import { useInventoryMutations } from '@/hooks/useInventoryMutations'
+import { usePermissions } from '@/hooks/usePermissions'
 import { useCategories } from '@/hooks/useProducts'
 import { useDebounce } from '@/hooks/useDebounce'
 import { fmtCOP } from '@/lib/formatters'
@@ -424,6 +425,7 @@ const TABS: { id: Tab; label: string }[] = [
 ]
 
 export default function InventoryPage() {
+  const { can } = usePermissions()
   const [tab, setTab] = useState<Tab>('stock')
   const [showAdjustModal, setShowAdjustModal] = useState(false)
 
@@ -620,13 +622,15 @@ export default function InventoryPage() {
           </div>
         </div>
 
-        <button
-          onClick={() => setShowAdjustModal(true)}
-          className="flex h-9 items-center gap-2 rounded-lg bg-[#8b5cf6] px-4 text-[13.5px] font-semibold text-white shadow-[0_4px_12px_#8b5cf640] hover:brightness-95"
-        >
-          <Plus size={15} />
-          Ajuste manual
-        </button>
+        {can('inventario.gestionar') && (
+          <button
+            onClick={() => setShowAdjustModal(true)}
+            className="flex h-9 items-center gap-2 rounded-lg bg-[#8b5cf6] px-4 text-[13.5px] font-semibold text-white shadow-[0_4px_12px_#8b5cf640] hover:brightness-95"
+          >
+            <Plus size={15} />
+            Ajuste manual
+          </button>
+        )}
       </div>
 
       {/* ── Body ─────────────────────────────────────────────────────────────── */}

@@ -37,6 +37,7 @@ import { NewLayawayModal } from '@/components/layaways/NewLayawayModal'
 import { AddPaymentModal } from '@/components/layaways/AddPaymentModal'
 import { CompleteLayawayModal } from '@/components/layaways/CompleteLayawayModal'
 import { CancelLayawayModal } from '@/components/layaways/CancelLayawayModal'
+import { usePermissions } from '@/hooks/usePermissions'
 import { LayawayReceiptPrint } from '@/components/layaways/LayawayReceipt'
 import type { LayawayStatus } from '@/types/database.types'
 
@@ -438,6 +439,7 @@ function DetailActions({
   onReprint: () => void
 }) {
   const navigate = useNavigate()
+  const { can } = usePermissions()
 
   if (layaway.status === 'active') {
     const canComplete = layaway.balance_pending <= 0
@@ -462,12 +464,14 @@ function DetailActions({
         >
           <Printer size={13} /> Imprimir
         </button>
-        <button
-          onClick={onCancel}
-          className="flex h-10 items-center gap-1.5 rounded-lg px-3 text-sm font-medium text-red-600 hover:bg-red-50"
-        >
-          <Ban size={13} /> Cancelar separado
-        </button>
+        {can('separados.eliminar') && (
+          <button
+            onClick={onCancel}
+            className="flex h-10 items-center gap-1.5 rounded-lg px-3 text-sm font-medium text-red-600 hover:bg-red-50"
+          >
+            <Ban size={13} /> Cancelar separado
+          </button>
+        )}
       </div>
     )
   }
