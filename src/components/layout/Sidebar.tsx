@@ -22,6 +22,7 @@ import {
   Building2,
 } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
+import { usePermissions } from '@/hooks/usePermissions'
 import { useActiveLayawaysCount } from '@/hooks/useLayaways'
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
@@ -30,7 +31,9 @@ interface NavItem {
   label: string
   path: string
   icon: LucideIcon
-  adminOnly?: boolean
+  /** Permiso RBAC requerido para ver el ítem. Si se omite, es visible para
+   *  cualquier usuario autenticado. */
+  permission?: string
   end?: boolean
   Badge?: React.FC
 }
@@ -49,11 +52,13 @@ interface NavGroup {
   id: string
   label: string
   icon: LucideIcon
-  adminOnly?: boolean
   items: NavItem[]
 }
 
 // ── Configuración ─────────────────────────────────────────────────────────────
+// La visibilidad de cada ítem la decide su `permission` vía can(). Un ítem sin
+// permission es visible para cualquier usuario autenticado. Un grupo se muestra
+// si tiene al menos un ítem visible (ver filterByPermission).
 
 const NAV_GROUPS: NavGroup[] = [
   {
@@ -61,15 +66,16 @@ const NAV_GROUPS: NavGroup[] = [
     label: 'Operación',
     icon: ShoppingCart,
     items: [
-      { label: 'Ventas', path: '/ventas', icon: Store, end: true },
-      { label: 'Historial', path: '/ventas/historial', icon: History },
+      { label: 'Ventas', path: '/ventas', icon: Store, end: true, permission: 'pos.usar' },
+      { label: 'Historial', path: '/ventas/historial', icon: History, permission: 'pos.usar' },
       {
         label: 'Separados',
         path: '/separados',
         icon: Bookmark,
+        permission: 'separados.gestionar',
         Badge: ActiveLayawaysBadge,
       },
-      { label: 'Devoluciones', path: '/devoluciones', icon: Undo2 },
+      { label: 'Devoluciones', path: '/devoluciones', icon: Undo2, permission: 'devoluciones.gestionar' },
     ],
   },
   {
@@ -77,8 +83,8 @@ const NAV_GROUPS: NavGroup[] = [
     label: 'Inventario',
     icon: Package,
     items: [
-      { label: 'Productos', path: '/productos', icon: Tag, adminOnly: true },
-      { label: 'Inventario', path: '/inventario', icon: Layers },
+      { label: 'Productos', path: '/productos', icon: Tag, permission: 'productos.gestionar' },
+      { label: 'Inventario', path: '/inventario', icon: Layers, permission: 'inventario.ver' },
     ],
   },
   {
@@ -86,28 +92,26 @@ const NAV_GROUPS: NavGroup[] = [
     label: 'Clientes',
     icon: Users,
     items: [
-      { label: 'Clientes', path: '/clientes', icon: Users },
+      { label: 'Clientes', path: '/clientes', icon: Users, permission: 'clientes.gestionar' },
     ],
   },
   {
     id: 'compras',
     label: 'Compras',
     icon: Truck,
-    adminOnly: true,
     items: [
-      { label: 'Proveedores', path: '/proveedores', icon: Building2 },
+      { label: 'Proveedores', path: '/proveedores', icon: Building2, permission: 'compras.gestionar' },
     ],
   },
   {
     id: 'admin',
     label: 'Análisis y admin',
     icon: BarChart3,
-    adminOnly: true,
     items: [
-      { label: 'Reportes', path: '/reportes', icon: BarChart2 },
-      { label: 'Historial de caja', path: '/caja/historial', icon: Wallet },
-      { label: 'Historial de gastos', path: '/gastos/historial', icon: Receipt },
-      { label: 'Configuración', path: '/configuracion', icon: Settings },
+      { label: 'Reportes', path: '/reportes', icon: BarChart2, permission: 'reportes.ver' },
+      { label: 'Historial de caja', path: '/caja/historial', icon: Wallet, permission: 'reportes.ver' },
+      { label: 'Historial de gastos', path: '/gastos/historial', icon: Receipt, permission: 'gastos.ver' },
+      { label: 'Configuración', path: '/configuracion', icon: Settings, permission: 'config.gestionar' },
     ],
   },
 ]
@@ -149,13 +153,17 @@ function groupContainsActive(group: NavGroup, pathname: string): boolean {
   return group.items.some((i) => itemMatchesPath(i, pathname))
 }
 
-function filterByRole(groups: NavGroup[], isAdmin: boolean): NavGroup[] {
+function filterByPermission(
+  groups: NavGroup[],
+  can: (perm: string) => boolean,
+): NavGroup[] {
   return groups
-    .filter((g) => !g.adminOnly || isAdmin)
     .map((g) => ({
+      // Un ítem se ve si no exige permiso, o si el usuario lo tiene.
       ...g,
-      items: g.items.filter((i) => !i.adminOnly || isAdmin),
+      items: g.items.filter((i) => !i.permission || can(i.permission)),
     }))
+    // Un grupo se ve solo si le quedó al menos un ítem visible.
     .filter((g) => g.items.length > 0)
 }
 
@@ -245,13 +253,13 @@ function CollapsibleGroup({
 
 export default function Sidebar() {
   const { profile, signOut } = useAuth()
+  const { can } = usePermissions()
   const location = useLocation()
-  const isAdmin = profile?.role === 'admin'
   const userId = profile?.id ?? ''
 
   const visibleGroups = useMemo(
-    () => filterByRole(NAV_GROUPS, isAdmin),
-    [isAdmin],
+    () => filterByPermission(NAV_GROUPS, can),
+    [can],
   )
 
   // Estado inicial: localStorage si existe; sino, expandir el grupo que
