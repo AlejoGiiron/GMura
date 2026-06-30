@@ -1,15 +1,19 @@
 import type { ReactNode } from 'react'
 import { Navigate } from 'react-router-dom'
 import { useAuth } from '@/hooks/useAuth'
-import type { UserRole } from '@/types/database.types'
+import { usePermissions } from '@/hooks/usePermissions'
 
 interface ProtectedRouteProps {
   children: ReactNode
-  allowedRoles?: UserRole[]
+  /** Permiso RBAC requerido para entrar a la ruta. Si se omite, basta con estar
+   *  autenticado. El control de acceso real lo impone el RLS; esto evita que un
+   *  usuario aterrice en una página que no le corresponde. */
+  permission?: string
 }
 
-export default function ProtectedRoute({ children, allowedRoles }: ProtectedRouteProps) {
-  const { user, profile, isLoading } = useAuth()
+export default function ProtectedRoute({ children, permission }: ProtectedRouteProps) {
+  const { user, isLoading } = useAuth()
+  const { can } = usePermissions()
 
   if (isLoading) {
     return (
@@ -23,7 +27,7 @@ export default function ProtectedRoute({ children, allowedRoles }: ProtectedRout
     return <Navigate to="/login" replace />
   }
 
-  if (allowedRoles && profile && !allowedRoles.includes(profile.role)) {
+  if (permission && !can(permission)) {
     return <Navigate to="/ventas" replace />
   }
 
