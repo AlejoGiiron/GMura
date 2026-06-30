@@ -8,16 +8,41 @@ export type ReturnAction = 'refund' | 'exchange'
 export type LayawayStatus = 'active' | 'completed' | 'cancelled' | 'expired'
 export type InvoiceStatus = 'pending' | 'partial' | 'paid' | 'cancelled'
 
+export interface Organization {
+  id: string
+  name: string
+  config: Record<string, unknown>
+  created_at: string
+  updated_at: string
+}
+
+export interface Role {
+  id: string
+  organization_id: string
+  name: string
+  permissions: string[]
+  created_at: string
+  updated_at: string
+}
+
 export interface Profile {
   id: string
   email: string
   full_name: string
+  /** Enum legacy (admin/seller). Se mantiene por compatibilidad; el control de
+   *  acceso real es RBAC (role_id → roles.permissions). */
   role: UserRole
+  role_id: string | null
+  organization_id: string
   store_id: string
   current_store_id: string | null
   is_active: boolean
   created_at: string
   updated_at: string
+  /** Rol RBAC embebido (join a roles vía role_id). Solo presente cuando el
+   *  query lo incluye (AuthContext). Se aliasa 'rbac_role' para NO chocar con
+   *  la columna legacy `role`. */
+  rbac_role?: Pick<Role, 'name' | 'permissions'> | null
 }
 
 export interface UserStore {
@@ -406,13 +431,32 @@ export interface SupplierBalance {
 export interface Database {
   public: {
     Tables: {
+      organizations: {
+        Row: Organization
+        Insert: Omit<Organization, 'id' | 'config' | 'created_at' | 'updated_at'> & {
+          id?: string
+          config?: Record<string, unknown>
+          created_at?: string
+          updated_at?: string
+        }
+        Update: Partial<Omit<Organization, 'id'>>
+      }
+      roles: {
+        Row: Role
+        Insert: Omit<Role, 'id' | 'created_at' | 'updated_at'> & {
+          id?: string
+          created_at?: string
+          updated_at?: string
+        }
+        Update: Partial<Omit<Role, 'id'>>
+      }
       profiles: {
         Row: Profile
-        Insert: Omit<Profile, 'created_at' | 'current_store_id'> & {
+        Insert: Omit<Profile, 'created_at' | 'current_store_id' | 'rbac_role'> & {
           created_at?: string
           current_store_id?: string | null
         }
-        Update: Partial<Omit<Profile, 'id'>>
+        Update: Partial<Omit<Profile, 'id' | 'rbac_role'>>
       }
       user_stores: {
         Row: UserStore

@@ -14,11 +14,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const { data, error } = await supabase
         .from('profiles')
-        .select('*')
+        .select('*, rbac_role:roles(name, permissions)')
         .eq('id', userId)
         .single()
       if (error) throw error
-      setProfile(data)
+      // El cliente tipado no infiere la relación embebida (Database hecho a
+      // mano, sin metadata de Relationships) → cast explícito al runtime real.
+      setProfile(data as unknown as Profile)
     } catch {
       // Un fallo de LECTURA del perfil (RLS, red, fila no visible un instante)
       // NO debe cerrar la sesión. Solo cerramos si la SESIÓN ya no es válida
@@ -78,18 +80,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!uid) return
     const { data, error } = await supabase
       .from('profiles')
-      .select('*')
+      .select('*, rbac_role:roles(name, permissions)')
       .eq('id', uid)
       .single()
     if (error) {
       toast.error('No se pudo actualizar el perfil')
       return
     }
-    setProfile(data)
+    setProfile(data as unknown as Profile)
   }
 
+  // Permisos RBAC del usuario, derivados del rol embebido. [] si no hay rol.
+  const permissions = profile?.rbac_role?.permissions ?? []
+
   return (
-    <AuthContext.Provider value={{ user, profile, isLoading, signOut, refreshProfile }}>
+    <AuthContext.Provider
+      value={{ user, profile, permissions, isLoading, signOut, refreshProfile }}
+    >
       {children}
     </AuthContext.Provider>
   )
