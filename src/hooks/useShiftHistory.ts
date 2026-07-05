@@ -116,10 +116,10 @@ export function useShiftHistory(filters: ShiftHistoryFilters) {
         )
       }
 
-      // Para cashSales necesitamos sumar orders por turno. Lo hacemos
-      // consultando por (opened_by, ventana de tiempo) para cada turno;
-      // batch en una sola query con IN sobre opened_by + filtros.
-      // Como las ventanas son distintas por turno, agrupamos client-side.
+      // Imputación híbrida (026): las ventas/abonos NUEVOS se agrupan por
+      // shift_id (exacto); los PRE-026 (shift_id NULL) caen al método legacy
+      // por opened_by + ventana de tiempo. userIds/earliest/latest alimentan
+      // solo el camino legacy; el filtro shift_id IS NULL evita doble conteo.
       const userIds = Array.from(new Set(shiftsRaw.map((s) => s.opened_by)))
       const earliest = shiftsRaw.reduce(
         (min, s) => (s.opened_at < min ? s.opened_at : min),
@@ -132,18 +132,6 @@ export function useShiftHistory(filters: ShiftHistoryFilters) {
             : max,
         shiftsRaw[0].closed_at ?? shiftsRaw[0].opened_at,
       )
-
-      const { data: ordersRaw, error: ordersErr } = await supabase
-        .from('orders')
-        .select('id, total, created_at, created_by')
-        .eq('store_id' as never, storeId)
-        .eq('payment_method' as never, 'cash')
-        .eq('status' as never, 'completed')
-        .in('created_by' as never, userIds)
-        .gte('created_at' as never, earliest)
-        .lte('created_at' as never, latest)
-
-      if (ordersErr) throw ordersErr
 
       // Excluir órdenes generadas al completar separados: cada abono ya
       // contó como ingreso del turno donde se cobró.
@@ -162,45 +150,103 @@ export function useShiftHistory(filters: ShiftHistoryFilters) {
       )
 
       const cashByShift = new Map<string, number>()
-      for (const o of (ordersRaw ?? []) as unknown as {
+
+      // Helper: imputa una fila legacy (sin shift_id) a su turno por opened_by
+      // + ventana de tiempo (mismo criterio que el cuadre).
+      const addLegacyByWindow = (
+        createdBy: string,
+        createdAt: string,
+        amount: number,
+      ) => {
+        for (const s of shiftsRaw) {
+          if (s.opened_by !== createdBy) continue
+          if (createdAt < s.opened_at) continue
+          if (s.closed_at && createdAt > s.closed_at) continue
+          cashByShift.set(s.id, (cashByShift.get(s.id) ?? 0) + amount)
+          break
+        }
+      }
+
+      // ── Ventas en efectivo ────────────────────────────────────────────────
+      // NUEVO (026): órdenes imputadas por shift_id.
+      const { data: newOrders, error: newOrdersErr } = await supabase
+        .from('orders')
+        .select('id, total, shift_id')
+        .eq('store_id' as never, storeId)
+        .eq('payment_method' as never, 'cash')
+        .eq('status' as never, 'completed')
+        .in('shift_id' as never, shiftIds)
+      if (newOrdersErr) throw newOrdersErr
+      for (const o of (newOrders ?? []) as unknown as {
+        id: string
+        total: number | string
+        shift_id: string
+      }[]) {
+        if (excludedOrderIds.has(o.id)) continue
+        cashByShift.set(
+          o.shift_id,
+          (cashByShift.get(o.shift_id) ?? 0) + Number(o.total),
+        )
+      }
+
+      // PRE-026: órdenes con shift_id NULL, por opened_by + ventana.
+      const { data: legacyOrders, error: legacyOrdersErr } = await supabase
+        .from('orders')
+        .select('id, total, created_at, created_by')
+        .eq('store_id' as never, storeId)
+        .eq('payment_method' as never, 'cash')
+        .eq('status' as never, 'completed')
+        .is('shift_id' as never, null)
+        .in('created_by' as never, userIds)
+        .gte('created_at' as never, earliest)
+        .lte('created_at' as never, latest)
+      if (legacyOrdersErr) throw legacyOrdersErr
+      for (const o of (legacyOrders ?? []) as unknown as {
         id: string
         total: number | string
         created_at: string
         created_by: string
       }[]) {
         if (excludedOrderIds.has(o.id)) continue
-        for (const s of shiftsRaw) {
-          if (s.opened_by !== o.created_by) continue
-          if (o.created_at < s.opened_at) continue
-          if (s.closed_at && o.created_at > s.closed_at) continue
-          cashByShift.set(s.id, (cashByShift.get(s.id) ?? 0) + Number(o.total))
-          break
-        }
+        addLegacyByWindow(o.created_by, o.created_at, Number(o.total))
       }
 
-      // Sumar abonos de separados en efectivo al cashByShift.
-      const { data: paymentsRaw, error: paymentsErr } = await supabase
+      // ── Abonos de separados en efectivo ────────────────────────────────────
+      // NUEVO (026): abonos imputados por shift_id.
+      const { data: newPays, error: newPaysErr } = await supabase
         .from('layaway_payments')
-        .select('amount, payment_method, created_at, created_by')
+        .select('amount, shift_id')
         .eq('store_id' as never, storeId)
         .eq('payment_method' as never, 'cash')
+        .in('shift_id' as never, shiftIds)
+      if (newPaysErr) throw newPaysErr
+      for (const p of (newPays ?? []) as unknown as {
+        amount: number | string
+        shift_id: string
+      }[]) {
+        cashByShift.set(
+          p.shift_id,
+          (cashByShift.get(p.shift_id) ?? 0) + Number(p.amount),
+        )
+      }
+
+      // PRE-026: abonos con shift_id NULL, por opened_by + ventana.
+      const { data: legacyPays, error: legacyPaysErr } = await supabase
+        .from('layaway_payments')
+        .select('amount, created_at, created_by')
+        .eq('store_id' as never, storeId)
+        .eq('payment_method' as never, 'cash')
+        .is('shift_id' as never, null)
         .in('created_by' as never, userIds)
         .gte('created_at' as never, earliest)
         .lte('created_at' as never, latest)
-      if (paymentsErr) throw paymentsErr
-
-      for (const p of (paymentsRaw ?? []) as unknown as {
+      if (legacyPaysErr) throw legacyPaysErr
+      for (const p of (legacyPays ?? []) as unknown as {
         amount: number | string
         created_at: string
         created_by: string
       }[]) {
-        for (const s of shiftsRaw) {
-          if (s.opened_by !== p.created_by) continue
-          if (p.created_at < s.opened_at) continue
-          if (s.closed_at && p.created_at > s.closed_at) continue
-          cashByShift.set(s.id, (cashByShift.get(s.id) ?? 0) + Number(p.amount))
-          break
-        }
+        addLegacyByWindow(p.created_by, p.created_at, Number(p.amount))
       }
 
       const rows: ShiftHistoryRow[] = shiftsRaw.map((s) => {

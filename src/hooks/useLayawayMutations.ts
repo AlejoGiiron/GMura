@@ -3,6 +3,7 @@ import toast from 'react-hot-toast'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from './useAuth'
 import { getActiveStoreId } from './useActiveStoreId'
+import { useCurrentShift } from './useCashShift'
 import { useResolvedConfig } from './useConfig'
 import { fmtCOP } from '@/lib/formatters'
 import { cartTotals, orderTotals, minFinalPrice } from '@/stores/cartStore'
@@ -75,6 +76,7 @@ function invalidateLayawayWriteQueries(
 export function useCreateLayaway() {
   const { profile } = useAuth()
   const queryClient = useQueryClient()
+  const { data: currentShift } = useCurrentShift()
   const maxItemDiscount = useResolvedConfig().max_item_discount
 
   return useMutation({
@@ -225,6 +227,8 @@ export function useCreateLayaway() {
             amount: input.initial_payment.amount,
             payment_method: input.initial_payment.method,
             created_by: userId,
+            // Imputa el abono al turno abierto de la tienda (026).
+            shift_id: currentShift?.id ?? null,
             notes: input.initial_payment.notes?.trim()
               ? input.initial_payment.notes.trim()
               : null,
@@ -254,6 +258,7 @@ export function useCreateLayaway() {
 export function useAddLayawayPayment() {
   const { profile } = useAuth()
   const queryClient = useQueryClient()
+  const { data: currentShift } = useCurrentShift()
 
   return useMutation({
     mutationFn: async (input: AddPaymentInput) => {
@@ -296,6 +301,8 @@ export function useAddLayawayPayment() {
           amount: input.amount,
           payment_method: input.method,
           created_by: userId,
+          // Imputa el abono al turno abierto de la tienda (026).
+          shift_id: currentShift?.id ?? null,
           notes: input.notes?.trim() ? input.notes.trim() : null,
         } as never)
       if (payErr) {
@@ -375,6 +382,7 @@ export interface CompletedLayawayResult {
 export function useCompleteLayaway() {
   const { profile } = useAuth()
   const queryClient = useQueryClient()
+  const { data: currentShift } = useCurrentShift()
 
   return useMutation({
     mutationFn: async (
@@ -440,6 +448,8 @@ export function useCompleteLayaway() {
             amount: input.final_payment.amount,
             payment_method: input.final_payment.method,
             created_by: userId,
+            // Imputa el pago final al turno abierto de la tienda (026).
+            shift_id: currentShift?.id ?? null,
             notes: input.final_payment.notes?.trim()
               ? input.final_payment.notes.trim()
               : null,
@@ -493,6 +503,10 @@ export function useCompleteLayaway() {
           total: orderTotal,
           payment_method: lastMethod,
           cash_received: null,
+          // Traza el turno de la conversión (026). El cuadre igual EXCLUYE esta
+          // orden por converted_order_id (el dinero ya entró como abonos), así
+          // que el shift_id aquí es solo informativo, no altera el cálculo.
+          shift_id: currentShift?.id ?? null,
         } as never)
         .select()
         .single()
