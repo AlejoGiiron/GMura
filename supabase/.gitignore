@@ -1,0 +1,11 @@
+# Supabase
+.branches
+.temp
+
+# Supabase Studio scratch snippets (local scratchpad, not shared)
+snippets/
+
+# dotenvx
+.env.keys
+.env.local
+.env.*.local
