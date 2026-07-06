@@ -12,7 +12,6 @@ import {
   Plus,
   Minus,
   User,
-  Tag,
   Printer,
   CheckCircle,
   Camera,
@@ -617,51 +616,83 @@ interface ProductCardProps {
   onClick: () => void
 }
 
+// Paleta estable para el ancla de color de cada producto (las cards del POS no
+// llevan imagen). Tints suaves + texto oscuro del mismo tono → buen contraste y
+// coherente con el lenguaje visual del design-system (violeta de marca +
+// semánticos). El color es un ancla para escanear la grilla, no una foto.
+const CARD_ACCENTS: ReadonlyArray<{ bg: string; fg: string }> = [
+  { bg: '#ede9fe', fg: '#6d28d9' }, // violeta (marca)
+  { bg: '#dbeafe', fg: '#1d4ed8' }, // azul
+  { bg: '#dcfce7', fg: '#15803d' }, // verde
+  { bg: '#fef3c7', fg: '#b45309' }, // ámbar
+  { bg: '#ffe4e6', fg: '#be123c' }, // rosa
+  { bg: '#e0f2fe', fg: '#0369a1' }, // cielo
+  { bg: '#ccfbf1', fg: '#0f766e' }, // teal
+  { bg: '#ffedd5', fg: '#c2410c' }, // naranja
+]
+
+// Hash determinista (djb2-ish) del id del producto → índice de paleta estable:
+// el mismo producto siempre obtiene el mismo color.
+function cardAccent(seed: string): { bg: string; fg: string } {
+  let h = 0
+  for (let i = 0; i < seed.length; i++) {
+    h = (h << 5) - h + seed.charCodeAt(i)
+    h |= 0 // fuerza a int32
+  }
+  return CARD_ACCENTS[Math.abs(h) % CARD_ACCENTS.length]
+}
+
 function ProductCard({ product, onClick }: ProductCardProps) {
   const sizes = [...new Set(product.variants.map((v) => v.size).filter(Boolean))] as string[]
   const minPrice = Math.min(...product.variants.map((v) => v.price))
   const totalStock = product.variants.reduce((s, v) => s + v.stock_qty, 0)
+  const extraSizes = sizes.length - 3
+  const accent = cardAccent(product.id)
+  const initial = (product.name.trim()[0] ?? '?').toUpperCase()
+  const soldOut = totalStock === 0
 
   return (
     <button
       onClick={onClick}
-      className="group w-full rounded-xl border border-slate-100 bg-white text-left transition-all hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md"
+      className={`group flex w-full flex-col gap-1.5 rounded-xl border border-slate-100 bg-white p-2.5 text-left transition-all hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md ${
+        soldOut ? 'opacity-60' : ''
+      }`}
     >
-      <div className="relative aspect-square overflow-hidden rounded-t-xl bg-slate-100">
-        {product.image_url ? (
-          <img
-            src={product.image_url}
-            alt={product.name}
-            className="h-full w-full object-cover"
-          />
+      {/* Ancla de color + marca + señal de agotado */}
+      <div className="flex items-center gap-2">
+        <span
+          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-[13px] font-bold"
+          style={{ background: accent.bg, color: accent.fg }}
+        >
+          {initial}
+        </span>
+        {product.brand ? (
+          <span className="min-w-0 flex-1 truncate text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+            {product.brand}
+          </span>
         ) : (
-          <div className="flex h-full items-center justify-center text-slate-300">
-            <Tag size={28} />
-          </div>
+          <span className="flex-1" />
         )}
-        {totalStock === 0 && (
-          <div className="absolute inset-0 flex items-center justify-center bg-black/50">
-            <span className="rounded-full bg-white px-2 py-0.5 text-xs font-semibold text-slate-700">
-              Agotado
-            </span>
-          </div>
+        {soldOut && (
+          <span className="shrink-0 rounded-full bg-red-100 px-1.5 py-0.5 text-[9px] font-semibold text-red-700">
+            Agotado
+          </span>
         )}
       </div>
-      <div className="p-3">
-        {product.brand && (
-          <p className="mb-0.5 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
-            {product.brand}
-          </p>
-        )}
-        <p className="line-clamp-2 text-sm font-medium leading-tight text-slate-900">
-          {product.name}
-        </p>
-        <p className="mt-1.5 font-mono text-sm font-bold text-slate-900">
+
+      {/* Nombre — protagonista del reconocimiento */}
+      <p className="line-clamp-2 text-[15px] font-semibold leading-snug text-slate-900">
+        {product.name}
+      </p>
+
+      {/* Precio (secundario) + tallas disponibles */}
+      <div className="mt-auto flex flex-col gap-1 pt-0.5">
+        <span className="font-mono text-sm font-bold text-slate-900">
           {fmtCOP(minPrice)}
-        </p>
+        </span>
         {sizes.length > 0 && (
-          <div className="mt-2 flex flex-wrap gap-1">
-            {sizes.slice(0, 5).map((s) => (
+          <div className="flex flex-wrap gap-1">
+            {sizes.slice(0, 3).map((s) => (
               <span
                 key={s}
                 className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600"
@@ -669,6 +700,11 @@ function ProductCard({ product, onClick }: ProductCardProps) {
                 {s}
               </span>
             ))}
+            {extraSizes > 0 && (
+              <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-400">
+                +{extraSizes}
+              </span>
+            )}
           </div>
         )}
       </div>
@@ -1254,6 +1290,17 @@ export default function POSPage() {
     toast.success(`${product.name} agregado`)
   }
 
+  // Clic en una card: si el producto tiene UNA sola variante disponible, se
+  // agrega directo (saltando el selector). Con 2+ variantes, o si la única
+  // está agotada, se abre el picker para elegir / ver el estado de stock.
+  const handleProductClick = (product: POSProduct) => {
+    if (product.variants.length === 1 && product.variants[0].stock_qty > 0) {
+      handleAddVariant(product, product.variants[0])
+      return
+    }
+    setPickerProduct(product)
+  }
+
   const handleConfirmPayment = (
     method: PaymentMethod,
     cashReceived?: number,
@@ -1422,9 +1469,9 @@ export default function POSPage() {
         {/* Product grid */}
         <div className="min-h-0 flex-1 overflow-y-auto px-6 pb-6">
           {isLoading ? (
-            <div className="grid grid-cols-3 gap-4">
-              {Array.from({ length: 6 }).map((_, i) => (
-                <div key={i} className="aspect-square animate-pulse rounded-xl bg-slate-100" />
+            <div className="grid grid-cols-[repeat(auto-fill,minmax(160px,1fr))] gap-3">
+              {Array.from({ length: 12 }).map((_, i) => (
+                <div key={i} className="h-28 animate-pulse rounded-xl bg-slate-100" />
               ))}
             </div>
           ) : displayed.length === 0 ? (
@@ -1433,12 +1480,12 @@ export default function POSPage() {
               <p className="text-sm">Sin resultados</p>
             </div>
           ) : (
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-[repeat(auto-fill,minmax(160px,1fr))] gap-3">
               {displayed.map((product) => (
                 <ProductCard
                   key={product.id}
                   product={product}
-                  onClick={() => setPickerProduct(product)}
+                  onClick={() => handleProductClick(product)}
                 />
               ))}
             </div>
