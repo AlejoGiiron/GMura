@@ -1,8 +1,5 @@
 import { useState, useMemo } from 'react'
-import {
-  startOfDay, endOfDay, startOfWeek, startOfMonth, endOfMonth,
-  subMonths, subDays, parseISO, format, differenceInDays,
-} from 'date-fns'
+import { subDays, parseISO, format, differenceInDays } from 'date-fns'
 import { es } from 'date-fns/locale'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
@@ -28,6 +25,14 @@ import {
   useInvoicesForExport,
 } from '@/hooks/useReports'
 import { INVOICE_STATUS_LABEL } from '@/lib/invoices'
+import {
+  DateRangeFilter,
+  type DateRangeValue,
+} from '@/components/ui/DateRangeFilter'
+import {
+  resolveDateRange,
+  type DateRangePreset,
+} from '@/lib/dateRange'
 import type {
   DailySalesSummary,
   PaymentMethod,
@@ -69,15 +74,15 @@ const LAYAWAY_STATUS_LABELS: Record<LayawayStatus, string> = {
 const SUPPLIER_COLORS = ['#8b5cf6', '#3b82f6', '#10b981', '#f59e0b', '#ec4899']
 const SUPPLIER_OTHERS_COLOR = '#cbd5e1'
 
-const PERIOD_OPTIONS = [
-  { id: 'today',      label: 'Hoy' },
-  { id: 'week',       label: 'Esta semana' },
-  { id: 'month',      label: 'Este mes' },
-  { id: 'prev-month', label: 'Mes anterior' },
-  { id: 'custom',     label: 'Personalizado' },
-] as const
-
-type Period = typeof PERIOD_OPTIONS[number]['id']
+// Reportes usa el set base + 'mes anterior' (comparativa de período).
+const REPORT_PRESETS: DateRangePreset[] = [
+  'today',
+  'yesterday',
+  'last7',
+  'month',
+  'prev-month',
+  'custom',
+]
 
 const VAR_PAGE_SIZE = 20
 
@@ -270,26 +275,25 @@ function CopTooltip({ active, payload, label }: ChartTooltipProps) {
 export default function ReportsPage() {
   const navigate = useNavigate()
 
-  // Period state
-  const [period,     setPeriod]     = useState<Period>('month')
-  const [customFrom, setCustomFrom] = useState('')
-  const [customTo,   setCustomTo]   = useState('')
+  // Period state. La fuente de verdad son fechas civiles YYYY-MM-DD (Bogotá)
+  // que emite DateRangeFilter; useReports las espera como Date, así que se
+  // convierten con parseISO. Default 'month' (sin cambio de comportamiento).
+  const [preset, setPreset] = useState<DateRangePreset>('month')
+  const [range, setRange] = useState(() => resolveDateRange('month'))
+
+  const handleDateChange = (next: DateRangeValue) => {
+    setPreset(next.preset)
+    setRange({ dateFrom: next.dateFrom, dateTo: next.dateTo })
+  }
 
   const { from, to } = useMemo((): { from: Date; to: Date } => {
-    const now = new Date()
-    switch (period) {
-      case 'today':      return { from: startOfDay(now), to: endOfDay(now) }
-      case 'week':       return { from: startOfWeek(now, { weekStartsOn: 1 }), to: now }
-      case 'month':      return { from: startOfMonth(now), to: now }
-      case 'prev-month': {
-        const prev = subMonths(now, 1)
-        return { from: startOfMonth(prev), to: endOfMonth(prev) }
-      }
-      case 'custom':
-        if (customFrom && customTo) return { from: parseISO(customFrom), to: parseISO(customTo) }
-        return { from: startOfMonth(now), to: now }
+    // 'custom' sin completar cae al mes actual (mismo fallback que antes).
+    const fallback = resolveDateRange('month')
+    return {
+      from: parseISO(range.dateFrom || fallback.dateFrom),
+      to: parseISO(range.dateTo || fallback.dateTo),
     }
-  }, [period, customFrom, customTo])
+  }, [range])
 
   const { prevFrom, prevTo } = useMemo(() => {
     const dur = differenceInDays(to, from)
@@ -682,10 +686,6 @@ export default function ReportsPage() {
 
   // ── Shared styles ────────────────────────────────────────────────────────────
 
-  const inputCls =
-    'h-9 rounded-lg border border-[#ebe9e6] bg-white px-3 text-sm text-[#525252] outline-none ' +
-    'focus:border-[#8b5cf6] focus:shadow-[0_0_0_3px_#8b5cf61a] transition-[border-color,box-shadow]'
-
   const thCls =
     'whitespace-nowrap px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[.05em] text-[#737373]'
 
@@ -718,28 +718,13 @@ export default function ReportsPage() {
 
         {/* ── Period selector ──────────────────────────────────────────────── */}
         <div className="flex flex-wrap items-center gap-3">
-          <div className="flex items-center gap-1 rounded-xl border border-[#ebe9e6] bg-white p-1.5">
-            {PERIOD_OPTIONS.map((opt) => (
-              <button
-                key={opt.id}
-                onClick={() => setPeriod(opt.id)}
-                className={`rounded-lg px-4 py-1.5 text-sm font-medium transition-colors ${
-                  period === opt.id ? 'bg-[#8b5cf6] text-white shadow-sm' : 'text-[#737373] hover:text-[#525252]'
-                }`}
-              >
-                {opt.label}
-              </button>
-            ))}
-          </div>
-
-          {period === 'custom' && (
-            <div className="flex items-center gap-2">
-              <label className="text-xs text-[#737373]">Desde</label>
-              <input type="date" className={inputCls} value={customFrom} onChange={(e) => setCustomFrom(e.target.value)} />
-              <label className="text-xs text-[#737373]">Hasta</label>
-              <input type="date" className={inputCls} value={customTo}   onChange={(e) => setCustomTo(e.target.value)} />
-            </div>
-          )}
+          <DateRangeFilter
+            preset={preset}
+            dateFrom={range.dateFrom}
+            dateTo={range.dateTo}
+            presets={REPORT_PRESETS}
+            onChange={handleDateChange}
+          />
 
           <p className="ml-auto text-xs text-[#a8a29e]">
             {format(from, 'd MMM yyyy', { locale: es })} – {format(to, 'd MMM yyyy', { locale: es })}

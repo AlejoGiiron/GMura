@@ -8,7 +8,6 @@ import {
   CheckCircle,
   Receipt,
 } from 'lucide-react'
-import { format, subDays } from 'date-fns'
 import { fmtCOP } from '@/lib/formatters'
 import {
   useShiftHistory,
@@ -23,9 +22,11 @@ import {
   CashShiftReceipt,
   CashShiftReceiptPrint,
 } from '@/components/cash/CashShiftReceipt'
-
-const DEFAULT_FROM = format(subDays(new Date(), 30), 'yyyy-MM-dd')
-const DEFAULT_TO = format(new Date(), 'yyyy-MM-dd')
+import {
+  DateRangeFilter,
+  type DateRangeValue,
+} from '@/components/ui/DateRangeFilter'
+import { resolveDateRange, type DateRangePreset } from '@/lib/dateRange'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -247,13 +248,25 @@ function ShiftRow({ row, onReprint }: RowProps) {
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function CashShiftsHistoryPage() {
-  const [filters, setFilters] = useState<ShiftHistoryFilters>({
+  // Default: 'month' (conciliación histórica; NO 'today', que solo mostraría
+  // turnos cerrados hoy).
+  const [preset, setPreset] = useState<DateRangePreset>('month')
+  const [filters, setFilters] = useState<ShiftHistoryFilters>(() => ({
     cashierId: 'all',
-    dateFrom: DEFAULT_FROM,
-    dateTo: DEFAULT_TO,
+    ...resolveDateRange('month'),
     page: 0,
-  })
+  }))
   const [reprintRow, setReprintRow] = useState<ShiftHistoryRow | null>(null)
+
+  const handleDateChange = (next: DateRangeValue) => {
+    setPreset(next.preset)
+    setFilters((f) => ({
+      ...f,
+      dateFrom: next.dateFrom,
+      dateTo: next.dateTo,
+      page: 0,
+    }))
+  }
 
   const { data, isLoading } = useShiftHistory(filters)
   const { data: cashiers = [] } = useStoreCashiers()
@@ -301,22 +314,11 @@ export default function CashShiftsHistoryPage() {
             </option>
           ))}
         </select>
-        <input
-          type="date"
-          value={filters.dateFrom}
-          onChange={(e) =>
-            setFilters((f) => ({ ...f, dateFrom: e.target.value, page: 0 }))
-          }
-          className="h-9 rounded-lg border border-[#ebe9e6] bg-white px-3 text-sm outline-none focus:border-violet-400"
-        />
-        <span className="text-xs text-[#737373]">a</span>
-        <input
-          type="date"
-          value={filters.dateTo}
-          onChange={(e) =>
-            setFilters((f) => ({ ...f, dateTo: e.target.value, page: 0 }))
-          }
-          className="h-9 rounded-lg border border-[#ebe9e6] bg-white px-3 text-sm outline-none focus:border-violet-400"
+        <DateRangeFilter
+          preset={preset}
+          dateFrom={filters.dateFrom}
+          dateTo={filters.dateTo}
+          onChange={handleDateChange}
         />
       </div>
 
