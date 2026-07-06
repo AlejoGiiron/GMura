@@ -961,9 +961,9 @@ function CartLine({
   onRemove,
 }: CartLineProps) {
   return (
-    <div className="flex items-center gap-3 px-5 py-3">
+    <div className="flex items-center gap-3 px-5 py-3.5">
       <div
-        className="h-4 w-4 shrink-0 rounded-full shadow-[0_0_0_1.5px_rgba(0,0,0,0.12)]"
+        className="h-5 w-5 shrink-0 rounded-full shadow-[0_0_0_1.5px_rgba(0,0,0,0.12)]"
         style={{ background: item.color ? getColorHex(item.color) : '#e2e8f0' }}
       />
       <div className="min-w-0 flex-1">
@@ -972,9 +972,9 @@ function CartLine({
             {item.brand}
           </p>
         )}
-        <p className="truncate text-sm font-medium text-slate-900">{item.name}</p>
+        <p className="truncate text-[15px] font-medium text-slate-900">{item.name}</p>
         {(item.size || item.color) && (
-          <p className="truncate text-xs text-slate-400">
+          <p className="truncate text-[13px] text-slate-400">
             {[item.size ? `T.${item.size}` : null, item.color]
               .filter(Boolean)
               .join(' · ')}
@@ -989,32 +989,32 @@ function CartLine({
         />
       </div>
 
-      <div className="flex h-7 items-center overflow-hidden rounded-lg border border-slate-200">
+      <div className="flex h-9 items-center overflow-hidden rounded-lg border border-slate-200">
         <button
           onClick={() => onSetQty(item.variant_id, item.qty - 1)}
-          className="flex h-full w-7 items-center justify-center text-slate-500 hover:bg-slate-50"
+          className="flex h-full w-9 items-center justify-center text-slate-500 hover:bg-slate-50"
         >
-          <Minus size={11} />
+          <Minus size={14} />
         </button>
-        <span className="w-6 text-center text-xs font-semibold tabular-nums">
+        <span className="w-7 text-center text-base font-semibold tabular-nums">
           {item.qty}
         </span>
         <button
           onClick={() => onSetQty(item.variant_id, item.qty + 1)}
           disabled={item.qty >= item.stock_qty}
-          className="flex h-full w-7 items-center justify-center text-slate-500 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+          className="flex h-full w-9 items-center justify-center text-slate-500 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
         >
-          <Plus size={11} />
+          <Plus size={14} />
         </button>
       </div>
-      <span className="w-20 text-right font-mono text-sm font-semibold text-slate-800">
+      <span className="w-24 text-right font-mono text-base font-semibold text-slate-800">
         {fmtCOP(item.unit_price * item.qty)}
       </span>
       <button
         onClick={() => onRemove(item.variant_id)}
         className="text-slate-300 hover:text-slate-600"
       >
-        <X size={14} />
+        <X size={15} />
       </button>
     </div>
   )
@@ -1126,8 +1126,8 @@ function CartPanel({
         )}
 
         <div className="mb-3 flex items-baseline justify-between border-t border-dashed border-slate-200 pt-3">
-          <span className="text-sm font-semibold text-slate-700">Total</span>
-          <span className="font-mono text-2xl font-bold tracking-tight text-slate-900">
+          <span className="text-base font-semibold text-slate-700">Total</span>
+          <span className="font-mono text-3xl font-bold tracking-tight text-slate-900">
             {fmtCOP(total)}
           </span>
         </div>
@@ -1135,7 +1135,7 @@ function CartPanel({
         <button
           disabled={items.length === 0}
           onClick={onCheckout}
-          className="w-full rounded-xl bg-violet-600 py-3.5 text-sm font-semibold text-white shadow-[0_6px_18px_rgba(139,92,246,0.35)] transition-all disabled:cursor-not-allowed disabled:bg-slate-300 disabled:shadow-none hover:bg-violet-700"
+          className="w-full rounded-xl bg-violet-600 py-4 text-base font-semibold text-white shadow-[0_6px_18px_rgba(139,92,246,0.35)] transition-all disabled:cursor-not-allowed disabled:bg-slate-300 disabled:shadow-none hover:bg-violet-700"
         >
           Cobrar · {fmtCOP(total)}
         </button>
@@ -1493,8 +1493,8 @@ export default function POSPage() {
         </div>
       </section>
 
-      {/* Right — Cart */}
-      <section className="flex w-[340px] shrink-0 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white">
+      {/* Right — Cart (≈40% del design-system, clampeado para desktop ancho) */}
+      <section className="flex w-[40%] min-w-[400px] max-w-[560px] shrink-0 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white">
         <CartPanel
           onCheckout={() => setShowPayment(true)}
           selectedCustomer={selectedCustomer}
