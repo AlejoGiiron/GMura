@@ -1356,7 +1356,9 @@ export default function ReturnsPage() {
                 variant_id: nv.id,
                 product_id: nv.product_id,
                 qty: returnQtys[i.variant_id] ?? 0,
+                // Ítem nuevo a catálogo: unit_price = list_price = nv.price.
                 unit_price: nv.price,
+                list_price: nv.price,
               },
             ]
           })
@@ -1371,7 +1373,10 @@ export default function ReturnsPage() {
         returnItems: selectedItems.map((i) => ({
           variant_id: i.variant_id,
           qty: returnQtys[i.variant_id] ?? 0,
+          // unit_price = lo pagado (crédito); list_price = catálogo (para
+          // trasladar el descuento absoluto del original al cambio).
           unit_price: i.unit_price,
+          list_price: i.list_price,
         })),
         exchangeItems,
         refundMethod,

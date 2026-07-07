@@ -15,14 +15,19 @@ import type { PaymentMethod, ReturnType, Return } from '@/types/database.types'
 export type ReturnItemInput = {
   variant_id: string
   qty: number
+  // Precio realmente pagado (con descuento por ítem).
   unit_price: number
+  // Precio de catálogo del ítem devuelto (para trasladar su descuento al cambio).
+  list_price: number
 }
 
 export type ExchangeItemInput = {
   variant_id: string
   product_id: string
   qty: number
+  // Catálogo del ítem nuevo (unit_price = list_price: sin redescuento propio).
   unit_price: number
+  list_price: number
 }
 
 export type CreateReturnInput = {
@@ -223,10 +228,10 @@ export function useCreateReturn() {
             product_id: i.product_id,
             qty: i.qty,
             // El ítem NUEVO del cambio va a precio de catálogo (sin redescuento):
-            // unit_price = list_price = i.unit_price. list_price es obligatorio
-            // (NOT NULL); el `as never` lo ocultaría.
+            // unit_price = list_price = catálogo del nuevo. El descuento del
+            // original se netea a nivel de orden (order.discount), no por línea.
             unit_price: i.unit_price,
-            list_price: i.unit_price,
+            list_price: i.list_price,
           })) as never,
         )
 
