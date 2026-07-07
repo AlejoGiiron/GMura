@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { isValidGiftReason } from '@/lib/giftReasons'
 
 export interface CartItem {
   variant_id: string
@@ -14,6 +15,14 @@ export interface CartItem {
   list_price: number
   qty: number
   stock_qty: number
+  // Regalo (cortesía $0). Requiere permiso ventas.regalo en la UI. Cuando
+  // isGift=true: unit_price=0 y giftReason es uno de la lista de giftReasons
+  // (coherente con el CHECK order_items_gift_coherent de la 027).
+  isGift: boolean
+  giftReason: string | null
+  // unit_price que tenía la línea ANTES de marcarla como regalo (preserva un
+  // descuento por ítem previo). Se restaura al desmarcar. null si no aplica.
+  prevUnitPrice: number | null
 }
 
 // Precio final mínimo permitido para un ítem dado el tope (en pesos):
@@ -37,7 +46,9 @@ export function clampItemPrice(
 interface CartStore {
   items: CartItem[]
   customer_id: string | null
-  addItem: (item: Omit<CartItem, 'qty'>) => void
+  addItem: (
+    item: Omit<CartItem, 'qty' | 'isGift' | 'giftReason' | 'prevUnitPrice'>,
+  ) => void
   removeItem: (variant_id: string) => void
   setQty: (variant_id: string, qty: number) => void
   // Fija el precio FINAL de la línea, clampeado a [max(0, list-tope), list].
@@ -45,6 +56,14 @@ interface CartStore {
     variant_id: string,
     finalPrice: number,
     maxItemDiscount: number,
+  ) => void
+  // Marca/desmarca la línea como regalo ($0). Al marcar guarda el precio
+  // previo; al desmarcar lo restaura. Un motivo inválido no marca (defensa
+  // de coherencia con el CHECK de la BD).
+  setItemGift: (
+    variant_id: string,
+    isGift: boolean,
+    reason?: string | null,
   ) => void
   setCustomer: (id: string | null) => void
   clear: () => void
@@ -66,11 +85,19 @@ export const useCartStore = create<CartStore>((set) => ({
         }
       }
       if (newItem.stock_qty <= 0) return s
-      // Un ítem nuevo arranca sin descuento: unit_price = list_price.
+      // Un ítem nuevo arranca sin descuento (unit_price = list_price) y sin
+      // regalo.
       return {
         items: [
           ...s.items,
-          { ...newItem, unit_price: newItem.list_price, qty: 1 },
+          {
+            ...newItem,
+            unit_price: newItem.list_price,
+            qty: 1,
+            isGift: false,
+            giftReason: null,
+            prevUnitPrice: null,
+          },
         ],
       }
     }),
@@ -98,6 +125,34 @@ export const useCartStore = create<CartStore>((set) => ({
             }
           : i,
       ),
+    })),
+
+  setItemGift: (variant_id, isGift, reason) =>
+    set((s) => ({
+      items: s.items.map((i) => {
+        if (i.variant_id !== variant_id) return i
+        if (isGift) {
+          // Motivo inválido → no se marca (mantiene la coherencia del CHECK).
+          if (!isValidGiftReason(reason ?? null)) return i
+          return {
+            ...i,
+            isGift: true,
+            giftReason: reason ?? null,
+            // Solo captura el precio previo la PRIMERA vez (si ya era regalo,
+            // conserva el prevUnitPrice original para no perderlo).
+            prevUnitPrice: i.isGift ? i.prevUnitPrice : i.unit_price,
+            unit_price: 0,
+          }
+        }
+        // Desmarcar: restaura el precio previo (o el catálogo si no había).
+        return {
+          ...i,
+          isGift: false,
+          giftReason: null,
+          unit_price: i.prevUnitPrice ?? i.list_price,
+          prevUnitPrice: null,
+        }
+      }),
     })),
 
   setCustomer: (id) => set({ customer_id: id }),

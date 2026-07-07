@@ -39,6 +39,8 @@ import { getColorHex } from '@/lib/products'
 import { useDebounce } from '@/hooks/useDebounce'
 import { useCreateCustomer } from '@/hooks/useCustomerMutations'
 import { useCustomerSearch } from '@/hooks/useCustomers'
+import { usePermissions } from '@/hooks/usePermissions'
+import { GIFT_REASONS, giftReasonLabel } from '@/lib/giftReasons'
 import { useCurrentShift } from '@/hooks/useCashShift'
 import { OpenShiftModal } from '@/components/layout/CashShiftModals'
 import {
@@ -912,18 +914,25 @@ function CustomerSearchInput({ selected, onSelect }: CustomerSearchInputProps) {
 interface CartLineProps {
   item: CartItem
   maxItemDiscount: number
+  // Solo si el usuario tiene ventas.regalo se muestra el control de regalo.
+  canGift: boolean
   onSetQty: (variantId: string, qty: number) => void
   onSetPrice: (variantId: string, finalPrice: number) => void
+  onSetGift: (variantId: string, isGift: boolean, reason?: string | null) => void
   onRemove: (variantId: string) => void
 }
 
 function CartLine({
   item,
   maxItemDiscount,
+  canGift,
   onSetQty,
   onSetPrice,
+  onSetGift,
   onRemove,
 }: CartLineProps) {
+  const [showReasons, setShowReasons] = useState(false)
+
   return (
     <div className="flex items-center gap-3 px-5 py-3">
       <div
@@ -950,7 +959,53 @@ function CartLine({
           unitPrice={item.unit_price}
           maxItemDiscount={maxItemDiscount}
           onCommit={(finalPrice) => onSetPrice(item.variant_id, finalPrice)}
+          forceLocked={item.isGift}
         />
+
+        {/* Control de regalo — solo con permiso ventas.regalo */}
+        {canGift &&
+          (item.isGift ? (
+            <div className="mt-1 flex items-center gap-1.5">
+              <span className="rounded bg-violet-100 px-1.5 py-0.5 text-[10px] font-semibold text-violet-700">
+                🎁 Regalo · {giftReasonLabel(item.giftReason)}
+              </span>
+              <button
+                onClick={() => onSetGift(item.variant_id, false)}
+                className="text-[10px] font-medium text-slate-400 hover:text-slate-600"
+              >
+                quitar
+              </button>
+            </div>
+          ) : showReasons ? (
+            <div className="mt-1 flex flex-wrap items-center gap-1">
+              {GIFT_REASONS.map((r) => (
+                <button
+                  key={r.value}
+                  onClick={() => {
+                    onSetGift(item.variant_id, true, r.value)
+                    setShowReasons(false)
+                  }}
+                  className="rounded border border-violet-200 bg-white px-1.5 py-0.5 text-[10px] font-medium text-violet-700 hover:bg-violet-50"
+                >
+                  {r.label}
+                </button>
+              ))}
+              <button
+                onClick={() => setShowReasons(false)}
+                className="text-[10px] text-slate-400 hover:text-slate-600"
+                aria-label="Cancelar regalo"
+              >
+                ✕
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => setShowReasons(true)}
+              className="mt-1 text-[11px] font-medium text-slate-400 hover:text-violet-600"
+            >
+              🎁 Regalo
+            </button>
+          ))}
       </div>
 
       <div className="flex h-7 items-center overflow-hidden rounded-lg border border-slate-200">
@@ -1000,6 +1055,8 @@ function CartPanel({
   const store = useCartStore()
   const { items, customer_id } = store
   const maxItemDiscount = useResolvedConfig().max_item_discount
+  const { can } = usePermissions()
+  const canGift = can('ventas.regalo')
   const { subtotal, discountAmt, total } = cartTotals(items)
 
   const handleSelectCustomer = useCallback(
@@ -1063,10 +1120,12 @@ function CartPanel({
                 key={item.variant_id}
                 item={item}
                 maxItemDiscount={maxItemDiscount}
+                canGift={canGift}
                 onSetQty={store.setQty}
                 onSetPrice={(variantId, finalPrice) =>
                   store.setItemPrice(variantId, finalPrice, maxItemDiscount)
                 }
+                onSetGift={store.setItemGift}
                 onRemove={store.removeItem}
               />
             ))}

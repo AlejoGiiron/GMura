@@ -12,6 +12,9 @@ interface ItemPriceFieldProps {
   // Recibe el precio final tecleado; el PADRE clampa (store o clampItemPrice)
   // y la prop unitPrice refleja el valor ya clampeado.
   onCommit: (finalPrice: number) => void
+  // Fuerza solo-lectura sin importar el tope (ej. ítem marcado como regalo,
+  // fijo en $0). Default false → comportamiento normal.
+  forceLocked?: boolean
 }
 
 /**
@@ -27,9 +30,10 @@ export function ItemPriceField({
   unitPrice,
   maxItemDiscount,
   onCommit,
+  forceLocked = false,
 }: ItemPriceFieldProps) {
   const [editing, setEditing] = useState<string | null>(null)
-  const priceLocked = maxItemDiscount <= 0
+  const priceLocked = maxItemDiscount <= 0 || forceLocked
   const discounted = unitPrice < listPrice
   const isFree = unitPrice === 0
   const pctOff =
@@ -79,9 +83,11 @@ export function ItemPriceField({
           readOnly={priceLocked}
           inputMode="numeric"
           title={
-            priceLocked
-              ? 'Descuento por ítem deshabilitado (tope $0)'
-              : `Mínimo ${fmtCOP(minFinalPrice(listPrice, maxItemDiscount))}`
+            forceLocked
+              ? 'Ítem marcado como regalo ($0)'
+              : priceLocked
+                ? 'Descuento por ítem deshabilitado (tope $0)'
+                : `Mínimo ${fmtCOP(minFinalPrice(listPrice, maxItemDiscount))}`
           }
           className="w-20 bg-transparent text-right text-xs font-semibold tabular-nums outline-none read-only:cursor-default read-only:text-slate-500"
         />

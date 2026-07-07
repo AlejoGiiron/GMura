@@ -23,6 +23,9 @@ function item(
     list_price: fields.list_price,
     qty: fields.qty,
     stock_qty: fields.stock_qty ?? 99,
+    isGift: fields.isGift ?? false,
+    giftReason: fields.giftReason ?? null,
+    prevUnitPrice: fields.prevUnitPrice ?? null,
   }
 }
 
@@ -243,5 +246,105 @@ describe('useCartStore.setItemPrice', () => {
     const items = useCartStore.getState().items
     expect(items.find((i) => i.variant_id === 'a')!.unit_price).toBe(30_000)
     expect(items.find((i) => i.variant_id === 'b')!.unit_price).toBe(40_000)
+  })
+
+  it('un ítem nuevo arranca sin regalo', () => {
+    addCatalogItem('a', 50_000)
+    const it0 = useCartStore.getState().items[0]
+    expect(it0.isGift).toBe(false)
+    expect(it0.giftReason).toBe(null)
+    expect(it0.prevUnitPrice).toBe(null)
+  })
+})
+
+// ── setItemGift (marcar/desmarcar regalo) ─────────────────────────────────────
+
+describe('useCartStore.setItemGift', () => {
+  beforeEach(() => {
+    useCartStore.setState({ items: [], customer_id: null })
+  })
+
+  function addCatalogItem(variant_id: string, listPrice: number, stock = 99) {
+    useCartStore.getState().addItem({
+      variant_id,
+      product_id: 'p1',
+      name: 'Producto',
+      brand: null,
+      size: null,
+      color: null,
+      unit_price: listPrice,
+      list_price: listPrice,
+      stock_qty: stock,
+    })
+  }
+
+  it('marcar regalo: unit_price 0 + motivo + guarda el precio previo', () => {
+    addCatalogItem('a', 50_000)
+    useCartStore.getState().setItemGift('a', true, 'regalo')
+    const it0 = useCartStore.getState().items[0]
+    expect(it0.isGift).toBe(true)
+    expect(it0.giftReason).toBe('regalo')
+    expect(it0.unit_price).toBe(0)
+    expect(it0.prevUnitPrice).toBe(50_000)
+  })
+
+  it('desmarcar restaura el precio de catálogo', () => {
+    addCatalogItem('a', 50_000)
+    useCartStore.getState().setItemGift('a', true, 'muestra')
+    useCartStore.getState().setItemGift('a', false)
+    const it0 = useCartStore.getState().items[0]
+    expect(it0.isGift).toBe(false)
+    expect(it0.giftReason).toBe(null)
+    expect(it0.unit_price).toBe(50_000)
+    expect(it0.prevUnitPrice).toBe(null)
+  })
+
+  it('preserva el descuento por ítem al marcar y desmarcar regalo', () => {
+    addCatalogItem('a', 50_000)
+    // Descuento por ítem: baja a 30.000
+    useCartStore.getState().setItemPrice('a', 30_000, 30_000)
+    // Marcar regalo → 0, guardando 30.000
+    useCartStore.getState().setItemGift('a', true, 'promocion')
+    expect(useCartStore.getState().items[0].unit_price).toBe(0)
+    expect(useCartStore.getState().items[0].prevUnitPrice).toBe(30_000)
+    // Desmarcar → vuelve al 30.000 con descuento, no al catálogo
+    useCartStore.getState().setItemGift('a', false)
+    expect(useCartStore.getState().items[0].unit_price).toBe(30_000)
+  })
+
+  it('motivo inválido no marca el ítem como regalo', () => {
+    addCatalogItem('a', 50_000)
+    useCartStore.getState().setItemGift('a', true, 'inventado')
+    const it0 = useCartStore.getState().items[0]
+    expect(it0.isGift).toBe(false)
+    expect(it0.unit_price).toBe(50_000)
+  })
+
+  it('sin motivo (undefined) no marca el ítem como regalo', () => {
+    addCatalogItem('a', 50_000)
+    useCartStore.getState().setItemGift('a', true)
+    expect(useCartStore.getState().items[0].isGift).toBe(false)
+  })
+
+  it('re-marcar con otro motivo conserva el precio previo original', () => {
+    addCatalogItem('a', 50_000)
+    useCartStore.getState().setItemPrice('a', 40_000, 30_000)
+    useCartStore.getState().setItemGift('a', true, 'regalo')
+    // Cambiar el motivo sin desmarcar
+    useCartStore.getState().setItemGift('a', true, 'compensacion')
+    const it0 = useCartStore.getState().items[0]
+    expect(it0.giftReason).toBe('compensacion')
+    expect(it0.unit_price).toBe(0)
+    // prevUnitPrice sigue siendo el 40.000 original, no 0
+    expect(it0.prevUnitPrice).toBe(40_000)
+  })
+
+  it('solo afecta la línea indicada', () => {
+    addCatalogItem('a', 50_000)
+    addCatalogItem('b', 40_000)
+    useCartStore.getState().setItemGift('a', true, 'regalo')
+    const items = useCartStore.getState().items
+    expect(items.find((i) => i.variant_id === 'a')!.isGift).toBe(true)
+    expect(items.find((i) => i.variant_id === 'b')!.isGift).toBe(false)
   })
 })

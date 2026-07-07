@@ -8,6 +8,7 @@ import { fmtCOP } from '@/lib/formatters'
 import type { Order, PaymentMethod } from '@/types/database.types'
 import { orderTotals, minFinalPrice } from '@/stores/cartStore'
 import type { CartItem } from '@/stores/cartStore'
+import { isValidGiftReason } from '@/lib/giftReasons'
 
 export interface CreateOrderInput {
   // Cada ítem lleva unit_price (precio final vendido) y list_price (catálogo).
@@ -58,13 +59,30 @@ export function useCreateOrder() {
             )}) no puede superar el de catálogo (${fmtCOP(item.list_price)}).`,
           )
         }
-        const minFinal = minFinalPrice(item.list_price, maxItemDiscount)
-        if (item.unit_price < minFinal) {
-          throw new Error(
-            `Descuento no permitido para ${item.name}: el precio mínimo es ${fmtCOP(
-              minFinal,
-            )}.`,
-          )
+        if (item.isGift) {
+          // Regalo: motivo de la lista + precio 0 (coherente con el CHECK
+          // order_items_gift_coherent de la 027). NO pasa por el tope de
+          // descuento: es un mecanismo aparte, gateado por ventas.regalo.
+          if (!isValidGiftReason(item.giftReason)) {
+            throw new Error(
+              `Regalo sin motivo válido para ${item.name}.`,
+            )
+          }
+          if (item.unit_price !== 0) {
+            throw new Error(
+              `Un ítem de regalo debe tener precio 0 (${item.name}).`,
+            )
+          }
+        } else {
+          // No-regalo: respeta el mínimo permitido por el tope configurado.
+          const minFinal = minFinalPrice(item.list_price, maxItemDiscount)
+          if (item.unit_price < minFinal) {
+            throw new Error(
+              `Descuento no permitido para ${item.name}: el precio mínimo es ${fmtCOP(
+                minFinal,
+              )}.`,
+            )
+          }
         }
       }
 
@@ -124,6 +142,10 @@ export function useCreateOrder() {
           // en la BD). list_price es obligatorio: el `as never` lo ocultaría.
           unit_price: item.unit_price,
           list_price: item.list_price,
+          // Regalo: is_gift + motivo. Si no es regalo, gift_reason va NULL
+          // (coherente con el CHECK order_items_gift_coherent de la 027).
+          is_gift: item.isGift,
+          gift_reason: item.isGift ? item.giftReason : null,
         })) as never,
       )
 
