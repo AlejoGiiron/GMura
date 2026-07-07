@@ -12,7 +12,6 @@ import {
   Plus,
   Minus,
   User,
-  Tag,
   Printer,
   CheckCircle,
   Camera,
@@ -619,51 +618,83 @@ interface ProductCardProps {
   onClick: () => void
 }
 
+// Paleta estable para el ancla de color de cada producto (las cards del POS no
+// llevan imagen). Tints suaves + texto oscuro del mismo tono → buen contraste y
+// coherente con el lenguaje visual del design-system (violeta de marca +
+// semánticos). El color es un ancla para escanear la grilla, no una foto.
+const CARD_ACCENTS: ReadonlyArray<{ bg: string; fg: string }> = [
+  { bg: '#ede9fe', fg: '#6d28d9' }, // violeta (marca)
+  { bg: '#dbeafe', fg: '#1d4ed8' }, // azul
+  { bg: '#dcfce7', fg: '#15803d' }, // verde
+  { bg: '#fef3c7', fg: '#b45309' }, // ámbar
+  { bg: '#ffe4e6', fg: '#be123c' }, // rosa
+  { bg: '#e0f2fe', fg: '#0369a1' }, // cielo
+  { bg: '#ccfbf1', fg: '#0f766e' }, // teal
+  { bg: '#ffedd5', fg: '#c2410c' }, // naranja
+]
+
+// Hash determinista (djb2-ish) del id del producto → índice de paleta estable:
+// el mismo producto siempre obtiene el mismo color.
+function cardAccent(seed: string): { bg: string; fg: string } {
+  let h = 0
+  for (let i = 0; i < seed.length; i++) {
+    h = (h << 5) - h + seed.charCodeAt(i)
+    h |= 0 // fuerza a int32
+  }
+  return CARD_ACCENTS[Math.abs(h) % CARD_ACCENTS.length]
+}
+
 function ProductCard({ product, onClick }: ProductCardProps) {
   const sizes = [...new Set(product.variants.map((v) => v.size).filter(Boolean))] as string[]
   const minPrice = Math.min(...product.variants.map((v) => v.price))
   const totalStock = product.variants.reduce((s, v) => s + v.stock_qty, 0)
+  const extraSizes = sizes.length - 3
+  const accent = cardAccent(product.id)
+  const initial = (product.name.trim()[0] ?? '?').toUpperCase()
+  const soldOut = totalStock === 0
 
   return (
     <button
       onClick={onClick}
-      className="group w-full rounded-xl border border-slate-100 bg-white text-left transition-all hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md"
+      className={`group flex w-full flex-col gap-1.5 rounded-xl border border-slate-100 bg-white p-2.5 text-left transition-all hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md ${
+        soldOut ? 'opacity-60' : ''
+      }`}
     >
-      <div className="relative aspect-square overflow-hidden rounded-t-xl bg-slate-100">
-        {product.image_url ? (
-          <img
-            src={product.image_url}
-            alt={product.name}
-            className="h-full w-full object-cover"
-          />
+      {/* Ancla de color + marca + señal de agotado */}
+      <div className="flex items-center gap-2">
+        <span
+          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-[13px] font-bold"
+          style={{ background: accent.bg, color: accent.fg }}
+        >
+          {initial}
+        </span>
+        {product.brand ? (
+          <span className="min-w-0 flex-1 truncate text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+            {product.brand}
+          </span>
         ) : (
-          <div className="flex h-full items-center justify-center text-slate-300">
-            <Tag size={28} />
-          </div>
+          <span className="flex-1" />
         )}
-        {totalStock === 0 && (
-          <div className="absolute inset-0 flex items-center justify-center bg-black/50">
-            <span className="rounded-full bg-white px-2 py-0.5 text-xs font-semibold text-slate-700">
-              Agotado
-            </span>
-          </div>
+        {soldOut && (
+          <span className="shrink-0 rounded-full bg-red-100 px-1.5 py-0.5 text-[9px] font-semibold text-red-700">
+            Agotado
+          </span>
         )}
       </div>
-      <div className="p-3">
-        {product.brand && (
-          <p className="mb-0.5 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
-            {product.brand}
-          </p>
-        )}
-        <p className="line-clamp-2 text-sm font-medium leading-tight text-slate-900">
-          {product.name}
-        </p>
-        <p className="mt-1.5 font-mono text-sm font-bold text-slate-900">
+
+      {/* Nombre — protagonista del reconocimiento */}
+      <p className="line-clamp-2 text-[15px] font-semibold leading-snug text-slate-900">
+        {product.name}
+      </p>
+
+      {/* Precio (secundario) + tallas disponibles */}
+      <div className="mt-auto flex flex-col gap-1 pt-0.5">
+        <span className="font-mono text-sm font-bold text-slate-900">
           {fmtCOP(minPrice)}
-        </p>
+        </span>
         {sizes.length > 0 && (
-          <div className="mt-2 flex flex-wrap gap-1">
-            {sizes.slice(0, 5).map((s) => (
+          <div className="flex flex-wrap gap-1">
+            {sizes.slice(0, 3).map((s) => (
               <span
                 key={s}
                 className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600"
@@ -671,6 +702,11 @@ function ProductCard({ product, onClick }: ProductCardProps) {
                 {s}
               </span>
             ))}
+            {extraSizes > 0 && (
+              <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-400">
+                +{extraSizes}
+              </span>
+            )}
           </div>
         )}
       </div>
@@ -934,9 +970,9 @@ function CartLine({
   const [showReasons, setShowReasons] = useState(false)
 
   return (
-    <div className="flex items-center gap-3 px-5 py-3">
+    <div className="flex items-center gap-3 px-5 py-3.5">
       <div
-        className="h-4 w-4 shrink-0 rounded-full shadow-[0_0_0_1.5px_rgba(0,0,0,0.12)]"
+        className="h-5 w-5 shrink-0 rounded-full shadow-[0_0_0_1.5px_rgba(0,0,0,0.12)]"
         style={{ background: item.color ? getColorHex(item.color) : '#e2e8f0' }}
       />
       <div className="min-w-0 flex-1">
@@ -945,9 +981,9 @@ function CartLine({
             {item.brand}
           </p>
         )}
-        <p className="truncate text-sm font-medium text-slate-900">{item.name}</p>
+        <p className="truncate text-[15px] font-medium text-slate-900">{item.name}</p>
         {(item.size || item.color) && (
-          <p className="truncate text-xs text-slate-400">
+          <p className="truncate text-[13px] text-slate-400">
             {[item.size ? `T.${item.size}` : null, item.color]
               .filter(Boolean)
               .join(' · ')}
@@ -1008,32 +1044,32 @@ function CartLine({
           ))}
       </div>
 
-      <div className="flex h-7 items-center overflow-hidden rounded-lg border border-slate-200">
+      <div className="flex h-9 items-center overflow-hidden rounded-lg border border-slate-200">
         <button
           onClick={() => onSetQty(item.variant_id, item.qty - 1)}
-          className="flex h-full w-7 items-center justify-center text-slate-500 hover:bg-slate-50"
+          className="flex h-full w-9 items-center justify-center text-slate-500 hover:bg-slate-50"
         >
-          <Minus size={11} />
+          <Minus size={14} />
         </button>
-        <span className="w-6 text-center text-xs font-semibold tabular-nums">
+        <span className="w-7 text-center text-base font-semibold tabular-nums">
           {item.qty}
         </span>
         <button
           onClick={() => onSetQty(item.variant_id, item.qty + 1)}
           disabled={item.qty >= item.stock_qty}
-          className="flex h-full w-7 items-center justify-center text-slate-500 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+          className="flex h-full w-9 items-center justify-center text-slate-500 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
         >
-          <Plus size={11} />
+          <Plus size={14} />
         </button>
       </div>
-      <span className="w-20 text-right font-mono text-sm font-semibold text-slate-800">
+      <span className="w-24 text-right font-mono text-base font-semibold text-slate-800">
         {fmtCOP(item.unit_price * item.qty)}
       </span>
       <button
         onClick={() => onRemove(item.variant_id)}
         className="text-slate-300 hover:text-slate-600"
       >
-        <X size={14} />
+        <X size={15} />
       </button>
     </div>
   )
@@ -1149,8 +1185,8 @@ function CartPanel({
         )}
 
         <div className="mb-3 flex items-baseline justify-between border-t border-dashed border-slate-200 pt-3">
-          <span className="text-sm font-semibold text-slate-700">Total</span>
-          <span className="font-mono text-2xl font-bold tracking-tight text-slate-900">
+          <span className="text-base font-semibold text-slate-700">Total</span>
+          <span className="font-mono text-3xl font-bold tracking-tight text-slate-900">
             {fmtCOP(total)}
           </span>
         </div>
@@ -1158,7 +1194,7 @@ function CartPanel({
         <button
           disabled={items.length === 0}
           onClick={onCheckout}
-          className="w-full rounded-xl bg-violet-600 py-3.5 text-sm font-semibold text-white shadow-[0_6px_18px_rgba(139,92,246,0.35)] transition-all disabled:cursor-not-allowed disabled:bg-slate-300 disabled:shadow-none hover:bg-violet-700"
+          className="w-full rounded-xl bg-violet-600 py-4 text-base font-semibold text-white shadow-[0_6px_18px_rgba(139,92,246,0.35)] transition-all disabled:cursor-not-allowed disabled:bg-slate-300 disabled:shadow-none hover:bg-violet-700"
         >
           Cobrar · {fmtCOP(total)}
         </button>
@@ -1311,6 +1347,17 @@ export default function POSPage() {
     })
     setPickerProduct(null)
     toast.success(`${product.name} agregado`)
+  }
+
+  // Clic en una card: si el producto tiene UNA sola variante disponible, se
+  // agrega directo (saltando el selector). Con 2+ variantes, o si la única
+  // está agotada, se abre el picker para elegir / ver el estado de stock.
+  const handleProductClick = (product: POSProduct) => {
+    if (product.variants.length === 1 && product.variants[0].stock_qty > 0) {
+      handleAddVariant(product, product.variants[0])
+      return
+    }
+    setPickerProduct(product)
   }
 
   const handleConfirmPayment = (
@@ -1481,9 +1528,9 @@ export default function POSPage() {
         {/* Product grid */}
         <div className="min-h-0 flex-1 overflow-y-auto px-6 pb-6">
           {isLoading ? (
-            <div className="grid grid-cols-3 gap-4">
-              {Array.from({ length: 6 }).map((_, i) => (
-                <div key={i} className="aspect-square animate-pulse rounded-xl bg-slate-100" />
+            <div className="grid grid-cols-[repeat(auto-fill,minmax(160px,1fr))] gap-3">
+              {Array.from({ length: 12 }).map((_, i) => (
+                <div key={i} className="h-28 animate-pulse rounded-xl bg-slate-100" />
               ))}
             </div>
           ) : displayed.length === 0 ? (
@@ -1492,12 +1539,12 @@ export default function POSPage() {
               <p className="text-sm">Sin resultados</p>
             </div>
           ) : (
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-[repeat(auto-fill,minmax(160px,1fr))] gap-3">
               {displayed.map((product) => (
                 <ProductCard
                   key={product.id}
                   product={product}
-                  onClick={() => setPickerProduct(product)}
+                  onClick={() => handleProductClick(product)}
                 />
               ))}
             </div>
@@ -1505,8 +1552,8 @@ export default function POSPage() {
         </div>
       </section>
 
-      {/* Right — Cart */}
-      <section className="flex w-[340px] shrink-0 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white">
+      {/* Right — Cart (≈40% del design-system, clampeado para desktop ancho) */}
+      <section className="flex w-[40%] min-w-[400px] max-w-[560px] shrink-0 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white">
         <CartPanel
           onCheckout={() => setShowPayment(true)}
           selectedCustomer={selectedCustomer}

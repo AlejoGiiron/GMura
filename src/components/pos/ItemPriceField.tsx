@@ -69,7 +69,7 @@ export function ItemPriceField({
             : 'border-slate-200 bg-white focus-within:border-violet-400 focus-within:ring-2 focus-within:ring-violet-100'
         }`}
       >
-        <span className="text-xs text-slate-400">$</span>
+        <span className="text-sm text-slate-400">$</span>
         <input
           value={displayVal}
           onFocus={() => {
@@ -89,7 +89,7 @@ export function ItemPriceField({
                 ? 'Descuento por ítem deshabilitado (tope $0)'
                 : `Mínimo ${fmtCOP(minFinalPrice(listPrice, maxItemDiscount))}`
           }
-          className="w-20 bg-transparent text-right text-xs font-semibold tabular-nums outline-none read-only:cursor-default read-only:text-slate-500"
+          className="w-20 bg-transparent text-right text-sm font-semibold tabular-nums outline-none read-only:cursor-default read-only:text-slate-500"
         />
         <span className="text-[10px] text-slate-400">c/u</span>
       </div>
