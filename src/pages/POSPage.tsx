@@ -39,7 +39,7 @@ import { useDebounce } from '@/hooks/useDebounce'
 import { useCreateCustomer } from '@/hooks/useCustomerMutations'
 import { useCustomerSearch } from '@/hooks/useCustomers'
 import { usePermissions } from '@/hooks/usePermissions'
-import { GIFT_REASONS, giftReasonLabel } from '@/lib/giftReasons'
+import { GIFT_REASONS } from '@/lib/giftReasons'
 import { useCurrentShift } from '@/hooks/useCashShift'
 import { OpenShiftModal } from '@/components/layout/CashShiftModals'
 import {
@@ -656,60 +656,68 @@ function ProductCard({ product, onClick }: ProductCardProps) {
   return (
     <button
       onClick={onClick}
-      className={`group flex w-full flex-col gap-1.5 rounded-xl border border-slate-100 bg-white p-2.5 text-left transition-all hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md ${
+      className={`group relative flex w-full flex-col overflow-hidden rounded-xl border border-stone-200 bg-white text-left transition-all hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md ${
         soldOut ? 'opacity-60' : ''
       }`}
     >
-      {/* Ancla de color + marca + señal de agotado */}
-      <div className="flex items-center gap-2">
+      {/* Banda tintada con el color del producto: inicial (chip blanco) + marca */}
+      <div
+        className="flex items-center gap-2 px-3 py-[7px]"
+        style={{ background: soldOut ? '#f0f0f0' : accent.bg }}
+      >
         <span
-          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-[13px] font-bold"
-          style={{ background: accent.bg, color: accent.fg }}
+          className="flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-md bg-white text-[12px] font-bold shadow-sm"
+          style={{ color: soldOut ? '#a3a3a3' : accent.fg }}
         >
           {initial}
         </span>
         {product.brand ? (
-          <span className="min-w-0 flex-1 truncate text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+          <span
+            className="min-w-0 flex-1 truncate text-[10.5px] font-bold uppercase tracking-[.07em]"
+            style={{ color: soldOut ? '#a3a3a3' : accent.fg }}
+          >
             {product.brand}
           </span>
         ) : (
           <span className="flex-1" />
         )}
-        {soldOut && (
-          <span className="shrink-0 rounded-full bg-red-100 px-1.5 py-0.5 text-[9px] font-semibold text-red-700">
-            Agotado
+      </div>
+
+      {/* Cuerpo: nombre (protagonista) + precio (mono, secundario) + tallas */}
+      <div className="flex flex-1 flex-col px-3 pb-3 pt-2.5">
+        <p className="line-clamp-2 text-[15px] font-semibold leading-tight text-slate-900">
+          {product.name}
+        </p>
+        <div className="mt-auto flex flex-col items-start gap-2 pt-2">
+          <span className="font-mono text-[13px] font-semibold text-neutral-700">
+            {fmtCOP(minPrice)}
           </span>
-        )}
+          {sizes.length > 0 && (
+            <div className="flex flex-wrap gap-1">
+              {sizes.slice(0, 3).map((s) => (
+                <span
+                  key={s}
+                  className="rounded-[5px] bg-stone-100 px-1.5 py-0.5 text-[10.5px] font-semibold tabular-nums text-neutral-600"
+                >
+                  {s}
+                </span>
+              ))}
+              {extraSizes > 0 && (
+                <span className="rounded-[5px] bg-violet-50 px-1.5 py-0.5 text-[10.5px] font-semibold tabular-nums text-violet-600">
+                  +{extraSizes}
+                </span>
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* Nombre — protagonista del reconocimiento */}
-      <p className="line-clamp-2 text-[15px] font-semibold leading-snug text-slate-900">
-        {product.name}
-      </p>
-
-      {/* Precio (secundario) + tallas disponibles */}
-      <div className="mt-auto flex flex-col gap-1 pt-0.5">
-        <span className="font-mono text-sm font-bold text-slate-900">
-          {fmtCOP(minPrice)}
+      {/* Agotado: pill sobre la banda, arriba a la derecha */}
+      {soldOut && (
+        <span className="absolute right-2 top-1.5 rounded-full border border-red-200 bg-red-50 px-[7px] py-0.5 text-[9.5px] font-bold uppercase tracking-wider text-red-700">
+          Agotado
         </span>
-        {sizes.length > 0 && (
-          <div className="flex flex-wrap gap-1">
-            {sizes.slice(0, 3).map((s) => (
-              <span
-                key={s}
-                className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600"
-              >
-                {s}
-              </span>
-            ))}
-            {extraSizes > 0 && (
-              <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-400">
-                +{extraSizes}
-              </span>
-            )}
-          </div>
-        )}
-      </div>
+      )}
     </button>
   )
 }
@@ -968,52 +976,125 @@ function CartLine({
   onRemove,
 }: CartLineProps) {
   const [showReasons, setShowReasons] = useState(false)
+  const canDiscount = maxItemDiscount > 0
+  const discounted = item.unit_price < item.list_price
+  // El bloque de precio/descuento se muestra si hay algo que editar (tope > 0)
+  // o que informar (ya tiene descuento). Los ítems "sin cargo" no lo usan.
+  const showPriceField = !item.isGift && (canDiscount || discounted)
 
   return (
-    <div className="flex items-center gap-3 px-5 py-3.5">
-      <div
-        className="h-5 w-5 shrink-0 rounded-full shadow-[0_0_0_1.5px_rgba(0,0,0,0.12)]"
-        style={{ background: item.color ? getColorHex(item.color) : '#e2e8f0' }}
-      />
-      <div className="min-w-0 flex-1">
-        {item.brand && (
-          <p className="truncate text-[10px] font-semibold uppercase tracking-wider text-slate-400">
-            {item.brand}
-          </p>
-        )}
-        <p className="truncate text-[15px] font-medium text-slate-900">{item.name}</p>
-        {(item.size || item.color) && (
-          <p className="truncate text-[13px] text-slate-400">
-            {[item.size ? `T.${item.size}` : null, item.color]
-              .filter(Boolean)
-              .join(' · ')}
-          </p>
-        )}
+    <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+      {/* Banner SIN CARGO arriba (ámbar) con el motivo editable */}
+      {item.isGift && (
+        <div className="flex items-center gap-2 border-b border-amber-200 bg-amber-100 px-3.5 py-2">
+          <span className="text-[12px] font-extrabold uppercase tracking-wider text-amber-800">
+            Sin cargo
+          </span>
+          <span className="text-amber-500">·</span>
+          <select
+            value={item.giftReason ?? ''}
+            onChange={(e) => onSetGift(item.variant_id, true, e.target.value)}
+            className="rounded-md border border-amber-300 bg-white px-2 py-1 text-[12px] font-semibold text-amber-800 outline-none focus:border-amber-400"
+            aria-label="Motivo sin cargo"
+          >
+            {GIFT_REASONS.map((r) => (
+              <option key={r.value} value={r.value}>
+                {r.label}
+              </option>
+            ))}
+          </select>
+          <button
+            onClick={() => onSetGift(item.variant_id, false)}
+            className="ml-auto text-[11px] font-medium text-amber-700/80 hover:text-amber-900"
+          >
+            Quitar
+          </button>
+        </div>
+      )}
 
-        <ItemPriceField
-          listPrice={item.list_price}
-          unitPrice={item.unit_price}
-          maxItemDiscount={maxItemDiscount}
-          onCommit={(finalPrice) => onSetPrice(item.variant_id, finalPrice)}
-          forceLocked={item.isGift}
-        />
+      <div className="px-3.5 py-3.5">
+        {/* Identidad + quitar */}
+        <div className="flex items-start gap-3">
+          <div className="min-w-0 flex-1">
+            {item.brand && (
+              <p className="truncate text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                {item.brand}
+              </p>
+            )}
+            <p className="truncate text-[14.5px] font-semibold text-slate-900">{item.name}</p>
+            {(item.size || item.color) && (
+              <p className="truncate text-[12px] text-slate-500">
+                {[item.size ? `T.${item.size}` : null, item.color]
+                  .filter(Boolean)
+                  .join(' · ')}
+              </p>
+            )}
+          </div>
+          <button
+            onClick={() => onRemove(item.variant_id)}
+            className="shrink-0 text-slate-300 hover:text-slate-600"
+            aria-label="Quitar ítem"
+          >
+            <X size={16} />
+          </button>
+        </div>
 
-        {/* Control de regalo — solo con permiso ventas.regalo */}
-        {canGift &&
-          (item.isGift ? (
-            <div className="mt-1 flex items-center gap-1.5">
-              <span className="rounded bg-violet-100 px-1.5 py-0.5 text-[10px] font-semibold text-violet-700">
-                🎁 Regalo · {giftReasonLabel(item.giftReason)}
-              </span>
-              <button
-                onClick={() => onSetGift(item.variant_id, false)}
-                className="text-[10px] font-medium text-slate-400 hover:text-slate-600"
-              >
-                quitar
-              </button>
+        {/* Cantidad (control grande) + subtotal */}
+        <div className="mt-3 flex items-center justify-between gap-3">
+          <div className="flex h-[34px] items-center overflow-hidden rounded-lg border border-slate-200">
+            <button
+              onClick={() => onSetQty(item.variant_id, item.qty - 1)}
+              className="flex h-full w-9 items-center justify-center text-slate-600 hover:bg-slate-50"
+              aria-label="Menos"
+            >
+              <Minus size={15} />
+            </button>
+            <span className="w-8 text-center font-mono text-base font-semibold tabular-nums">
+              {item.qty}
+            </span>
+            <button
+              onClick={() => onSetQty(item.variant_id, item.qty + 1)}
+              disabled={item.qty >= item.stock_qty}
+              className="flex h-full w-9 items-center justify-center text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+              aria-label="Más"
+            >
+              <Plus size={15} />
+            </button>
+          </div>
+          {item.isGift ? (
+            <div className="text-right">
+              <div className="font-mono text-[11px] text-slate-400 line-through">
+                {fmtCOP(item.list_price * item.qty)}
+              </div>
+              <div className="font-mono text-[17px] font-bold text-amber-700">
+                {fmtCOP(0)}
+              </div>
             </div>
-          ) : showReasons ? (
-            <div className="mt-1 flex flex-wrap items-center gap-1">
+          ) : (
+            <span className="font-mono text-[17px] font-bold tabular-nums text-slate-900">
+              {fmtCOP(item.unit_price * item.qty)}
+            </span>
+          )}
+        </div>
+
+        {/* Bloque de precio con descuento (oculto en ítems sin cargo) */}
+        {showPriceField && (
+          <div className="mt-3">
+            <ItemPriceField
+              listPrice={item.list_price}
+              unitPrice={item.unit_price}
+              maxItemDiscount={maxItemDiscount}
+              onCommit={(finalPrice) => onSetPrice(item.variant_id, finalPrice)}
+            />
+          </div>
+        )}
+
+        {/* Marcar sin cargo — gateado por can('ventas.regalo'), solo si no lo es */}
+        {canGift &&
+          !item.isGift &&
+          (showReasons ? (
+            <div className="mt-3 flex flex-wrap items-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+              <span className="text-[11px] font-semibold text-amber-800">Sin cargo:</span>
               {GIFT_REASONS.map((r) => (
                 <button
                   key={r.value}
@@ -1021,56 +1102,27 @@ function CartLine({
                     onSetGift(item.variant_id, true, r.value)
                     setShowReasons(false)
                   }}
-                  className="rounded border border-violet-200 bg-white px-1.5 py-0.5 text-[10px] font-medium text-violet-700 hover:bg-violet-50"
+                  className="rounded border border-amber-300 bg-white px-2 py-0.5 text-[11px] font-medium text-amber-800 hover:bg-amber-100"
                 >
                   {r.label}
                 </button>
               ))}
               <button
                 onClick={() => setShowReasons(false)}
-                className="text-[10px] text-slate-400 hover:text-slate-600"
-                aria-label="Cancelar regalo"
+                className="ml-auto text-[11px] font-medium text-slate-400 hover:text-slate-600"
               >
-                ✕
+                Cancelar
               </button>
             </div>
           ) : (
             <button
               onClick={() => setShowReasons(true)}
-              className="mt-1 text-[11px] font-medium text-slate-400 hover:text-violet-600"
+              className="mt-2.5 text-[12px] font-medium text-amber-600 hover:text-amber-700"
             >
-              🎁 Regalo
+              Marcar sin cargo
             </button>
           ))}
       </div>
-
-      <div className="flex h-9 items-center overflow-hidden rounded-lg border border-slate-200">
-        <button
-          onClick={() => onSetQty(item.variant_id, item.qty - 1)}
-          className="flex h-full w-9 items-center justify-center text-slate-500 hover:bg-slate-50"
-        >
-          <Minus size={14} />
-        </button>
-        <span className="w-7 text-center text-base font-semibold tabular-nums">
-          {item.qty}
-        </span>
-        <button
-          onClick={() => onSetQty(item.variant_id, item.qty + 1)}
-          disabled={item.qty >= item.stock_qty}
-          className="flex h-full w-9 items-center justify-center text-slate-500 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
-        >
-          <Plus size={14} />
-        </button>
-      </div>
-      <span className="w-24 text-right font-mono text-base font-semibold text-slate-800">
-        {fmtCOP(item.unit_price * item.qty)}
-      </span>
-      <button
-        onClick={() => onRemove(item.variant_id)}
-        className="text-slate-300 hover:text-slate-600"
-      >
-        <X size={15} />
-      </button>
     </div>
   )
 }
@@ -1136,7 +1188,7 @@ function CartPanel({
       </div>
 
       {/* Items */}
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50/40">
         {items.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center">
             <div className="flex h-16 w-16 items-center justify-center rounded-full bg-slate-100">
@@ -1150,7 +1202,7 @@ function CartPanel({
             </div>
           </div>
         ) : (
-          <div className="divide-y divide-slate-50">
+          <div className="flex flex-col gap-2.5 p-3">
             {items.map((item) => (
               <CartLine
                 key={item.variant_id}
@@ -1528,7 +1580,7 @@ export default function POSPage() {
         {/* Product grid */}
         <div className="min-h-0 flex-1 overflow-y-auto px-6 pb-6">
           {isLoading ? (
-            <div className="grid grid-cols-[repeat(auto-fill,minmax(160px,1fr))] gap-3">
+            <div className="grid grid-cols-[repeat(auto-fill,minmax(230px,1fr))] gap-4">
               {Array.from({ length: 12 }).map((_, i) => (
                 <div key={i} className="h-28 animate-pulse rounded-xl bg-slate-100" />
               ))}
@@ -1539,7 +1591,7 @@ export default function POSPage() {
               <p className="text-sm">Sin resultados</p>
             </div>
           ) : (
-            <div className="grid grid-cols-[repeat(auto-fill,minmax(160px,1fr))] gap-3">
+            <div className="grid grid-cols-[repeat(auto-fill,minmax(230px,1fr))] gap-4">
               {displayed.map((product) => (
                 <ProductCard
                   key={product.id}
