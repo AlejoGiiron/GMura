@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from './useAuth'
 import { getActiveStoreId } from './useActiveStoreId'
+import { useCurrentShift } from './useCashShift'
 import { useResolvedConfig } from './useConfig'
 import toast from 'react-hot-toast'
 import { fmtCOP } from '@/lib/formatters'
@@ -24,6 +25,7 @@ export interface CreateOrderInput {
 export function useCreateOrder() {
   const { profile } = useAuth()
   const queryClient = useQueryClient()
+  const { data: currentShift } = useCurrentShift()
   const maxItemDiscount = useResolvedConfig().max_item_discount
 
   return useMutation({
@@ -116,6 +118,9 @@ export function useCreateOrder() {
           total,
           payment_method: input.payment_method,
           cash_received: input.cash_received ?? null,
+          // Imputa la venta al turno abierto de la tienda (026). El POS exige
+          // turno para vender, así que normalmente estará presente; null si no.
+          shift_id: currentShift?.id ?? null,
         } as never)
         .select()
         .single()

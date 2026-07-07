@@ -132,44 +132,73 @@ export function useShiftClosing(shiftId: string | null) {
           .filter((id): id is string => !!id),
       )
 
-      // 2. Órdenes del turno (excluyendo las generadas por completar separados)
-      let oQuery = supabase
+      // 2+3. Órdenes y abonos del turno. Modelo NUEVO (026): imputación DIRECTA
+      //   por shift_id. Compat PRE-026: los turnos anteriores al deploy tienen
+      //   sus ventas/abonos con shift_id NULL; para ellos caemos al método legacy
+      //   (ventana de tiempo + opened_by). La decisión es por turno: un turno es
+      //   enteramente "nuevo" (todo con shift_id) o "viejo" (todo NULL), nunca
+      //   mezclado, así que basta ver si el filtro por shift_id devuelve algo.
+      const { data: ordersByShift, error: ordersErr } = await supabase
         .from('orders')
         .select('id, total, payment_method, return_id')
         .eq('store_id' as never, storeId)
-        .eq('created_by' as never, shift.opened_by)
+        .eq('shift_id' as never, shiftId)
         .eq('status' as never, 'completed')
-        .gte('created_at' as never, shift.opened_at)
-
-      if (shift.closed_at) {
-        oQuery = oQuery.lte('created_at' as never, shift.closed_at)
-      }
-
-      const { data: orders, error: ordersErr } = await oQuery
       if (ordersErr) throw ordersErr
 
-      // 3. Abonos de separados del turno
-      let pQuery = supabase
+      const { data: paysByShift, error: paymentsErr } = await supabase
         .from('layaway_payments')
         .select(
           `id, amount, payment_method, created_at,
            layaways:layaway_id(layaway_number)`,
         )
         .eq('store_id' as never, storeId)
-        .eq('created_by' as never, shift.opened_by)
-        .gte('created_at' as never, shift.opened_at)
-
-      if (shift.closed_at) {
-        pQuery = pQuery.lte('created_at' as never, shift.closed_at)
-      }
-
-      const { data: paymentsRaw, error: paymentsErr } = await pQuery
+        .eq('shift_id' as never, shiftId)
         .order('created_at' as never, { ascending: true })
       if (paymentsErr) throw paymentsErr
 
-      const layawayPayments: LayawayPaymentRow[] = (
-        (paymentsRaw ?? []) as unknown as RawLayawayPayment[]
-      ).map((p) => ({
+      let orders = (ordersByShift ?? []) as unknown as RawOrder[]
+      let paymentsRaw = (paysByShift ?? []) as unknown as RawLayawayPayment[]
+
+      // Fallback legacy (pre-026): ninguna fila imputada por shift_id → este
+      // turno es anterior al deploy; reconstruir por ventana de tiempo + opened_by.
+      // Para un turno NUEVO sin actividad este camino también da 0 (resultado
+      // idéntico), así que no introduce imprecisión.
+      if (orders.length === 0 && paymentsRaw.length === 0) {
+        let oQuery = supabase
+          .from('orders')
+          .select('id, total, payment_method, return_id')
+          .eq('store_id' as never, storeId)
+          .eq('created_by' as never, shift.opened_by)
+          .eq('status' as never, 'completed')
+          .gte('created_at' as never, shift.opened_at)
+        if (shift.closed_at) {
+          oQuery = oQuery.lte('created_at' as never, shift.closed_at)
+        }
+        const { data: legacyOrders, error: loErr } = await oQuery
+        if (loErr) throw loErr
+
+        let pQuery = supabase
+          .from('layaway_payments')
+          .select(
+            `id, amount, payment_method, created_at,
+             layaways:layaway_id(layaway_number)`,
+          )
+          .eq('store_id' as never, storeId)
+          .eq('created_by' as never, shift.opened_by)
+          .gte('created_at' as never, shift.opened_at)
+        if (shift.closed_at) {
+          pQuery = pQuery.lte('created_at' as never, shift.closed_at)
+        }
+        const { data: legacyPays, error: lpErr } = await pQuery
+          .order('created_at' as never, { ascending: true })
+        if (lpErr) throw lpErr
+
+        orders = (legacyOrders ?? []) as unknown as RawOrder[]
+        paymentsRaw = (legacyPays ?? []) as unknown as RawLayawayPayment[]
+      }
+
+      const layawayPayments: LayawayPaymentRow[] = paymentsRaw.map((p) => ({
         id: p.id,
         amount: Number(p.amount),
         payment_method: p.payment_method,
@@ -193,7 +222,7 @@ export function useShiftClosing(shiftId: string | null) {
       //    dos veces el dinero.
       const summary = calculateShiftSummary({
         openingAmount: shift.opening_amount,
-        orders: ((orders ?? []) as unknown as RawOrder[]).map((o) => ({
+        orders: orders.map((o) => ({
           id: o.id,
           total: Number(o.total),
           payment_method: o.payment_method,

@@ -20,18 +20,18 @@ export function useCashShiftMutations() {
         throw new Error('El monto inicial no puede ser negativo')
       }
 
-      // Evitar abrir un segundo turno simultáneo del mismo usuario.
+      // El turno es COMPARTIDO por tienda (026): evitar abrir un segundo turno
+      // si YA hay uno abierto en esta tienda (de cualquier usuario).
       const { data: existing, error: checkErr } = await supabase
         .from('cash_shifts')
         .select('id')
         .eq('store_id' as never, storeId)
-        .eq('opened_by' as never, userId)
         .is('closed_at' as never, null)
         .maybeSingle()
 
       if (checkErr) throw checkErr
       if (existing) {
-        throw new Error('Ya tienes un turno abierto')
+        throw new Error('Ya hay un turno abierto en esta tienda')
       }
 
       const { data, error } = await supabase
@@ -44,8 +44,17 @@ export function useCashShiftMutations() {
         .select()
         .single()
 
-      if (error || !data) {
-        throw new Error(error?.message ?? 'No se pudo abrir el turno')
+      if (error) {
+        // Carrera al abrir: dos usuarios de la misma tienda simultáneos. El
+        // pre-check de arriba no puede evitarla; el índice único parcial
+        // uq_cash_shifts_one_open_per_store la rechaza con 23505.
+        if ((error as { code?: string }).code === '23505') {
+          throw new Error('Ya hay un turno abierto en esta tienda')
+        }
+        throw new Error(error.message)
+      }
+      if (!data) {
+        throw new Error('No se pudo abrir el turno')
       }
       return data as unknown as CashShift
     },

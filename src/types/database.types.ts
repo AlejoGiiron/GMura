@@ -139,6 +139,9 @@ export interface Order {
   cash_received: number | null
   order_number: number
   return_id: string | null
+  // Turno de caja en el que se registró la venta (026). NULL en ventas
+  // históricas anteriores a la migración (se imputan por ventana de tiempo).
+  shift_id: string | null
   created_at: string
   updated_at: string
 }
@@ -259,6 +262,9 @@ export interface LayawayPayment {
   payment_method: PaymentMethod
   created_by: string
   notes: string | null
+  // Turno de caja en el que se cobró el abono (026). NULL en abonos
+  // históricos anteriores a la migración (se imputan por ventana de tiempo).
+  shift_id: string | null
   created_at: string
 }
 
@@ -503,13 +509,19 @@ export interface Database {
         Row: Order
         Insert: Omit<
           Order,
-          'id' | 'created_at' | 'order_number' | 'return_id' | 'surcharge'
+          | 'id'
+          | 'created_at'
+          | 'order_number'
+          | 'return_id'
+          | 'surcharge'
+          | 'shift_id'
         > & {
           id?: string
           created_at?: string
           order_number?: number
           return_id?: string | null
           surcharge?: number
+          shift_id?: string | null
         }
         Update: Partial<Omit<Order, 'id'>>
       }
@@ -585,9 +597,10 @@ export interface Database {
       }
       layaway_payments: {
         Row: LayawayPayment
-        Insert: Omit<LayawayPayment, 'id' | 'created_at'> & {
+        Insert: Omit<LayawayPayment, 'id' | 'created_at' | 'shift_id'> & {
           id?: string
           created_at?: string
+          shift_id?: string | null
         }
         Update: Partial<Omit<LayawayPayment, 'id'>>
       }
