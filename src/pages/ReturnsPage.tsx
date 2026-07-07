@@ -14,6 +14,7 @@ import {
   Package,
   AlertTriangle,
   RefreshCw,
+  Plus,
 } from 'lucide-react'
 import { differenceInDays } from 'date-fns'
 import toast from 'react-hot-toast'
@@ -30,9 +31,56 @@ import {
   type ExchangeVariantOption,
 } from '@/hooks/useReturns'
 import { useCreateReturn, type ExchangeItemInput } from '@/hooks/useReturnMutations'
-import { ADDI_RETURN_BLOCK_MSG } from '@/lib/returnCalc'
+import {
+  ADDI_RETURN_BLOCK_MSG,
+  calculateExchangeAmounts,
+  type ReturnLine,
+  type ExchangeAmounts,
+} from '@/lib/returnCalc'
+import {
+  addExchangeLine,
+  setExchangeLineQty,
+  removeExchangeLine,
+  isAtStockCap,
+  type ExchangeLine,
+} from '@/lib/exchangeCart'
 import { useResolvedConfig } from '@/hooks/useConfig'
 import type { PaymentMethod, ReturnType, Return } from '@/types/database.types'
+
+// ── Helpers de cálculo (Fase 1/2) ─────────────────────────────────────────────
+// Convierte lo devuelto y los nuevos a ReturnLine[] para calculateExchangeAmounts.
+function returnLinesFrom(
+  order: FoundOrder,
+  returnQtys: Record<string, number>,
+): ReturnLine[] {
+  return order.items
+    .filter((i) => (returnQtys[i.variant_id] ?? 0) > 0)
+    .map((i) => ({
+      qty: returnQtys[i.variant_id] ?? 0,
+      unit_price: i.unit_price,
+      list_price: i.list_price,
+    }))
+}
+
+function exchangeLinesFrom(items: ExchangeLine[]): ReturnLine[] {
+  // El ítem nuevo va a catálogo pleno: unit_price = list_price.
+  return items.map((e) => ({
+    qty: e.qty,
+    unit_price: e.list_price,
+    list_price: e.list_price,
+  }))
+}
+
+function exchangeSummary(
+  order: FoundOrder,
+  returnQtys: Record<string, number>,
+  exchangeItems: ExchangeLine[],
+): ExchangeAmounts {
+  return calculateExchangeAmounts(
+    returnLinesFrom(order, returnQtys),
+    exchangeLinesFrom(exchangeItems),
+  )
+}
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -442,6 +490,58 @@ function VariantPickerModal({ excludeVariantId, onSelect, onClose }: VariantPick
 
 // ── Step 3 — Elegir tipo ──────────────────────────────────────────────────────
 
+// Desglose transparente en vivo del cambio (para que el cajero lo explique).
+function ExchangeBreakdown({ a }: { a: ExchangeAmounts }) {
+  const negativa = a.difference < 0
+  return (
+    <div className="space-y-1.5 rounded-xl border border-[#ebe9e6] bg-[#fafaf9] p-4 text-sm">
+      <div className="flex justify-between text-[#525252]">
+        <span>Crédito (lo pagado)</span>
+        <span className="font-mono font-medium text-[#1a1a1a]">{fmtCOP(a.creditoPagado)}</span>
+      </div>
+      {a.descuentoTrasladado > 0 && (
+        <div className="flex justify-between text-[#525252]">
+          <span>Descuento trasladado</span>
+          <span className="font-mono font-medium text-emerald-700">
+            −{fmtCOP(a.descuentoTrasladado)}
+          </span>
+        </div>
+      )}
+      <div className="flex justify-between text-[#525252]">
+        <span>Catálogo nuevo</span>
+        <span className="font-mono font-medium text-[#1a1a1a]">{fmtCOP(a.catalogoNuevo)}</span>
+      </div>
+      <div
+        className={`mt-1.5 flex items-center justify-between border-t pt-2 ${
+          negativa ? 'border-amber-200' : 'border-[#ebe9e6]'
+        }`}
+      >
+        <span className="text-sm font-semibold text-[#1a1a1a]">
+          {negativa ? 'Faltante' : a.difference > 0 ? 'A cobrar' : 'Diferencia'}
+        </span>
+        {negativa ? (
+          <span className="font-mono text-base font-bold text-amber-700">
+            faltan {fmtCOP(a.shortfall)}
+          </span>
+        ) : (
+          <span
+            className={`font-mono text-base font-bold ${
+              a.difference > 0 ? 'text-violet-700' : 'text-[#a8a29e]'
+            }`}
+          >
+            {a.difference > 0 ? fmtCOP(a.orderTotal) : 'Sin costo'}
+          </span>
+        )}
+      </div>
+      {negativa && (
+        <p className="pt-0.5 text-xs text-amber-700">
+          Agrega productos por {fmtCOP(a.shortfall)} más para cubrir el crédito.
+        </p>
+      )}
+    </div>
+  )
+}
+
 interface Step3Props {
   order: FoundOrder
   returnQtys: Record<string, number>
@@ -451,8 +551,10 @@ interface Step3Props {
   onRefundMethodChange: (m: PaymentMethod) => void
   notes: string
   onNotesChange: (n: string) => void
-  exchangeVariants: Record<string, ExchangeVariantOption | null>
-  onExchangeVariantChange: (variantId: string, v: ExchangeVariantOption | null) => void
+  exchangeItems: ExchangeLine[]
+  onAddExchange: (v: ExchangeVariantOption) => void
+  onUpdateExchangeQty: (variantId: string, qty: number) => void
+  onRemoveExchange: (variantId: string) => void
   onBack: () => void
   onNext: () => void
 }
@@ -466,12 +568,14 @@ function Step3Type({
   onRefundMethodChange,
   notes,
   onNotesChange,
-  exchangeVariants,
-  onExchangeVariantChange,
+  exchangeItems,
+  onAddExchange,
+  onUpdateExchangeQty,
+  onRemoveExchange,
   onBack,
   onNext,
 }: Step3Props) {
-  const [pickerFor, setPickerFor] = useState<string | null>(null)
+  const [pickerOpen, setPickerOpen] = useState(false)
 
   const selectedItems = order.items.filter((i) => (returnQtys[i.variant_id] ?? 0) > 0)
 
@@ -480,16 +584,12 @@ function Step3Type({
     0,
   )
 
-  const priceDiff = selectedItems.reduce((sum, i) => {
-    const nv = exchangeVariants[i.variant_id]
-    if (!nv) return sum
-    return sum + (nv.price - i.unit_price) * (returnQtys[i.variant_id] ?? 0)
-  }, 0)
+  // Desglose en vivo del cambio (netea por totales; traslada el descuento).
+  const summary = exchangeSummary(order, returnQtys, exchangeItems)
 
-  const allExchangeSelected =
-    returnType === 'exchange' && selectedItems.every((i) => exchangeVariants[i.variant_id] != null)
-
-  const canContinue = returnType === 'return' || allExchangeSelected
+  // Fase 2: solo se exige elegir al menos un producto nuevo. El bloqueo de
+  // diferencia < 0 llega en Fase 3 (aquí solo se muestra informativo).
+  const canContinue = returnType === 'return' || exchangeItems.length > 0
 
   return (
     <div className="flex h-full flex-col">
@@ -590,97 +690,115 @@ function Step3Type({
             </>
           )}
 
-          {/* Cambio: variant selector */}
+          {/* Cambio: crédito devuelto (referencia) + lista de productos nuevos */}
           {returnType === 'exchange' && (
             <>
-              <div>
-                <p className="mb-3 text-xs font-semibold uppercase tracking-[.05em] text-[#737373]">
-                  Seleccionar variante de cambio
+              {/* Referencia del crédito: lo que se devuelve (solo lectura) */}
+              <div className="rounded-xl border border-[#ebe9e6] p-4">
+                <p className="mb-2 text-xs font-semibold uppercase tracking-[.05em] text-[#737373]">
+                  Devuelve (crédito)
                 </p>
-                <div className="flex flex-col gap-3">
-                  {selectedItems.map((i) => {
-                    const nv = exchangeVariants[i.variant_id]
-                    const diff =
-                      nv ? (nv.price - i.unit_price) * (returnQtys[i.variant_id] ?? 0) : null
-                    return (
-                      <div key={i.id} className="rounded-xl border border-[#ebe9e6] p-4">
-                        <div className="mb-3 flex items-center gap-2">
-                          <div
-                            className="h-3.5 w-3.5 rounded-full shadow-[0_0_0_1px_#d6d3d1]"
-                            style={{ background: i.color ? getColorHex(i.color) : '#e2e8f0' }}
-                          />
-                          <p className="text-sm font-medium text-[#1a1a1a]">
-                            {i.product_name}
-                            {i.size ? ` T.${i.size}` : ''}
-                            {i.color ? ` · ${i.color}` : ''}
-                            <span className="text-[#737373]"> ×{returnQtys[i.variant_id]}</span>
-                          </p>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <ArrowLeftRight size={13} className="shrink-0 text-[#a8a29e]" />
-                          {nv ? (
-                            <div className="flex flex-1 items-center justify-between">
-                              <button onClick={() => setPickerFor(i.variant_id)} className="text-left">
-                                <p className="text-sm font-medium text-[#1a1a1a]">
-                                  {nv.product_name}
-                                  {nv.size ? ` T.${nv.size}` : ''}
-                                  {nv.color ? ` · ${nv.color}` : ''}
-                                </p>
-                                <p className="text-xs text-violet-600 underline">Cambiar</p>
-                              </button>
-                              <div className="ml-3 shrink-0 text-right">
-                                <p className="font-mono text-sm font-semibold text-[#1a1a1a]">
-                                  {fmtCOP(nv.price)}
-                                </p>
-                                {diff !== null && diff !== 0 && (
-                                  <p
-                                    className={`text-xs font-semibold ${diff > 0 ? 'text-violet-600' : 'text-green-600'}`}
-                                  >
-                                    {diff > 0 ? `+${fmtCOP(diff)}` : fmtCOP(diff)}
-                                  </p>
-                                )}
-                                {diff === 0 && (
-                                  <p className="text-xs text-[#a8a29e]">Sin costo</p>
-                                )}
-                              </div>
-                            </div>
-                          ) : (
-                            <button
-                              onClick={() => setPickerFor(i.variant_id)}
-                              className="flex-1 rounded-lg border border-dashed border-[#d6d3d1] py-2 text-center text-xs font-medium text-violet-600 hover:border-violet-400 hover:bg-violet-50"
-                            >
-                              Seleccionar variante nueva
-                            </button>
-                          )}
-                          {nv && (
-                            <button
-                              onClick={() => onExchangeVariantChange(i.variant_id, null)}
-                              className="shrink-0 text-[#a8a29e] hover:text-[#525252]"
-                            >
-                              <X size={14} />
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
+                {selectedItems.map((i) => (
+                  <div key={i.id} className="flex items-center justify-between py-1">
+                    <span className="truncate text-sm text-[#525252]">
+                      {i.product_name}
+                      {i.size ? ` T.${i.size}` : ''}
+                      {i.color ? ` · ${i.color}` : ''}
+                      <span className="text-[#a8a29e]"> ×{returnQtys[i.variant_id]}</span>
+                    </span>
+                    <span className="ml-3 shrink-0 font-mono text-sm text-[#1a1a1a]">
+                      {fmtCOP(i.unit_price * (returnQtys[i.variant_id] ?? 0))}
+                    </span>
+                  </div>
+                ))}
               </div>
 
-              {priceDiff !== 0 && allExchangeSelected && (
-                <div
-                  className={`flex items-center justify-between rounded-lg border px-4 py-3 ${
-                    priceDiff > 0 ? 'border-violet-200 bg-violet-50' : 'border-green-200 bg-green-50'
-                  }`}
-                >
-                  <span className="text-sm font-medium text-[#1a1a1a]">Diferencia neta</span>
-                  <span
-                    className={`font-mono text-base font-bold ${priceDiff > 0 ? 'text-violet-700' : 'text-green-700'}`}
+              {/* Productos nuevos: lista abierta, cantidades propias */}
+              <div>
+                <div className="mb-3 flex items-center justify-between">
+                  <p className="text-xs font-semibold uppercase tracking-[.05em] text-[#737373]">
+                    Productos nuevos
+                  </p>
+                  <button
+                    onClick={() => setPickerOpen(true)}
+                    className="flex items-center gap-1.5 rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-violet-700"
                   >
-                    {priceDiff > 0 ? `+${fmtCOP(priceDiff)}` : fmtCOP(priceDiff)}
-                  </span>
+                    <Plus size={13} /> Agregar producto
+                  </button>
                 </div>
-              )}
+
+                {exchangeItems.length === 0 ? (
+                  <button
+                    onClick={() => setPickerOpen(true)}
+                    className="flex w-full flex-col items-center gap-1.5 rounded-xl border border-dashed border-[#d6d3d1] py-6 text-center hover:border-violet-400 hover:bg-violet-50"
+                  >
+                    <Package size={20} className="text-[#a8a29e]" />
+                    <span className="text-xs font-medium text-violet-600">
+                      Agrega uno o varios productos para el cambio
+                    </span>
+                  </button>
+                ) : (
+                  <div className="flex flex-col gap-2">
+                    {exchangeItems.map((e) => (
+                      <div
+                        key={e.variant_id}
+                        className="flex items-center gap-3 rounded-xl border border-[#ebe9e6] p-3"
+                      >
+                        <div
+                          className="h-4 w-4 shrink-0 rounded-full shadow-[0_0_0_1px_#d6d3d1]"
+                          style={{ background: e.color ? getColorHex(e.color) : '#e2e8f0' }}
+                        />
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-medium text-[#1a1a1a]">
+                            {e.product_name}
+                            {e.size ? ` T.${e.size}` : ''}
+                            {e.color ? ` · ${e.color}` : ''}
+                          </p>
+                          <p className="text-xs text-[#737373]">
+                            {fmtCOP(e.list_price)} c/u · {e.stock_qty} disp.
+                          </p>
+                        </div>
+                        <div className="flex h-8 shrink-0 items-center overflow-hidden rounded-lg border border-[#ebe9e6]">
+                          <button
+                            onClick={() => onUpdateExchangeQty(e.variant_id, e.qty - 1)}
+                            className="flex h-full w-7 items-center justify-center text-[#525252] hover:bg-[#f5f4f1]"
+                          >
+                            −
+                          </button>
+                          <input
+                            type="number"
+                            min={1}
+                            max={e.stock_qty}
+                            value={e.qty}
+                            onChange={(ev) =>
+                              onUpdateExchangeQty(e.variant_id, Number(ev.target.value) || 1)
+                            }
+                            className="w-9 bg-transparent text-center text-sm font-semibold tabular-nums outline-none"
+                          />
+                          <button
+                            onClick={() => onUpdateExchangeQty(e.variant_id, e.qty + 1)}
+                            className="flex h-full w-7 items-center justify-center text-[#525252] hover:bg-[#f5f4f1]"
+                          >
+                            +
+                          </button>
+                        </div>
+                        <span className="w-20 shrink-0 text-right font-mono text-sm font-semibold text-[#1a1a1a]">
+                          {fmtCOP(e.list_price * e.qty)}
+                        </span>
+                        <button
+                          onClick={() => onRemoveExchange(e.variant_id)}
+                          className="shrink-0 text-[#a8a29e] hover:text-red-500"
+                        >
+                          <X size={14} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Desglose en vivo */}
+              <ExchangeBreakdown a={summary} />
 
               <div>
                 <p className="mb-2 text-xs font-semibold uppercase tracking-[.05em] text-[#737373]">
@@ -737,11 +855,10 @@ function Step3Type({
         </button>
       </div>
 
-      {pickerFor && (
+      {pickerOpen && (
         <VariantPickerModal
-          excludeVariantId={pickerFor}
-          onSelect={(v) => { onExchangeVariantChange(pickerFor, v); setPickerFor(null) }}
-          onClose={() => setPickerFor(null)}
+          onSelect={(v) => { onAddExchange(v); setPickerOpen(false) }}
+          onClose={() => setPickerOpen(false)}
         />
       )}
     </div>
@@ -756,7 +873,7 @@ interface Step4Props {
   returnType: ReturnType
   refundMethod: PaymentMethod
   notes: string
-  exchangeVariants: Record<string, ExchangeVariantOption | null>
+  exchangeItems: ExchangeLine[]
   isPending: boolean
   onBack: () => void
   onConfirm: () => void
@@ -768,7 +885,7 @@ function Step4Confirm({
   returnType,
   refundMethod,
   notes,
-  exchangeVariants,
+  exchangeItems,
   isPending,
   onBack,
   onConfirm,
@@ -778,11 +895,8 @@ function Step4Confirm({
     (sum, i) => sum + i.unit_price * (returnQtys[i.variant_id] ?? 0),
     0,
   )
-  const exchangeTotal = selectedItems.reduce((sum, i) => {
-    const nv = exchangeVariants[i.variant_id]
-    return nv ? sum + nv.price * (returnQtys[i.variant_id] ?? 0) : sum
-  }, 0)
-  const priceDiff = exchangeTotal - refundTotal
+  const summary = exchangeSummary(order, returnQtys, exchangeItems)
+  const priceDiff = summary.difference
 
   return (
     <div className="flex h-full flex-col">
@@ -841,30 +955,26 @@ function Step4Confirm({
                   Ítems nuevos (cambio)
                 </p>
               </div>
-              {selectedItems.map((i) => {
-                const nv = exchangeVariants[i.variant_id]
-                if (!nv) return null
-                return (
+              {exchangeItems.map((e) => (
+                <div
+                  key={e.variant_id}
+                  className="flex items-center gap-3 border-b border-[#f5f4f1] px-4 py-3 last:border-0"
+                >
                   <div
-                    key={i.id}
-                    className="flex items-center gap-3 border-b border-[#f5f4f1] px-4 py-3 last:border-0"
-                  >
-                    <div
-                      className="h-4 w-4 shrink-0 rounded-full shadow-[0_0_0_1.5px_rgba(0,0,0,0.12)]"
-                      style={{ background: nv.color ? getColorHex(nv.color) : '#e2e8f0' }}
-                    />
-                    <p className="min-w-0 flex-1 truncate text-sm font-medium text-[#1a1a1a]">
-                      {nv.product_name}
-                      {nv.size ? ` T.${nv.size}` : ''}
-                      {nv.color ? ` · ${nv.color}` : ''}
-                    </p>
-                    <span className="shrink-0 text-xs text-[#737373]">×{returnQtys[i.variant_id]}</span>
-                    <span className="shrink-0 font-mono text-sm font-semibold text-[#1a1a1a]">
-                      {fmtCOP(nv.price * (returnQtys[i.variant_id] ?? 0))}
-                    </span>
-                  </div>
-                )
-              })}
+                    className="h-4 w-4 shrink-0 rounded-full shadow-[0_0_0_1.5px_rgba(0,0,0,0.12)]"
+                    style={{ background: e.color ? getColorHex(e.color) : '#e2e8f0' }}
+                  />
+                  <p className="min-w-0 flex-1 truncate text-sm font-medium text-[#1a1a1a]">
+                    {e.product_name}
+                    {e.size ? ` T.${e.size}` : ''}
+                    {e.color ? ` · ${e.color}` : ''}
+                  </p>
+                  <span className="shrink-0 text-xs text-[#737373]">×{e.qty}</span>
+                  <span className="shrink-0 font-mono text-sm font-semibold text-[#1a1a1a]">
+                    {fmtCOP(e.list_price * e.qty)}
+                  </span>
+                </div>
+              ))}
             </div>
           )}
 
@@ -882,13 +992,19 @@ function Step4Confirm({
                 <span className="font-mono font-semibold text-green-700">{fmtCOP(refundTotal)}</span>
               </div>
             )}
-            {returnType === 'exchange' && priceDiff !== 0 && (
+            {returnType === 'exchange' && priceDiff > 0 && (
               <div className="flex justify-between text-[#525252]">
-                <span>Diferencia neta</span>
-                <span
-                  className={`font-mono font-semibold ${priceDiff > 0 ? 'text-violet-700' : 'text-green-700'}`}
-                >
-                  {priceDiff > 0 ? `+${fmtCOP(priceDiff)}` : fmtCOP(priceDiff)}
+                <span>A cobrar</span>
+                <span className="font-mono font-semibold text-violet-700">
+                  {fmtCOP(summary.orderTotal)}
+                </span>
+              </div>
+            )}
+            {returnType === 'exchange' && priceDiff < 0 && (
+              <div className="flex justify-between text-[#525252]">
+                <span>Faltante para cubrir</span>
+                <span className="font-mono font-semibold text-amber-700">
+                  faltan {fmtCOP(summary.shortfall)}
                 </span>
               </div>
             )}
@@ -938,7 +1054,7 @@ interface TicketProps {
   returnQtys: Record<string, number>
   returnType: ReturnType
   refundMethod: PaymentMethod
-  exchangeVariants: Record<string, ExchangeVariantOption | null>
+  exchangeItems: ExchangeLine[]
   onClose: () => void
 }
 
@@ -948,7 +1064,7 @@ function ReturnTicketModal({
   returnQtys,
   returnType,
   refundMethod,
-  exchangeVariants,
+  exchangeItems,
   onClose,
 }: TicketProps) {
   const selectedItems = order.items.filter((i) => (returnQtys[i.variant_id] ?? 0) > 0)
@@ -956,11 +1072,8 @@ function ReturnTicketModal({
     (sum, i) => sum + i.unit_price * (returnQtys[i.variant_id] ?? 0),
     0,
   )
-  const exchangeTotal = selectedItems.reduce((sum, i) => {
-    const nv = exchangeVariants[i.variant_id]
-    return nv ? sum + nv.price * (returnQtys[i.variant_id] ?? 0) : sum
-  }, 0)
-  const priceDiff = exchangeTotal - refundTotal
+  const summary = exchangeSummary(order, returnQtys, exchangeItems)
+  const priceDiff = summary.difference
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(15,23,42,0.5)] p-4 backdrop-blur-sm">
@@ -1009,22 +1122,18 @@ function ReturnTicketModal({
             <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-[#737373]">
               Ítems nuevos
             </p>
-            {selectedItems.map((i) => {
-              const nv = exchangeVariants[i.variant_id]
-              if (!nv) return null
-              return (
-                <div key={i.id} className="mb-1 flex justify-between text-xs">
-                  <span className="text-[#525252]">
-                    {nv.product_name}
-                    {nv.size ? ` T.${nv.size}` : ''}
-                    {nv.color ? ` ${nv.color}` : ''} × {returnQtys[i.variant_id]}
-                  </span>
-                  <span className="ml-2 shrink-0 font-mono text-[#1a1a1a]">
-                    {fmtCOP(nv.price * (returnQtys[i.variant_id] ?? 0))}
-                  </span>
-                </div>
-              )
-            })}
+            {exchangeItems.map((e) => (
+              <div key={e.variant_id} className="mb-1 flex justify-between text-xs">
+                <span className="text-[#525252]">
+                  {e.product_name}
+                  {e.size ? ` T.${e.size}` : ''}
+                  {e.color ? ` ${e.color}` : ''} × {e.qty}
+                </span>
+                <span className="ml-2 shrink-0 font-mono text-[#1a1a1a]">
+                  {fmtCOP(e.list_price * e.qty)}
+                </span>
+              </div>
+            ))}
           </div>
         )}
 
@@ -1040,7 +1149,9 @@ function ReturnTicketModal({
               className={`flex justify-between font-bold ${priceDiff > 0 ? 'text-violet-700' : 'text-green-700'}`}
             >
               <span>{priceDiff > 0 ? 'Cobra cliente' : 'Devuelve tienda'}</span>
-              <span className="font-mono">{fmtCOP(Math.abs(priceDiff))}</span>
+              <span className="font-mono">
+                {fmtCOP(priceDiff > 0 ? summary.orderTotal : summary.refundDue)}
+              </span>
             </div>
           )}
           <div className="flex justify-between text-[#525252]">
@@ -1253,9 +1364,8 @@ export default function ReturnsPage() {
   const [returnType, setReturnType] = useState<ReturnType>('return')
   const [refundMethod, setRefundMethod] = useState<PaymentMethod>('cash')
   const [notes, setNotes] = useState('')
-  const [exchangeVariants, setExchangeVariants] = useState<
-    Record<string, ExchangeVariantOption | null>
-  >({})
+  // Carrito de productos nuevos del cambio (lista abierta, qty propia).
+  const [exchangeItems, setExchangeItems] = useState<ExchangeLine[]>([])
   const [completedReturn, setCompletedReturn] = useState<Return | null>(null)
   const preloadAttemptedRef = useRef<string | null>(null)
 
@@ -1317,7 +1427,7 @@ export default function ReturnsPage() {
     setReturnType('return')
     setRefundMethod('cash')
     setNotes('')
-    setExchangeVariants({})
+    setExchangeItems([])
     setCompletedReturn(null)
     preloadAttemptedRef.current = null
   }, [])
@@ -1332,12 +1442,23 @@ export default function ReturnsPage() {
     setReturnQtys((prev) => ({ ...prev, [variantId]: qty }))
   }, [])
 
-  const handleExchangeVariantChange = useCallback(
-    (variantId: string, v: ExchangeVariantOption | null) => {
-      setExchangeVariants((prev) => ({ ...prev, [variantId]: v }))
-    },
-    [],
-  )
+  const handleAddExchange = useCallback((v: ExchangeVariantOption) => {
+    setExchangeItems((prev) => {
+      if (isAtStockCap(prev, v)) {
+        toast.error(`Sin más stock de ${v.product_name} (máx. ${v.stock_qty})`)
+        return prev
+      }
+      return addExchangeLine(prev, v)
+    })
+  }, [])
+
+  const handleUpdateExchangeQty = useCallback((variantId: string, qty: number) => {
+    setExchangeItems((prev) => setExchangeLineQty(prev, variantId, qty))
+  }, [])
+
+  const handleRemoveExchange = useCallback((variantId: string) => {
+    setExchangeItems((prev) => removeExchangeLine(prev, variantId))
+  }, [])
 
   const handleConfirm = () => {
     if (!selectedOrder) return
@@ -1346,22 +1467,16 @@ export default function ReturnsPage() {
       (i) => (returnQtys[i.variant_id] ?? 0) > 0,
     )
 
-    const exchangeItems: ExchangeItemInput[] =
+    const exchangeInput: ExchangeItemInput[] =
       returnType === 'exchange'
-        ? selectedItems.flatMap((i) => {
-            const nv = exchangeVariants[i.variant_id]
-            if (!nv) return []
-            return [
-              {
-                variant_id: nv.id,
-                product_id: nv.product_id,
-                qty: returnQtys[i.variant_id] ?? 0,
-                // Ítem nuevo a catálogo: unit_price = list_price = nv.price.
-                unit_price: nv.price,
-                list_price: nv.price,
-              },
-            ]
-          })
+        ? exchangeItems.map((e) => ({
+            variant_id: e.variant_id,
+            product_id: e.product_id,
+            qty: e.qty,
+            // Ítem nuevo a catálogo: unit_price = list_price.
+            unit_price: e.list_price,
+            list_price: e.list_price,
+          }))
         : []
 
     createReturn.mutate(
@@ -1378,7 +1493,7 @@ export default function ReturnsPage() {
           unit_price: i.unit_price,
           list_price: i.list_price,
         })),
-        exchangeItems,
+        exchangeItems: exchangeInput,
         refundMethod,
         notes,
       },
@@ -1437,13 +1552,15 @@ export default function ReturnsPage() {
               order={selectedOrder}
               returnQtys={returnQtys}
               returnType={returnType}
-              onTypeChange={(t) => { setReturnType(t); setExchangeVariants({}) }}
+              onTypeChange={(t) => { setReturnType(t); setExchangeItems([]) }}
               refundMethod={refundMethod}
               onRefundMethodChange={setRefundMethod}
               notes={notes}
               onNotesChange={setNotes}
-              exchangeVariants={exchangeVariants}
-              onExchangeVariantChange={handleExchangeVariantChange}
+              exchangeItems={exchangeItems}
+              onAddExchange={handleAddExchange}
+              onUpdateExchangeQty={handleUpdateExchangeQty}
+              onRemoveExchange={handleRemoveExchange}
               onBack={() => setStep(2)}
               onNext={() => setStep(4)}
             />
@@ -1456,7 +1573,7 @@ export default function ReturnsPage() {
               returnType={returnType}
               refundMethod={refundMethod}
               notes={notes}
-              exchangeVariants={exchangeVariants}
+              exchangeItems={exchangeItems}
               isPending={createReturn.isPending}
               onBack={() => setStep(3)}
               onConfirm={handleConfirm}
@@ -1478,7 +1595,7 @@ export default function ReturnsPage() {
           returnQtys={returnQtys}
           returnType={returnType}
           refundMethod={refundMethod}
-          exchangeVariants={exchangeVariants}
+          exchangeItems={exchangeItems}
           onClose={reset}
         />
       )}
