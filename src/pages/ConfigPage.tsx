@@ -3,6 +3,7 @@ import {
   Store,
   Building2,
   Users,
+  ShieldCheck,
   Tag,
   CreditCard,
   Printer,
@@ -11,15 +12,18 @@ import {
 import StoreSection from '@/components/config/StoreSection'
 import StoresSection from '@/components/config/StoresSection'
 import UsersSection from '@/components/config/UsersSection'
+import RolesSection from '@/components/config/RolesSection'
 import ProductsSection from '@/components/config/ProductsSection'
 import CajaSection from '@/components/config/CajaSection'
 import EtiquetasSection from '@/components/config/EtiquetasSection'
 import CategoriesManager from '@/components/config/CategoriesManager'
+import { usePermissions } from '@/hooks/usePermissions'
 
 type SectionId =
   | 'tienda'
   | 'sucursales'
   | 'usuarios'
+  | 'roles'
   | 'productos'
   | 'caja'
   | 'etiquetas'
@@ -28,17 +32,22 @@ const SECTIONS: {
   id: SectionId
   label: string
   Icon: LucideIcon
+  /** Permiso extra para ver la sub-sección (la ruta ya exige config.gestionar). */
+  permission?: string
 }[] = [
   { id: 'tienda', label: 'Tienda', Icon: Store },
   { id: 'sucursales', label: 'Sucursales', Icon: Building2 },
-  { id: 'usuarios', label: 'Usuarios', Icon: Users },
+  { id: 'usuarios', label: 'Usuarios', Icon: Users, permission: 'usuarios.gestionar' },
+  { id: 'roles', label: 'Roles', Icon: ShieldCheck, permission: 'roles.gestionar' },
   { id: 'productos', label: 'Productos', Icon: Tag },
   { id: 'caja', label: 'Caja', Icon: CreditCard },
   { id: 'etiquetas', label: 'Etiquetas', Icon: Printer },
 ]
 
 export default function ConfigPage() {
+  const { can } = usePermissions()
   const [active, setActive] = useState<SectionId>('tienda')
+  const visibleSections = SECTIONS.filter((s) => !s.permission || can(s.permission))
 
   return (
     <div className="flex h-full overflow-hidden">
@@ -47,7 +56,7 @@ export default function ConfigPage() {
         <p className="mb-2 px-3 text-[10px] font-semibold uppercase tracking-[.06em] text-[#94a3b8]">
           Configuración
         </p>
-        {SECTIONS.map(({ id, label, Icon }) => (
+        {visibleSections.map(({ id, label, Icon }) => (
           <button
             key={id}
             onClick={() => setActive(id)}
@@ -84,6 +93,7 @@ export default function ConfigPage() {
             {active === 'tienda' && 'Nombre, logo y datos de contacto de la tienda'}
             {active === 'sucursales' && 'Crea y administra las sucursales de tu negocio'}
             {active === 'usuarios' && 'Gestiona el equipo y sus permisos de acceso'}
+            {active === 'roles' && 'Crea roles y define qué puede hacer cada uno'}
             {active === 'productos' && 'Tallas, colores, marcas y límite de devoluciones'}
             {active === 'caja' && 'Métodos de pago, motivos de ajuste y QR para pagos'}
             {active === 'etiquetas' && 'Formato y campos para etiquetas de precio'}
@@ -93,11 +103,12 @@ export default function ConfigPage() {
         <div className="p-6">
           {active === 'tienda' && <StoreSection />}
           {active === 'sucursales' && <StoresSection />}
-          {active === 'usuarios' && (
+          {active === 'usuarios' && can('usuarios.gestionar') && (
             <div className="space-y-6">
               <UsersSection />
             </div>
           )}
+          {active === 'roles' && can('roles.gestionar') && <RolesSection />}
           {active === 'productos' && (
             <div className="space-y-6">
               <ProductsSection />

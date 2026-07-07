@@ -36,7 +36,7 @@ export default function App() {
           <Route
             path="productos"
             element={
-              <ProtectedRoute allowedRoles={['admin']}>
+              <ProtectedRoute permission="productos.gestionar">
                 <ProductsPage />
               </ProtectedRoute>
             }
@@ -46,7 +46,7 @@ export default function App() {
           <Route
             path="proveedores"
             element={
-              <ProtectedRoute allowedRoles={['admin']}>
+              <ProtectedRoute permission="compras.gestionar">
                 <SuppliersPage />
               </ProtectedRoute>
             }
@@ -55,7 +55,7 @@ export default function App() {
           <Route
             path="reportes"
             element={
-              <ProtectedRoute allowedRoles={['admin']}>
+              <ProtectedRoute permission="reportes.ver">
                 <ReportsPage />
               </ProtectedRoute>
             }
@@ -63,7 +63,7 @@ export default function App() {
           <Route
             path="caja/historial"
             element={
-              <ProtectedRoute allowedRoles={['admin']}>
+              <ProtectedRoute permission="reportes.ver">
                 <CashShiftsHistoryPage />
               </ProtectedRoute>
             }
@@ -71,7 +71,7 @@ export default function App() {
           <Route
             path="gastos/historial"
             element={
-              <ProtectedRoute allowedRoles={['admin']}>
+              <ProtectedRoute permission="gastos.ver">
                 <ExpenseHistoryPage />
               </ProtectedRoute>
             }
@@ -79,7 +79,7 @@ export default function App() {
           <Route
             path="configuracion"
             element={
-              <ProtectedRoute allowedRoles={['admin']}>
+              <ProtectedRoute permission="config.gestionar">
                 <ConfigPage />
               </ProtectedRoute>
             }

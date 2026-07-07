@@ -3,8 +3,8 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from './useAuth'
 import { getActiveStoreId } from './useActiveStoreId'
 import toast from 'react-hot-toast'
-import type { UserRole } from '@/types/database.types'
 import type { StoreConfig } from '@/types/config.types'
+import { deriveLegacyRole } from '@/lib/permissions'
 
 interface UpdateStoreInput {
   name: string
@@ -16,9 +16,11 @@ interface CreateUserInput {
   full_name: string
   email: string
   password: string
-  role: UserRole
+  // Rol RBAC elegido. La Edge Function deriva organization_id (de la tienda
+  // base), el enum legacy (de los permisos del rol) y valida la coherencia.
+  role_id: string
   // Multi-tienda: la primera es la base (store_id) y la activa inicial.
-  // Para vendedores la Edge Function ignora todas menos la primera.
+  // Para roles no-gestores la Edge Function ignora todas menos la primera.
   store_ids: string[]
 }
 
@@ -133,16 +135,24 @@ export function useConfigMutations() {
   })
 
   const updateUserRole = useMutation({
-    mutationFn: async ({ id, role }: { id: string; role: UserRole }) => {
+    mutationFn: async ({ id, roleId }: { id: string; roleId: string }) => {
+      // Deriva el enum legacy de los permisos del rol para no dejarlo stale.
+      const { data: role, error: roleErr } = await supabase
+        .from('roles')
+        .select('permissions')
+        .eq('id' as never, roleId)
+        .single()
+      if (roleErr) throw roleErr
+      const legacy = deriveLegacyRole((role as { permissions: string[] }).permissions)
       const { error } = await supabase
         .from('profiles')
-        .update({ role } as never)
+        .update({ role_id: roleId, role: legacy } as never)
         .eq('id' as never, id)
       if (error) throw error
     },
     onSuccess: () => {
       invalidateUsers()
-      toast.success('Rol actualizado')
+      toast.success('Rol actualizado. El usuario debe volver a entrar para que aplique.')
     },
     onError: (err: Error) => toast.error(err.message),
   })

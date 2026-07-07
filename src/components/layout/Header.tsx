@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Clock, Wallet, Receipt } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
+import { usePermissions } from '@/hooks/usePermissions'
 import { useCurrentShift } from '@/hooks/useCashShift'
 import {
   OpenShiftModal,
@@ -31,6 +32,7 @@ function formatShiftTime(iso: string): string {
 
 export default function Header() {
   const { profile } = useAuth()
+  const { can } = usePermissions()
   const { data: shift, isLoading: loadingShift } = useCurrentShift()
   const [time, setTime] = useState(getBogoTime)
   const [showOpen, setShowOpen] = useState(false)
@@ -42,11 +44,11 @@ export default function Header() {
     return () => clearInterval(id)
   }, [])
 
-  const roleLabel = profile?.role === 'admin' ? 'Administrador' : 'Vendedor'
+  // Etiqueta del rol RBAC del usuario (nombre del rol asignado).
+  const roleLabel = profile?.rbac_role?.name ?? 'Usuario'
   const initial = profile?.full_name?.charAt(0).toUpperCase() ?? '?'
-  const isAdmin = profile?.role === 'admin'
-  const showLayawayBell =
-    profile?.role === 'admin' || profile?.role === 'seller'
+  // Campanas: separados (quien gestiona separados) y proveedores (compras).
+  const showLayawayBell = can('separados.gestionar')
 
   return (
     <>
@@ -76,7 +78,7 @@ export default function Header() {
             </>
           )}
 
-          {isAdmin && <SupplierNotifications />}
+          {can('compras.gestionar') && <SupplierNotifications />}
 
           <span className="h-5 w-px bg-gray-200" />
 

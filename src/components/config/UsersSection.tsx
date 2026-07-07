@@ -10,7 +10,10 @@ import {
   useGrantStoreAccess,
   useRevokeStoreAccess,
 } from '@/hooks/useUserStores'
-import type { Profile, UserRole } from '@/types/database.types'
+import { useRoles } from '@/hooks/useRoles'
+import { usePermissions } from '@/hooks/usePermissions'
+import { isManagerRole } from '@/lib/permissions'
+import type { Profile } from '@/types/database.types'
 
 // ─── Store Access Panel (solo admins) ─────────────────────────────────────────
 
@@ -110,16 +113,14 @@ function Avatar({ name }: { name: string }) {
 
 // ─── Role Badge ───────────────────────────────────────────────────────────────
 
-function RoleBadge({ role }: { role: UserRole }) {
+function RoleBadge({ name, manager }: { name: string; manager: boolean }) {
   return (
     <span
       className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold ${
-        role === 'admin'
-          ? 'bg-violet-100 text-violet-700'
-          : 'bg-slate-100 text-slate-600'
+        manager ? 'bg-violet-100 text-violet-700' : 'bg-slate-100 text-slate-600'
       }`}
     >
-      {role === 'admin' ? 'Admin' : 'Vendedor'}
+      {name}
     </span>
   )
 }
@@ -133,14 +134,30 @@ interface CreateUserModalProps {
 
 function CreateUserModal({ onClose, onCreated }: CreateUserModalProps) {
   const { createUser } = useConfigMutations()
+  const { data: roles = [] } = useRoles()
+  const { isOwner } = usePermissions()
   // Solo se pueden asignar tiendas a las que el admin actual tiene acceso.
   const { data: myStores = [], isLoading: loadingStores } = useMyStores()
   const [fullName, setFullName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [role, setRole] = useState<UserRole>('seller')
+  const [roleId, setRoleId] = useState<string>('')
   // Orden importa: la primera es la base / activa inicial.
   const [selectedStoreIds, setSelectedStoreIds] = useState<string[]>([])
+
+  // El rol Dueño ('*') solo lo puede asignar otro Dueño.
+  const availableRoles = roles.filter((r) => isOwner || !r.permissions.includes('*'))
+  const selectedRole = roles.find((r) => r.id === roleId) ?? null
+  // Un rol "gestor" (usuarios.gestionar / '*') habilita multi-tienda.
+  const manager = selectedRole ? isManagerRole(selectedRole.permissions) : false
+
+  // Preseleccionar un rol por defecto (el primero no-gestor, típicamente Vendedor).
+  useEffect(() => {
+    if (!roleId && availableRoles.length > 0) {
+      const operativo = availableRoles.find((r) => !isManagerRole(r.permissions))
+      setRoleId((operativo ?? availableRoles[0]).id)
+    }
+  }, [availableRoles, roleId])
 
   // Si solo hay una tienda asignable, se preselecciona.
   useEffect(() => {
@@ -149,15 +166,18 @@ function CreateUserModal({ onClose, onCreated }: CreateUserModalProps) {
     }
   }, [myStores, selectedStoreIds.length])
 
-  function handleRoleChange(next: UserRole) {
-    setRole(next)
-    // Un vendedor solo puede tener una tienda: recorta la selección.
-    if (next === 'seller') setSelectedStoreIds((prev) => prev.slice(0, 1))
+  function handleRoleChange(nextId: string) {
+    setRoleId(nextId)
+    const next = roles.find((r) => r.id === nextId)
+    // Un rol no-gestor solo puede tener una tienda: recorta la selección.
+    if (next && !isManagerRole(next.permissions)) {
+      setSelectedStoreIds((prev) => prev.slice(0, 1))
+    }
   }
 
   function toggleStore(storeId: string) {
     setSelectedStoreIds((prev) => {
-      if (role === 'seller') return [storeId]
+      if (!manager) return [storeId]
       return prev.includes(storeId)
         ? prev.filter((id) => id !== storeId)
         : [...prev, storeId]
@@ -170,6 +190,10 @@ function CreateUserModal({ onClose, onCreated }: CreateUserModalProps) {
       toast.error('Todos los campos son requeridos')
       return
     }
+    if (!roleId) {
+      toast.error('Selecciona un rol')
+      return
+    }
     if (selectedStoreIds.length === 0) {
       toast.error('Selecciona al menos una tienda')
       return
@@ -179,7 +203,7 @@ function CreateUserModal({ onClose, onCreated }: CreateUserModalProps) {
         full_name: fullName.trim(),
         email: email.trim(),
         password,
-        role,
+        role_id: roleId,
         store_ids: selectedStoreIds,
       })
       onCreated()
@@ -258,19 +282,22 @@ function CreateUserModal({ onClose, onCreated }: CreateUserModalProps) {
           <div>
             <label className="mb-1.5 block text-xs font-medium text-[#525252]">Rol</label>
             <select
-              value={role}
-              onChange={(e) => handleRoleChange(e.target.value as UserRole)}
+              value={roleId}
+              onChange={(e) => handleRoleChange(e.target.value)}
               className="h-10 w-full rounded-lg border border-[#ebe9e6] bg-white px-3 text-sm outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100"
             >
-              <option value="seller">Vendedor</option>
-              <option value="admin">Administrador</option>
+              {availableRoles.map((r) => (
+                <option key={r.id} value={r.id}>
+                  {r.name}
+                </option>
+              ))}
             </select>
           </div>
 
           {/* Tiendas */}
           <div>
             <label className="mb-1.5 block text-xs font-medium text-[#525252]">
-              {role === 'admin' ? 'Tiendas con acceso' : 'Tienda'}
+              {manager ? 'Tiendas con acceso' : 'Tienda'}
             </label>
             {loadingStores ? (
               <div className="space-y-1.5">
@@ -296,7 +323,7 @@ function CreateUserModal({ onClose, onCreated }: CreateUserModalProps) {
                       <span className="flex items-center gap-2.5">
                         <Store size={14} className="text-[#a8a29e]" />
                         <span className="text-[#1a1a1a]">{s.store_name}</span>
-                        {role === 'admin' && isBase && (
+                        {manager && isBase && (
                           <span className="rounded-full bg-violet-100 px-1.5 py-0.5 text-[10px] font-semibold text-violet-700">
                             principal
                           </span>
@@ -304,7 +331,7 @@ function CreateUserModal({ onClose, onCreated }: CreateUserModalProps) {
                       </span>
                       <span
                         className={`flex h-5 w-5 items-center justify-center border ${
-                          role === 'admin' ? 'rounded-md' : 'rounded-full'
+                          manager ? 'rounded-md' : 'rounded-full'
                         } ${
                           checked
                             ? 'border-violet-500 bg-violet-500 text-white'
@@ -318,7 +345,7 @@ function CreateUserModal({ onClose, onCreated }: CreateUserModalProps) {
                 })}
               </div>
             )}
-            {role === 'admin' && myStores.length > 0 && (
+            {manager && myStores.length > 0 && (
               <p className="mt-1.5 text-[11px] text-[#a8a29e]">
                 La primera tienda será su tienda principal y la activa al iniciar
                 sesión.
@@ -354,12 +381,21 @@ function CreateUserModal({ onClose, onCreated }: CreateUserModalProps) {
 function UserRow({ user }: { user: Profile }) {
   const { profile: currentProfile } = useAuth()
   const { updateUserRole, toggleUserActive } = useConfigMutations()
+  const { data: roles = [] } = useRoles()
+  const { isOwner } = usePermissions()
   const isSelf = user.id === currentProfile?.id
   const [showStores, setShowStores] = useState(false)
-  const isAdmin = user.role === 'admin'
-  // Conteo de tiendas con acceso (solo admins). Requiere la política admin
-  // SELECT de user_stores (migración 014) para leer accesos de otros.
-  const { data: storeAccess = [] } = useUserStoreAccess(isAdmin ? user.id : null)
+
+  // Rol RBAC del usuario (por role_id). Fallback al enum legacy si no se encuentra.
+  const userRole = roles.find((r) => r.id === user.role_id) ?? null
+  const roleName = userRole?.name ?? (user.role === 'admin' ? 'Admin' : 'Vendedor')
+  const manager = userRole ? isManagerRole(userRole.permissions) : user.role === 'admin'
+  // El rol Dueño ('*') solo lo puede asignar otro Dueño.
+  const assignableRoles = roles.filter((r) => isOwner || !r.permissions.includes('*'))
+
+  // Conteo de tiendas con acceso (solo gestores multi-tienda). Requiere la
+  // política admin SELECT de user_stores (migración 014) para leer accesos.
+  const { data: storeAccess = [] } = useUserStoreAccess(manager ? user.id : null)
 
   return (
     <div className="border-b border-[#f5f4f1] last:border-0">
@@ -375,10 +411,10 @@ function UserRow({ user }: { user: Profile }) {
           <p className="text-xs text-[#737373] truncate">{user.email}</p>
         </div>
 
-        <RoleBadge role={user.role} />
+        <RoleBadge name={roleName} manager={manager} />
 
-        {/* Tiendas con acceso (solo admins) */}
-        {isAdmin && (
+        {/* Tiendas con acceso (solo gestores multi-tienda) */}
+        {manager && (
           <button
             onClick={() => setShowStores((v) => !v)}
             title="Tiendas con acceso"
@@ -393,17 +429,25 @@ function UserRow({ user }: { user: Profile }) {
           </button>
         )}
 
-        {/* Role select */}
+        {/* Role select (roles RBAC de la org) */}
         {!isSelf && (
           <select
-            value={user.role}
+            value={user.role_id ?? ''}
             onChange={(e) =>
-              void updateUserRole.mutateAsync({ id: user.id, role: e.target.value as UserRole })
+              void updateUserRole.mutateAsync({ id: user.id, roleId: e.target.value })
             }
             className="h-8 rounded-lg border border-[#ebe9e6] bg-white px-2 text-xs text-[#525252] outline-none focus:border-violet-400"
           >
-            <option value="seller">Vendedor</option>
-            <option value="admin">Admin</option>
+            {/* Si el rol actual no está entre los asignables (p. ej. Dueño y no
+                soy Dueño), se muestra igual para no perder la selección. */}
+            {userRole && !assignableRoles.some((r) => r.id === userRole.id) && (
+              <option value={userRole.id}>{userRole.name}</option>
+            )}
+            {assignableRoles.map((r) => (
+              <option key={r.id} value={r.id}>
+                {r.name}
+              </option>
+            ))}
           </select>
         )}
 
@@ -427,7 +471,7 @@ function UserRow({ user }: { user: Profile }) {
         )}
       </div>
 
-      {isAdmin && showStores && <StoreAccessPanel user={user} />}
+      {manager && showStores && <StoreAccessPanel user={user} />}
     </div>
   )
 }
