@@ -1,9 +1,10 @@
 import { useState } from 'react'
+import { Tag } from 'lucide-react'
 import { fmtCOP } from '@/lib/formatters'
 import { minFinalPrice } from '@/stores/cartStore'
 
 interface ItemPriceFieldProps {
-  // Precio de catálogo (referencia para el tachado y el tope).
+  // Precio de catálogo (referencia para el monto rebajado −$X).
   listPrice: number
   // Precio final actual (ya clampeado por el padre).
   unitPrice: number
@@ -12,15 +13,14 @@ interface ItemPriceFieldProps {
   // Recibe el precio final tecleado; el PADRE clampa (store o clampItemPrice)
   // y la prop unitPrice refleja el valor ya clampeado.
   onCommit: (finalPrice: number) => void
-  // Fuerza solo-lectura sin importar el tope (ej. ítem marcado como regalo,
-  // fijo en $0). Default false → comportamiento normal.
-  forceLocked?: boolean
 }
 
 /**
- * Editor de precio FINAL por ítem, compartido entre el POS y el wizard de
- * separados. Muestra el catálogo tachado + el final + badges (-%, "Producto
- * gratis", "Rebaja alta"). Con tope 0 queda de solo lectura (fijo en catálogo).
+ * Bloque "Precio con descuento" por ítem, compartido entre el POS y el wizard
+ * de separados. Deja CLARO que el campo rebaja el precio: etiqueta + monto
+ * rebajado (−$X = catálogo − final, en verde) + campo editable con el final.
+ * En violeta cuando hay descuento real. Con tope 0 queda de solo lectura. Los
+ * ítems "sin cargo" ($0) NO usan este bloque (el padre muestra el banner ámbar).
  *
  * Usa estado local solo mientras se edita para no clampear en cada tecla;
  * confirma en blur/Enter.
@@ -30,17 +30,11 @@ export function ItemPriceField({
   unitPrice,
   maxItemDiscount,
   onCommit,
-  forceLocked = false,
 }: ItemPriceFieldProps) {
   const [editing, setEditing] = useState<string | null>(null)
-  const priceLocked = maxItemDiscount <= 0 || forceLocked
+  const priceLocked = maxItemDiscount <= 0
   const discounted = unitPrice < listPrice
-  const isFree = unitPrice === 0
-  const pctOff =
-    discounted && listPrice > 0
-      ? Math.round((1 - unitPrice / listPrice) * 100)
-      : 0
-  const highDiscount = !isFree && pctOff > 50
+  const discountAmt = Math.max(0, listPrice - unitPrice)
 
   const displayVal =
     editing !== null
@@ -56,58 +50,61 @@ export function ItemPriceField({
   }
 
   return (
-    <div className="mt-1 flex flex-wrap items-center gap-1.5">
-      {discounted && (
-        <span className="text-[11px] text-slate-400 line-through">
-          {fmtCOP(listPrice)}
-        </span>
-      )}
-      <div
-        className={`flex h-7 items-center gap-1 rounded-lg border px-2 ${
-          priceLocked
-            ? 'border-slate-100 bg-slate-50'
-            : 'border-slate-200 bg-white focus-within:border-violet-400 focus-within:ring-2 focus-within:ring-violet-100'
+    <div
+      className={`flex items-center justify-between gap-2 rounded-lg border px-3 py-2 ${
+        discounted
+          ? 'border-violet-300/70 bg-violet-50/70'
+          : 'border-slate-200 bg-slate-50'
+      }`}
+    >
+      <span
+        className={`flex shrink-0 items-center gap-1.5 text-[12px] font-semibold ${
+          discounted ? 'text-violet-700' : 'text-slate-500'
         }`}
       >
-        <span className="text-sm text-slate-400">$</span>
-        <input
-          value={displayVal}
-          onFocus={() => {
-            if (!priceLocked) setEditing(String(unitPrice))
-          }}
-          onChange={(e) => setEditing(e.target.value.replace(/\D/g, ''))}
-          onBlur={commit}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') e.currentTarget.blur()
-          }}
-          readOnly={priceLocked}
-          inputMode="numeric"
-          title={
-            forceLocked
-              ? 'Ítem marcado como regalo ($0)'
-              : priceLocked
+        <Tag size={13} />
+        Precio con descuento
+      </span>
+
+      <div className="flex items-center gap-2">
+        {discounted && (
+          <span className="font-mono text-[11px] font-bold text-emerald-600">
+            −{fmtCOP(discountAmt)}
+          </span>
+        )}
+        <div
+          className={`flex h-8 items-center gap-1 rounded-md border bg-white px-2 ${
+            priceLocked
+              ? 'border-slate-200'
+              : discounted
+                ? 'border-violet-300 focus-within:border-violet-400 focus-within:ring-2 focus-within:ring-violet-100'
+                : 'border-slate-300 focus-within:border-violet-400 focus-within:ring-2 focus-within:ring-violet-100'
+          }`}
+        >
+          <span className="font-mono text-[12px] text-slate-400">$</span>
+          <input
+            value={displayVal}
+            onFocus={() => {
+              if (!priceLocked) setEditing(String(unitPrice))
+            }}
+            onChange={(e) => setEditing(e.target.value.replace(/\D/g, ''))}
+            onBlur={commit}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') e.currentTarget.blur()
+            }}
+            readOnly={priceLocked}
+            inputMode="numeric"
+            title={
+              priceLocked
                 ? 'Descuento por ítem deshabilitado (tope $0)'
                 : `Mínimo ${fmtCOP(minFinalPrice(listPrice, maxItemDiscount))}`
-          }
-          className="w-20 bg-transparent text-right text-sm font-semibold tabular-nums outline-none read-only:cursor-default read-only:text-slate-500"
-        />
-        <span className="text-[10px] text-slate-400">c/u</span>
+            }
+            className={`w-16 bg-transparent text-right font-mono text-[13px] font-semibold tabular-nums outline-none read-only:cursor-default read-only:text-slate-500 ${
+              discounted ? 'text-violet-700' : 'text-slate-900'
+            }`}
+          />
+        </div>
       </div>
-      {discounted && !isFree && (
-        <span className="rounded bg-green-50 px-1.5 py-0.5 text-[10px] font-semibold text-green-700">
-          -{pctOff}%
-        </span>
-      )}
-      {isFree && (
-        <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">
-          Producto gratis
-        </span>
-      )}
-      {highDiscount && (
-        <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">
-          Rebaja alta
-        </span>
-      )}
     </div>
   )
 }
