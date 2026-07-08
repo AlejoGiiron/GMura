@@ -28,6 +28,25 @@ export function calculateRequiredInitialPayment(
   return 0
 }
 
+/**
+ * Decide cómo imputar un abono de separado a la caja (028).
+ *
+ * - Abono NORMAL (isHistorical=false): efectivo real que entra ahora → se
+ *   imputa al turno abierto (shift_id) para que cuente en el cuadre.
+ * - Abono HISTÓRICO (isHistorical=true): dinero recibido ANTES de cargar el
+ *   separado → shift_id=null y is_historical=true, para quedar FUERA del
+ *   cuadre (evita doble conteo). En ambos casos el trigger suma al saldo.
+ */
+export function resolveLayawayPaymentImputation(
+  isHistorical: boolean,
+  currentShiftId: string | null | undefined,
+): { shift_id: string | null; is_historical: boolean } {
+  if (isHistorical) {
+    return { shift_id: null, is_historical: true }
+  }
+  return { shift_id: currentShiftId ?? null, is_historical: false }
+}
+
 /** Devuelve true si el separado venció y sigue activo. */
 export function isLayawayOverdue(
   layaway: Pick<Layaway, 'expires_at' | 'status'>,

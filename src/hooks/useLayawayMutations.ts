@@ -6,6 +6,7 @@ import { getActiveStoreId } from './useActiveStoreId'
 import { useCurrentShift } from './useCashShift'
 import { useResolvedConfig } from './useConfig'
 import { fmtCOP } from '@/lib/formatters'
+import { resolveLayawayPaymentImputation } from '@/lib/layawayCalc'
 import { cartTotals, orderTotals, minFinalPrice } from '@/stores/cartStore'
 import type {
   Layaway,
@@ -33,6 +34,10 @@ export interface CreateLayawayInput {
     amount: number
     method: PaymentMethod
     notes?: string
+    // true = abono ya recibido ANTES de cargar el separado (028). Se inserta
+    // con is_historical=true y shift_id=null: NO cuenta como ingreso de este
+    // turno, pero SÍ suma al saldo del separado.
+    is_historical?: boolean
   }
   notes?: string
 }
@@ -219,6 +224,13 @@ export function useCreateLayaway() {
 
       // INSERT abono inicial (opcional)
       if (input.initial_payment) {
+        // Abono histórico (028): dinero recibido antes de cargar el separado.
+        // NO es ingreso de este turno → shift_id=null e is_historical=true, para
+        // que quede fuera del cuadre. El abono normal se imputa al turno abierto.
+        const imputation = resolveLayawayPaymentImputation(
+          input.initial_payment.is_historical === true,
+          currentShift?.id,
+        )
         const { error: payErr } = await supabase
           .from('layaway_payments')
           .insert({
@@ -227,8 +239,8 @@ export function useCreateLayaway() {
             amount: input.initial_payment.amount,
             payment_method: input.initial_payment.method,
             created_by: userId,
-            // Imputa el abono al turno abierto de la tienda (026).
-            shift_id: currentShift?.id ?? null,
+            shift_id: imputation.shift_id,
+            is_historical: imputation.is_historical,
             notes: input.initial_payment.notes?.trim()
               ? input.initial_payment.notes.trim()
               : null,
