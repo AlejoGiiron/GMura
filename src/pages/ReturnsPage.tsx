@@ -513,14 +513,14 @@ function ExchangeBreakdown({ a }: { a: ExchangeAmounts }) {
       </div>
       <div
         className={`mt-1.5 flex items-center justify-between border-t pt-2 ${
-          negativa ? 'border-amber-200' : 'border-[#ebe9e6]'
+          negativa ? 'border-red-200' : 'border-[#ebe9e6]'
         }`}
       >
         <span className="text-sm font-semibold text-[#1a1a1a]">
           {negativa ? 'Faltante' : a.difference > 0 ? 'A cobrar' : 'Diferencia'}
         </span>
         {negativa ? (
-          <span className="font-mono text-base font-bold text-amber-700">
+          <span className="font-mono text-base font-bold text-red-600">
             faltan {fmtCOP(a.shortfall)}
           </span>
         ) : (
@@ -534,9 +534,14 @@ function ExchangeBreakdown({ a }: { a: ExchangeAmounts }) {
         )}
       </div>
       {negativa && (
-        <p className="pt-0.5 text-xs text-amber-700">
-          Agrega productos por {fmtCOP(a.shortfall)} más para cubrir el crédito.
-        </p>
+        <div className="mt-1 flex items-start gap-2 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700">
+          <AlertTriangle size={14} className="mt-0.5 shrink-0" />
+          <span>
+            Un cambio no puede quedar a favor del cliente. Agrega productos por{' '}
+            <span className="font-semibold">{fmtCOP(a.shortfall)}</span> más para
+            poder confirmar.
+          </span>
+        </div>
       )}
     </div>
   )
@@ -587,9 +592,12 @@ function Step3Type({
   // Desglose en vivo del cambio (netea por totales; traslada el descuento).
   const summary = exchangeSummary(order, returnQtys, exchangeItems)
 
-  // Fase 2: solo se exige elegir al menos un producto nuevo. El bloqueo de
-  // diferencia < 0 llega en Fase 3 (aquí solo se muestra informativo).
-  const canContinue = returnType === 'return' || exchangeItems.length > 0
+  // Fase 3 — Política "La Bodega no devuelve dinero en un cambio": se exige al
+  // menos un producto nuevo Y que la diferencia no quede a favor del cliente
+  // (shortfall === 0). Mientras falte por cubrir, no se puede avanzar.
+  const canContinue =
+    returnType === 'return' ||
+    (exchangeItems.length > 0 && summary.shortfall === 0)
 
   return (
     <div className="flex h-full flex-col">
@@ -800,26 +808,30 @@ function Step3Type({
               {/* Desglose en vivo */}
               <ExchangeBreakdown a={summary} />
 
-              <div>
-                <p className="mb-2 text-xs font-semibold uppercase tracking-[.05em] text-[#737373]">
-                  Método de pago / reembolso diferencia
-                </p>
-                <div className="grid grid-cols-2 gap-2">
-                  {PAYMENT_METHODS.map((m) => (
-                    <button
-                      key={m.id}
-                      onClick={() => onRefundMethodChange(m.id)}
-                      className={`rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
-                        refundMethod === m.id
-                          ? 'border-violet-500 bg-violet-50 text-violet-700'
-                          : 'border-[#ebe9e6] bg-white text-[#525252] hover:border-[#d6d3d1]'
-                      }`}
-                    >
-                      {m.label}
-                    </button>
-                  ))}
+              {/* Un cambio nunca reembolsa (la diferencia siempre es ≥ 0 por el
+                  bloqueo). Solo se pide método cuando hay diferencia a cobrar. */}
+              {summary.orderTotal > 0 && (
+                <div>
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-[.05em] text-[#737373]">
+                    Método de pago de la diferencia
+                  </p>
+                  <div className="grid grid-cols-2 gap-2">
+                    {PAYMENT_METHODS.map((m) => (
+                      <button
+                        key={m.id}
+                        onClick={() => onRefundMethodChange(m.id)}
+                        className={`rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
+                          refundMethod === m.id
+                            ? 'border-violet-500 bg-violet-50 text-violet-700'
+                            : 'border-[#ebe9e6] bg-white text-[#525252] hover:border-[#d6d3d1]'
+                        }`}
+                      >
+                        {m.label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-              </div>
+              )}
             </>
           )}
 
@@ -1008,10 +1020,13 @@ function Step4Confirm({
                 </span>
               </div>
             )}
-            <div className="flex justify-between text-[#525252]">
-              <span>{returnType === 'return' ? 'Método reembolso' : 'Método pago'}</span>
-              <span className="font-medium text-[#1a1a1a]">{METHOD_LABEL[refundMethod]}</span>
-            </div>
+            {/* Sin costo en un cambio no requiere método (no hay cobro ni reembolso). */}
+            {(returnType === 'return' || priceDiff > 0) && (
+              <div className="flex justify-between text-[#525252]">
+                <span>{returnType === 'return' ? 'Método reembolso' : 'Método pago'}</span>
+                <span className="font-medium text-[#1a1a1a]">{METHOD_LABEL[refundMethod]}</span>
+              </div>
+            )}
             {notes && (
               <div className="flex justify-between gap-4 text-[#525252]">
                 <span className="shrink-0">Notas</span>
@@ -1466,6 +1481,19 @@ export default function ReturnsPage() {
     const selectedItems = selectedOrder.items.filter(
       (i) => (returnQtys[i.variant_id] ?? 0) > 0,
     )
+
+    // Defensa en profundidad — Política "no devolver dinero en un cambio":
+    // si la diferencia queda a favor del cliente, no se registra el cambio.
+    // (Step3 ya bloquea la transición; esto cubre cualquier ruta directa.)
+    if (returnType === 'exchange') {
+      const summary = exchangeSummary(selectedOrder, returnQtys, exchangeItems)
+      if (summary.shortfall > 0) {
+        toast.error(
+          `El cambio no puede quedar a favor del cliente. Agrega productos por al menos ${fmtCOP(summary.shortfall)} más para cubrir el saldo.`,
+        )
+        return
+      }
+    }
 
     const exchangeInput: ExchangeItemInput[] =
       returnType === 'exchange'
