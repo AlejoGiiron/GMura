@@ -219,6 +219,8 @@ export function useShiftHistory(filters: ShiftHistoryFilters) {
         .eq('store_id' as never, storeId)
         .eq('payment_method' as never, 'cash')
         .in('shift_id' as never, shiftIds)
+        // Excluir abonos históricos (028): no son ingreso del turno.
+        .eq('is_historical' as never, false)
       if (newPaysErr) throw newPaysErr
       for (const p of (newPays ?? []) as unknown as {
         amount: number | string
@@ -237,6 +239,9 @@ export function useShiftHistory(filters: ShiftHistoryFilters) {
         .eq('store_id' as never, storeId)
         .eq('payment_method' as never, 'cash')
         .is('shift_id' as never, null)
+        // Ruta CRÍTICA: sin este filtro, un abono histórico (shift_id NULL)
+        // sería absorbido por ventana de tiempo + cajero (028).
+        .eq('is_historical' as never, false)
         .in('created_by' as never, userIds)
         .gte('created_at' as never, earliest)
         .lte('created_at' as never, latest)
