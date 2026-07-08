@@ -175,6 +175,9 @@ export function useShiftHistory(filters: ShiftHistoryFilters) {
         .eq('store_id' as never, storeId)
         .eq('payment_method' as never, 'cash')
         .eq('status' as never, 'completed')
+        // Las órdenes FIADAS (029) no son efectivo del turno (su total no entró);
+        // el efectivo entra por los credit_payments, más abajo.
+        .eq('is_credit' as never, false)
         .in('shift_id' as never, shiftIds)
       if (newOrdersErr) throw newOrdersErr
       for (const o of (newOrders ?? []) as unknown as {
@@ -197,6 +200,8 @@ export function useShiftHistory(filters: ShiftHistoryFilters) {
         .eq('payment_method' as never, 'cash')
         .eq('status' as never, 'completed')
         .is('shift_id' as never, null)
+        // También aquí se excluyen las fiadas del efectivo (ruta legacy).
+        .eq('is_credit' as never, false)
         .in('created_by' as never, userIds)
         .gte('created_at' as never, earliest)
         .lte('created_at' as never, latest)
@@ -242,6 +247,48 @@ export function useShiftHistory(filters: ShiftHistoryFilters) {
         .lte('created_at' as never, latest)
       if (legacyPaysErr) throw legacyPaysErr
       for (const p of (legacyPays ?? []) as unknown as {
+        amount: number | string
+        created_at: string
+        created_by: string
+      }[]) {
+        addLegacyByWindow(p.created_by, p.created_at, Number(p.amount))
+      }
+
+      // ── Abonos de FIADO en efectivo (029) ──────────────────────────────────
+      // NUEVO (026): abonos imputados por shift_id. Excluye históricos.
+      const { data: newCredit, error: newCreditErr } = await supabase
+        .from('credit_payments')
+        .select('amount, shift_id')
+        .eq('store_id' as never, storeId)
+        .eq('payment_method' as never, 'cash')
+        .eq('is_historical' as never, false)
+        .in('shift_id' as never, shiftIds)
+      if (newCreditErr) throw newCreditErr
+      for (const p of (newCredit ?? []) as unknown as {
+        amount: number | string
+        shift_id: string
+      }[]) {
+        cashByShift.set(
+          p.shift_id,
+          (cashByShift.get(p.shift_id) ?? 0) + Number(p.amount),
+        )
+      }
+
+      // PRE-026: abonos de fiado con shift_id NULL, por opened_by + ventana.
+      // Ruta CRÍTICA: el filtro is_historical evita que un abono histórico
+      // (shift_id NULL) sea absorbido por la ventana de tiempo + cajero.
+      const { data: legacyCredit, error: legacyCreditErr } = await supabase
+        .from('credit_payments')
+        .select('amount, created_at, created_by')
+        .eq('store_id' as never, storeId)
+        .eq('payment_method' as never, 'cash')
+        .is('shift_id' as never, null)
+        .eq('is_historical' as never, false)
+        .in('created_by' as never, userIds)
+        .gte('created_at' as never, earliest)
+        .lte('created_at' as never, latest)
+      if (legacyCreditErr) throw legacyCreditErr
+      for (const p of (legacyCredit ?? []) as unknown as {
         amount: number | string
         created_at: string
         created_by: string
