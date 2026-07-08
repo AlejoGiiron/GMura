@@ -54,6 +54,7 @@ const PAYMENT_METHOD_LABEL: Record<PaymentMethod, string> = {
   card: 'Tarjeta',
   transfer: 'Transferencia',
   addi: 'Addi',
+  credit: 'Fiado',
 }
 
 const PAYMENT_OPTIONS: { id: PaymentMethod | 'all'; label: string }[] = [

@@ -1,6 +1,6 @@
 export type UserRole = 'admin' | 'seller'
 export type OrderStatus = 'completed' | 'cancelled' | 'returned'
-export type PaymentMethod = 'cash' | 'card' | 'transfer' | 'addi'
+export type PaymentMethod = 'cash' | 'card' | 'transfer' | 'addi' | 'credit'
 export type StockMovementType = 'sale' | 'return' | 'adjustment' | 'purchase'
 export type ReturnType = 'return' | 'exchange'
 export type ReturnStatus = 'pending' | 'completed'
@@ -142,6 +142,12 @@ export interface Order {
   // Turno de caja en el que se registró la venta (026). NULL en ventas
   // históricas anteriores a la migración (se imputan por ventana de tiempo).
   shift_id: string | null
+  // Venta FIADA (a crédito) (029). Si true: se excluye del cuadre de caja y el
+  // efectivo entra por credit_payments. Saldo = total − paid_amount.
+  is_credit: boolean
+  // Σ de credit_payments. Solo significativo cuando is_credit=true (en ventas
+  // normales queda 0 y no se lee).
+  paid_amount: number
   created_at: string
   updated_at: string
 }
@@ -265,6 +271,24 @@ export interface LayawayPayment {
   // Turno de caja en el que se cobró el abono (026). NULL en abonos
   // históricos anteriores a la migración (se imputan por ventana de tiempo).
   shift_id: string | null
+  created_at: string
+}
+
+// Abono de una venta FIADA (029). Calco de LayawayPayment: el pago inicial y
+// los posteriores de un fiado, imputados al turno por shift_id.
+export interface CreditPayment {
+  id: string
+  order_id: string
+  store_id: string
+  amount: number
+  payment_method: PaymentMethod
+  created_by: string
+  // Turno donde se cobró el abono. NULL para abonos históricos (no entran a caja).
+  shift_id: string | null
+  // true = dinero recibido antes de cargar el fiado; suma al saldo pero NO
+  // cuenta como ingreso de caja (mismo patrón que #3C en separados).
+  is_historical: boolean
+  notes: string | null
   created_at: string
 }
 
@@ -432,6 +456,17 @@ export interface SupplierBalance {
   overdue_invoices: number
 }
 
+// Cartera de fiados por cliente (029). Calco de SupplierBalance.
+export interface CreditBalance {
+  customer_id: string
+  store_id: string
+  customer_name: string
+  phone: string | null
+  open_credits: number
+  total_credit_sales: number
+  pending_amount: number
+}
+
 // ── Database schema ───────────────────────────────────────────────────────────
 
 export interface Database {
@@ -515,6 +550,8 @@ export interface Database {
           | 'return_id'
           | 'surcharge'
           | 'shift_id'
+          | 'is_credit'
+          | 'paid_amount'
         > & {
           id?: string
           created_at?: string
@@ -522,6 +559,9 @@ export interface Database {
           return_id?: string | null
           surcharge?: number
           shift_id?: string | null
+          // Default en BD (029); solo se envían en ventas fiadas.
+          is_credit?: boolean
+          paid_amount?: number
         }
         Update: Partial<Omit<Order, 'id'>>
       }
@@ -604,6 +644,20 @@ export interface Database {
         }
         Update: Partial<Omit<LayawayPayment, 'id'>>
       }
+      credit_payments: {
+        Row: CreditPayment
+        Insert: Omit<
+          CreditPayment,
+          'id' | 'created_at' | 'shift_id' | 'is_historical'
+        > & {
+          id?: string
+          created_at?: string
+          shift_id?: string | null
+          // Default false en BD (029); solo se envía en abonos históricos.
+          is_historical?: boolean
+        }
+        Update: Partial<Omit<CreditPayment, 'id'>>
+      }
       suppliers: {
         Row: Supplier
         Insert: Omit<
@@ -667,6 +721,7 @@ export interface Database {
       layaway_expiring_soon:  { Row: LayawayExpiringSoon }
       purchase_summary:       { Row: PurchaseSummary }
       supplier_balance:       { Row: SupplierBalance }
+      credit_balance:         { Row: CreditBalance }
     }
     Functions: Record<string, never>
     Enums: Record<string, never>

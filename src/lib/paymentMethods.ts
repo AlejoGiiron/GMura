@@ -3,11 +3,12 @@ import {
   CreditCard,
   ArrowLeftRight,
   Smartphone,
+  HandCoins,
   type LucideIcon,
 } from 'lucide-react'
 import type { PaymentMethod } from '@/types/database.types'
 
-export type PaymentColorToken = 'emerald' | 'violet' | 'blue' | 'pink'
+export type PaymentColorToken = 'emerald' | 'violet' | 'blue' | 'pink' | 'amber'
 
 export interface PaymentMethodMeta {
   label: string
@@ -41,8 +42,19 @@ export const PAYMENT_METHODS: Record<PaymentMethod, PaymentMethodMeta> = {
     hex: '#ec4899',
     icon: Smartphone,
   },
+  // Venta FIADA (029). NO es un método seleccionable en el POS (no está en
+  // PAYMENT_METHOD_KEYS): marca la venta como a crédito. El efectivo real entra
+  // por credit_payments con su propio método (cash/card/…).
+  credit: {
+    label: 'Fiado',
+    color: 'amber',
+    hex: '#f59e0b',
+    icon: HandCoins,
+  },
 }
 
+// Métodos SELECCIONABLES por el cajero en el POS. 'credit' se excluye a
+// propósito: fiar es un flujo aparte (permiso ventas.fiar), no un método de pago.
 export const PAYMENT_METHOD_KEYS = [
   'cash',
   'card',
@@ -67,7 +79,7 @@ export function migrateLegacyPaymentMethods(methods: string[]): PaymentMethod[] 
   const seen = new Set<PaymentMethod>()
   for (const m of methods) {
     const normalized = m === 'nequi' ? 'transfer' : m
-    if (PAYMENT_METHOD_KEYS.includes(normalized as PaymentMethod)) {
+    if ((PAYMENT_METHOD_KEYS as readonly string[]).includes(normalized)) {
       seen.add(normalized as PaymentMethod)
     }
   }

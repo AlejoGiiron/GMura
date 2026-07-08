@@ -13,6 +13,7 @@ import {
   Banknote,
   ArrowLeftRight,
   Smartphone,
+  HandCoins,
   RotateCcw,
   ShoppingBag,
   FileText,
@@ -139,6 +140,7 @@ const PAYMENT_LABEL: Record<PaymentMethod, string> = {
   card: 'Tarjeta',
   transfer: 'Transferencia',
   addi: 'Addi',
+  credit: 'Fiado',
 }
 
 const PAYMENT_ICON: Record<PaymentMethod, React.ReactNode> = {
@@ -146,6 +148,7 @@ const PAYMENT_ICON: Record<PaymentMethod, React.ReactNode> = {
   card: <CreditCard size={12} />,
   transfer: <ArrowLeftRight size={12} />,
   addi: <Smartphone size={12} />,
+  credit: <HandCoins size={12} />,
 }
 
 // ── Avatar ────────────────────────────────────────────────────────────────────

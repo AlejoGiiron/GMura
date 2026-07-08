@@ -96,6 +96,7 @@ const METHOD_LABEL: Record<PaymentMethod, string> = {
   card: 'Tarjeta',
   transfer: 'Transferencia',
   addi: 'Addi',
+  credit: 'Fiado',
 }
 
 // ── Stepper ───────────────────────────────────────────────────────────────────
