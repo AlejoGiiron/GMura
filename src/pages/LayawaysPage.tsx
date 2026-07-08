@@ -392,6 +392,11 @@ function PaymentsCard({ payments }: { payments: LayawayDetail['payments'] }) {
                 <div className="min-w-0 flex-1">
                   <p className="text-[12.5px] font-medium text-[#1a1a1a]">
                     {meta.label}
+                    {p.is_historical && (
+                      <span className="ml-1.5 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-amber-700">
+                        Histórico
+                      </span>
+                    )}
                     {p.created_by_name && (
                       <span className="ml-1 text-[11px] text-[#737373]">
                         · {p.created_by_name}

@@ -34,6 +34,7 @@ import {
 import { useCustomerSearch } from '@/hooks/useCustomers'
 import { useCreateCustomer } from '@/hooks/useCustomerMutations'
 import { useStoreConfig, useResolvedConfig } from '@/hooks/useConfig'
+import { useAuth } from '@/hooks/useAuth'
 import {
   PAYMENT_METHODS,
   PAYMENT_METHOD_KEYS,
@@ -708,6 +709,10 @@ interface ConfirmStepProps {
   notes: string
   setNotes: (v: string) => void
   enabledMethods: PaymentMethod[]
+  // Abono histórico (028): solo admin puede marcarlo.
+  canMarkHistorical: boolean
+  isHistorical: boolean
+  setIsHistorical: (v: boolean) => void
 }
 
 function ConfirmStep({
@@ -722,6 +727,9 @@ function ConfirmStep({
   notes,
   setNotes,
   enabledMethods,
+  canMarkHistorical,
+  isHistorical,
+  setIsHistorical,
 }: ConfirmStepProps) {
   const parsedAmount = parseCOP(amount)
   const visibleMethods = PAYMENT_METHOD_KEYS.filter((m) =>
@@ -781,8 +789,13 @@ function ConfirmStep({
       <div>
         <div className="mb-1.5 flex items-end justify-between">
           <label className="text-[11px] font-semibold uppercase tracking-[.05em] text-[#737373]">
-            Abono inicial
+            {isHistorical ? 'Abono histórico (ya recibido)' : 'Abono inicial'}
           </label>
+          {isHistorical && (
+            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-amber-700">
+              No entra a caja
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-2 rounded-lg border border-[#ebe9e6] px-3 focus-within:border-violet-400 focus-within:ring-2 focus-within:ring-violet-100">
           <span className="text-sm text-[#737373]">$</span>
@@ -825,10 +838,33 @@ function ConfirmStep({
         )}
       </div>
 
+      {/* Abono histórico (028) — solo admin. Registra dinero recibido ANTES de
+          cargar el separado: suma al saldo pero NO cuenta como ingreso de caja. */}
+      {canMarkHistorical && (
+        <label className="flex cursor-pointer items-start gap-2.5 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-3">
+          <input
+            type="checkbox"
+            checked={isHistorical}
+            onChange={(e) => setIsHistorical(e.target.checked)}
+            className="mt-0.5 h-4 w-4 shrink-0 accent-violet-600"
+          />
+          <div className="min-w-0">
+            <p className="text-[12.5px] font-semibold text-amber-900">
+              Este abono ya fue recibido antes (no entra a caja)
+            </p>
+            <p className="mt-0.5 text-[11px] leading-snug text-amber-700">
+              Para separados viejos cuyo abono se recibió antes de cargarlos. El
+              monto no se contará como ingreso de caja; solo suma al saldo del
+              separado. El resto se cobra normal.
+            </p>
+          </div>
+        </label>
+      )}
+
       {parsedAmount > 0 && (
         <div>
           <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[.05em] text-[#737373]">
-            Método de pago
+            {isHistorical ? 'Método del abono histórico' : 'Método de pago'}
           </label>
           <div className="grid grid-cols-2 gap-2">
             {visibleMethods.map((id) => {
@@ -914,6 +950,10 @@ function Stepper({ current }: { current: number }) {
 export function NewLayawayModal({ prefill, onClose, onCreated }: Props) {
   const { data: storeData } = useStoreConfig()
   const config = useResolvedConfig()
+  const { profile } = useAuth()
+  // Gating legacy (rol enum en develop): el abono histórico es admin-only.
+  // Migrar a can(...) cuando RBAC llegue a develop.
+  const isAdmin = profile?.role === 'admin'
   const storeName = storeData?.name ?? 'G-Mura'
   const enabledMethods = migrateLegacyPaymentMethods(config.payment_methods)
   const defaultDays =
@@ -932,6 +972,7 @@ export function NewLayawayModal({ prefill, onClose, onCreated }: Props) {
   const [method, setMethod] = useState<PaymentMethod>(
     enabledMethods.includes('cash') ? 'cash' : (enabledMethods[0] ?? 'cash'),
   )
+  const [isHistorical, setIsHistorical] = useState(false)
   const [createdLayawayId, setCreatedLayawayId] = useState<string | null>(null)
   const printedAtRef = useRef(new Date())
 
@@ -946,6 +987,10 @@ export function NewLayawayModal({ prefill, onClose, onCreated }: Props) {
     () => calculateRequiredInitialPayment(total, config),
     [total, config],
   )
+  // El mínimo requerido es una política para separados NUEVOS (asegurar
+  // compromiso). Un abono histórico solo registra lo que ya se recibió, así que
+  // NO se le exige el mínimo; basta amount > 0 y <= total (028).
+  const effectiveRequired = isHistorical ? 0 : requiredInitial
 
   // Pre-fill amount con el requerido cuando se llega al paso 3
   useEffect(() => {
@@ -1020,15 +1065,20 @@ export function NewLayawayModal({ prefill, onClose, onCreated }: Props) {
   const parsedAmount = parseCOP(amount)
   const canSubmit =
     step === 2 &&
-    parsedAmount >= requiredInitial &&
+    parsedAmount >= effectiveRequired &&
     parsedAmount <= total &&
+    // Un abono histórico debe registrar un monto real (> 0); si no, no tiene
+    // sentido marcarlo. Los normales sí pueden ser 0 cuando no hay mínimo.
+    (!isHistorical || parsedAmount > 0) &&
     total > 0 &&
     !create.isPending
 
   function handleSubmit() {
     if (!customer) return
     if (!canSubmit) {
-      if (parsedAmount < requiredInitial) {
+      if (isHistorical && parsedAmount <= 0) {
+        toast.error('Ingresa el monto del abono histórico ya recibido')
+      } else if (!isHistorical && parsedAmount < requiredInitial) {
         toast.error(`Abono mínimo requerido: ${fmtCOP(requiredInitial)}`)
       }
       return
@@ -1048,7 +1098,7 @@ export function NewLayawayModal({ prefill, onClose, onCreated }: Props) {
         notes,
         initial_payment:
           parsedAmount > 0
-            ? { amount: parsedAmount, method }
+            ? { amount: parsedAmount, method, is_historical: isHistorical }
             : undefined,
       },
       {
@@ -1254,7 +1304,7 @@ export function NewLayawayModal({ prefill, onClose, onCreated }: Props) {
               subtotal={subtotal}
               discount={itemDiscount}
               total={total}
-              required={requiredInitial}
+              required={effectiveRequired}
               amount={amount}
               setAmount={setAmount}
               method={method}
@@ -1262,6 +1312,9 @@ export function NewLayawayModal({ prefill, onClose, onCreated }: Props) {
               notes={notes}
               setNotes={setNotes}
               enabledMethods={enabledMethods}
+              canMarkHistorical={isAdmin}
+              isHistorical={isHistorical}
+              setIsHistorical={setIsHistorical}
             />
           )}
         </div>
