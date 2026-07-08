@@ -265,6 +265,10 @@ export interface LayawayPayment {
   // Turno de caja en el que se cobró el abono (026). NULL en abonos
   // históricos anteriores a la migración (se imputan por ventana de tiempo).
   shift_id: string | null
+  // true = abono recibido ANTES de cargar el separado en el sistema (028).
+  // Suma al saldo (paid_amount) pero NO cuenta como ingreso en caja ni en
+  // el historial de caja. Los abonos normales quedan en false.
+  is_historical: boolean
   created_at: string
 }
 
@@ -597,10 +601,15 @@ export interface Database {
       }
       layaway_payments: {
         Row: LayawayPayment
-        Insert: Omit<LayawayPayment, 'id' | 'created_at' | 'shift_id'> & {
+        Insert: Omit<
+          LayawayPayment,
+          'id' | 'created_at' | 'shift_id' | 'is_historical'
+        > & {
           id?: string
           created_at?: string
           shift_id?: string | null
+          // Default false en BD (028); solo se envía en abonos históricos.
+          is_historical?: boolean
         }
         Update: Partial<Omit<LayawayPayment, 'id'>>
       }
