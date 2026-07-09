@@ -17,6 +17,7 @@ import {
   Camera,
   Wallet,
   Bookmark,
+  HandCoins,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useCartStore, cartTotals } from '@/stores/cartStore'
@@ -31,6 +32,7 @@ import type { POSProduct, POSVariant } from '@/hooks/usePOSSearch'
 import { useBarcode } from '@/hooks/useBarcode'
 import BarcodeScanner from '@/components/pos/BarcodeScanner'
 import { useCreateOrder } from '@/hooks/useCreateOrder'
+import { useCreateCreditOrder } from '@/hooks/useCreditMutations'
 import { useCategories } from '@/hooks/useProducts'
 import { useStoreConfig, useResolvedConfig } from '@/hooks/useConfig'
 import { fmtCOP } from '@/lib/formatters'
@@ -258,6 +260,9 @@ interface PaymentModalProps {
     surcharge?: number,
   ) => void
   onLayaway: () => void
+  // Fiar (029): solo se muestra si el usuario tiene ventas.fiar.
+  canFiar: boolean
+  onFiar: () => void
   onClose: () => void
   isPending: boolean
 }
@@ -270,6 +275,8 @@ function PaymentModal({
   paymentQrUrl,
   onConfirm,
   onLayaway,
+  canFiar,
+  onFiar,
   onClose,
   isPending,
 }: PaymentModalProps) {
@@ -489,6 +496,180 @@ function PaymentModal({
         >
           <Bookmark size={15} /> Crear separado
         </button>
+
+        {canFiar && (
+          <button
+            type="button"
+            onClick={onFiar}
+            disabled={isPending}
+            className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl border border-amber-200 bg-amber-50 py-3 text-sm font-semibold text-amber-700 hover:bg-amber-100 disabled:opacity-50"
+          >
+            <HandCoins size={15} /> Fiar (venta a crédito)
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ── Fiado (crédito) Checkout Modal ────────────────────────────────────────────
+
+interface CreditCheckoutModalProps {
+  total: number
+  customer: Customer
+  enabledMethods: PaymentMethod[]
+  onConfirm: (initial: { amount: number; method: PaymentMethod }) => void
+  onClose: () => void
+  isPending: boolean
+}
+
+function CreditCheckoutModal({
+  total,
+  customer,
+  enabledMethods,
+  onConfirm,
+  onClose,
+  isPending,
+}: CreditCheckoutModalProps) {
+  const visibleMethods = PAYMENT_METHOD_KEYS.filter((m) => enabledMethods.includes(m))
+  const [amount, setAmount] = useState('')
+  const [method, setMethod] = useState<PaymentMethod>(
+    enabledMethods.includes('cash') ? 'cash' : (enabledMethods[0] ?? 'cash'),
+  )
+  const paid = Math.max(0, parseInt(amount.replace(/\D/g, ''), 10) || 0)
+  const balance = Math.max(0, total - paid)
+  const canConfirm = paid <= total && !isPending
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="mb-4 flex items-start justify-between">
+          <div className="flex items-center gap-2.5">
+            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-amber-100">
+              <HandCoins size={18} className="text-amber-600" />
+            </div>
+            <div>
+              <p className="text-[15px] font-semibold text-slate-900">Fiar venta</p>
+              <p className="text-[11px] text-slate-500">{customer.full_name}</p>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100"
+          >
+            <X size={16} />
+          </button>
+        </div>
+
+        {/* Total */}
+        <div className="mb-4 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+          <div className="flex items-baseline justify-between">
+            <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+              Total venta
+            </span>
+            <span className="font-mono text-xl font-bold text-slate-900">
+              {fmtCOP(total)}
+            </span>
+          </div>
+        </div>
+
+        {/* Abono inicial */}
+        <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-500">
+          Abono inicial (puede ser $0)
+        </label>
+        <div className="flex items-center gap-2 rounded-xl border border-slate-200 px-3 focus-within:border-amber-400 focus-within:ring-2 focus-within:ring-amber-100">
+          <span className="text-sm text-slate-400">$</span>
+          <input
+            autoFocus
+            value={amount}
+            onChange={(e) => setAmount(e.target.value.replace(/\D/g, ''))}
+            placeholder="0"
+            inputMode="numeric"
+            className="h-11 flex-1 bg-transparent font-mono text-lg font-semibold outline-none"
+          />
+          <span className="text-xs text-slate-400">COP</span>
+        </div>
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          <button
+            type="button"
+            onClick={() => setAmount('')}
+            className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-600 hover:border-amber-300 hover:bg-amber-50"
+          >
+            Sin abono
+          </button>
+          <button
+            type="button"
+            onClick={() => setAmount(String(total))}
+            className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-600 hover:border-amber-300 hover:bg-amber-50"
+          >
+            Total ({fmtCOP(total)})
+          </button>
+        </div>
+        {paid > total && (
+          <p className="mt-1.5 text-[11px] text-red-600">
+            El abono no puede superar el total.
+          </p>
+        )}
+
+        {/* Método (solo si hay abono) */}
+        {paid > 0 && (
+          <div className="mt-4">
+            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-500">
+              Método del abono
+            </label>
+            <div className="grid grid-cols-2 gap-2">
+              {visibleMethods.map((id) => {
+                const meta = PAYMENT_META[id]
+                const Icon = meta.icon
+                const active = method === id
+                return (
+                  <button
+                    key={id}
+                    onClick={() => setMethod(id)}
+                    className={`flex items-center gap-2 rounded-xl border px-3 py-2.5 text-sm font-medium transition-colors ${
+                      active
+                        ? 'border-violet-600 bg-violet-50 text-violet-700'
+                        : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'
+                    }`}
+                  >
+                    <Icon size={16} style={{ color: active ? undefined : meta.hex }} />
+                    {meta.label}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Saldo que quedará */}
+        <div className="mt-4 flex items-baseline justify-between rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+          <span className="text-xs font-semibold uppercase tracking-wider text-amber-700">
+            Saldo pendiente
+          </span>
+          <span className="font-mono text-xl font-bold text-amber-700">
+            {fmtCOP(balance)}
+          </span>
+        </div>
+
+        <button
+          disabled={!canConfirm}
+          onClick={() => onConfirm({ amount: paid, method })}
+          className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-amber-600 py-3.5 text-sm font-semibold text-white transition-opacity disabled:cursor-not-allowed disabled:opacity-40 hover:bg-amber-700"
+        >
+          {isPending ? (
+            'Procesando…'
+          ) : (
+            <>
+              <HandCoins size={16} /> Confirmar fiado
+            </>
+          )}
+        </button>
       </div>
     </div>
   )
@@ -501,6 +682,7 @@ interface TicketModalProps {
   items: CartItem[]
   customer: Customer | null
   storeName: string
+  credit?: CompletedSale['credit']
   onClose: () => void
 }
 
@@ -509,10 +691,12 @@ function TicketModal({
   items,
   customer,
   storeName,
+  credit,
   onClose,
 }: TicketModalProps) {
   const { subtotal, discountAmt } = cartTotals(items)
   const printedAtRef = useRef(new Date())
+  const isCredit = !!credit
 
   const sale: SaleReceiptData = {
     order_number: order.order_number,
@@ -525,6 +709,13 @@ function TicketModal({
     cash_received: order.cash_received,
     customer: customer
       ? { full_name: customer.full_name, phone: customer.phone }
+      : null,
+    credit: credit
+      ? {
+          paid: credit.paid,
+          balance: credit.balance,
+          payment_method: credit.payment_method,
+        }
       : null,
     items: items.map((it) => ({
       variant_id: it.variant_id,
@@ -557,10 +748,13 @@ function TicketModal({
               </div>
               <div>
                 <p className="text-[15px] font-semibold text-[#1a1a1a]">
-                  Venta confirmada
+                  {isCredit ? 'Fiado registrado' : 'Venta confirmada'}
                 </p>
                 <p className="text-[11px] text-[#737373]">
                   #{order.order_number}
+                  {isCredit && credit
+                    ? ` · Debe ${fmtCOP(credit.balance)}`
+                    : ''}
                 </p>
               </div>
             </div>
@@ -1261,6 +1455,12 @@ type CompletedSale = {
   order: Order
   items: CartItem[]
   customer: Customer | null
+  // Presente cuando la venta es un FIADO: abono inicial + saldo para el ticket.
+  credit?: {
+    paid: number
+    balance: number
+    payment_method: PaymentMethod | null
+  }
 }
 
 export default function POSPage() {
@@ -1269,6 +1469,7 @@ export default function POSPage() {
   const [activeCat, setActiveCat] = useState('all')
   const [pickerProduct, setPickerProduct] = useState<POSProduct | null>(null)
   const [showPayment, setShowPayment] = useState(false)
+  const [showFiar, setShowFiar] = useState(false)
   const [completedSale, setCompletedSale] = useState<CompletedSale | null>(null)
   const [showCamera, setShowCamera] = useState(false)
   const [showOpenShift, setShowOpenShift] = useState(false)
@@ -1285,6 +1486,9 @@ export default function POSPage() {
   const config = useResolvedConfig()
   const { items, customer_id, addItem, clear } = useCartStore()
   const createOrder = useCreateOrder()
+  const createCredit = useCreateCreditOrder()
+  const { can } = usePermissions()
+  const canFiar = can('ventas.fiar')
   const { data: currentShift, isLoading: loadingShift } = useCurrentShift()
 
   // Focus search on mount + Ctrl/Cmd+K
@@ -1478,6 +1682,47 @@ export default function POSPage() {
     void layawayId
   }
 
+  // Fiar (029): exige cliente. Cierra el cobro normal y abre el checkout de fiado.
+  function handleFiarFromPOS() {
+    if (items.length === 0) return
+    if (!selectedCustomer) {
+      toast.error('Selecciona un cliente para fiar (no se fía a anónimo)')
+      return
+    }
+    setShowPayment(false)
+    setShowFiar(true)
+  }
+
+  function handleConfirmFiar(initial: { amount: number; method: PaymentMethod }) {
+    if (!selectedCustomer) return
+    const total = cartTotals(items).total
+    const snapshot = { items: [...items], customer: selectedCustomer }
+    createCredit.mutate(
+      {
+        items,
+        customer_id: selectedCustomer.id,
+        initial_payment:
+          initial.amount > 0
+            ? { amount: initial.amount, method: initial.method }
+            : undefined,
+      },
+      {
+        onSuccess: (order) => {
+          setShowFiar(false)
+          setCompletedSale({
+            order,
+            ...snapshot,
+            credit: {
+              paid: initial.amount,
+              balance: Math.max(0, total - initial.amount),
+              payment_method: initial.amount > 0 ? initial.method : null,
+            },
+          })
+        },
+      },
+    )
+  }
+
   // Bloqueo: sin turno abierto no se permite vender
   if (!loadingShift && !currentShift) {
     return (
@@ -1631,8 +1876,21 @@ export default function POSPage() {
           paymentQrUrl={config.payment_qr_url}
           onConfirm={handleConfirmPayment}
           onLayaway={handleLayawayFromPOS}
+          canFiar={canFiar}
+          onFiar={handleFiarFromPOS}
           onClose={() => setShowPayment(false)}
           isPending={createOrder.isPending}
+        />
+      )}
+
+      {showFiar && selectedCustomer && (
+        <CreditCheckoutModal
+          total={cartTotals(items).total}
+          customer={selectedCustomer}
+          enabledMethods={migrateLegacyPaymentMethods(config.payment_methods)}
+          onConfirm={handleConfirmFiar}
+          onClose={() => setShowFiar(false)}
+          isPending={createCredit.isPending}
         />
       )}
 
@@ -1650,6 +1908,7 @@ export default function POSPage() {
           items={completedSale.items}
           customer={completedSale.customer}
           storeName={storeData?.name ?? 'G-Mura'}
+          credit={completedSale.credit}
           onClose={handleTicketClose}
         />
       )}

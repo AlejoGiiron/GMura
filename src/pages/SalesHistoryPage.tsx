@@ -28,6 +28,7 @@ import {
 } from 'date-fns'
 import { fmtCOP } from '@/lib/formatters'
 import { getColorHex } from '@/lib/products'
+import { isCreditFullyPaid, creditBalance } from '@/lib/creditCalc'
 import {
   useSalesHistory,
   useSalesSummary,
@@ -54,6 +55,7 @@ const PAYMENT_METHOD_LABEL: Record<PaymentMethod, string> = {
   card: 'Tarjeta',
   transfer: 'Transferencia',
   addi: 'Addi',
+  credit: 'Fiado',
 }
 
 const PAYMENT_OPTIONS: { id: PaymentMethod | 'all'; label: string }[] = [
@@ -563,8 +565,18 @@ function SalesRow({
         >
           {totalLabel}
         </CopyableCell>
-        <span>
+        <span className="flex flex-wrap items-center gap-1">
           <PaymentBadge method={row.payment_method} />
+          {row.is_credit &&
+            (isCreditFullyPaid(row.total, row.paid_amount) ? (
+              <span className="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
+                Pagado
+              </span>
+            ) : (
+              <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
+                Debe {fmtCOP(creditBalance(row.total, row.paid_amount))}
+              </span>
+            ))}
         </span>
         <span>
           <StatusBadge status={row.status} />

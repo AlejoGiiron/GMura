@@ -9,6 +9,9 @@ export interface SalesByMethod {
   total: number
   regularTotal: number
   layawayTotal: number
+  // Abonos de FIADO (029) cobrados en este método. Parte del efectivo del
+  // cuadre; el revenue del fiado ya se reconoció en la orden (reportes).
+  creditTotal: number
 }
 
 export interface ShiftOrderInput {
@@ -21,6 +24,14 @@ export interface ShiftOrderInput {
 }
 
 export interface ShiftLayawayPaymentInput {
+  payment_method: PaymentMethod
+  amount: number
+}
+
+// Abono de una venta FIADA (029). Efectivo real cobrado ahora; se suma al
+// cuadre igual que un abono de separado. Su orden (is_credit) se EXCLUYE del
+// efectivo (su total no entró), por eso el abono no duplica.
+export interface ShiftCreditPaymentInput {
   payment_method: PaymentMethod
   amount: number
 }
@@ -39,6 +50,9 @@ export interface ShiftSummaryInput {
   // cobró; contar además la orden de cierre duplicaría el dinero.
   excludedOrderIds?: Iterable<string>
   layawayPayments: ShiftLayawayPaymentInput[]
+  // Abonos de fiados imputados al turno. Opcional para compatibilidad con los
+  // call sites/tests previos a fiados (default []).
+  creditPayments?: ShiftCreditPaymentInput[]
   expenses: ShiftExpenseInput[]
 }
 
@@ -46,6 +60,8 @@ export interface ShiftSummary {
   salesByMethod: SalesByMethod[]
   regularSalesTotal: number
   layawayPaymentsTotal: number
+  // Total de abonos de fiado del turno (parte del efectivo; NO revenue).
+  creditPaymentsTotal: number
   totalSales: number
   cashSales: number
   totalExpenses: number
@@ -103,6 +119,7 @@ type AggRow = {
   total: number
   regularTotal: number
   layawayTotal: number
+  creditTotal: number
 }
 
 const emptyAgg = (): AggRow => ({
@@ -110,6 +127,7 @@ const emptyAgg = (): AggRow => ({
   total: 0,
   regularTotal: 0,
   layawayTotal: 0,
+  creditTotal: 0,
 })
 
 /**
@@ -124,6 +142,7 @@ export function calculateShiftSummary(input: ShiftSummaryInput): ShiftSummary {
   const aggMap = new Map<PaymentMethod, AggRow>()
   let regularSalesTotal = 0
   let layawayPaymentsTotal = 0
+  let creditPaymentsTotal = 0
   let cashSales = 0
   let returnsIncome = 0
   let regularOrderCount = 0
@@ -150,6 +169,7 @@ export function calculateShiftSummary(input: ShiftSummaryInput): ShiftSummary {
       total: prev.total + t,
       regularTotal: prev.regularTotal + t,
       layawayTotal: prev.layawayTotal,
+      creditTotal: prev.creditTotal,
     })
   }
 
@@ -163,6 +183,24 @@ export function calculateShiftSummary(input: ShiftSummaryInput): ShiftSummary {
       total: prev.total + t,
       regularTotal: prev.regularTotal,
       layawayTotal: prev.layawayTotal + t,
+      creditTotal: prev.creditTotal,
+    })
+  }
+
+  // Abonos de FIADO (029): efectivo real cobrado ahora. Se suman al cuadre
+  // igual que los de separado. La ORDEN fiada se excluyó del efectivo aguas
+  // arriba (query .eq('is_credit', false)), así que esto no duplica.
+  for (const p of input.creditPayments ?? []) {
+    const t = p.amount
+    creditPaymentsTotal += t
+    if (p.payment_method === 'cash') cashSales += t
+    const prev = aggMap.get(p.payment_method) ?? emptyAgg()
+    aggMap.set(p.payment_method, {
+      count: prev.count + 1,
+      total: prev.total + t,
+      regularTotal: prev.regularTotal,
+      layawayTotal: prev.layawayTotal,
+      creditTotal: prev.creditTotal + t,
     })
   }
 
@@ -170,7 +208,7 @@ export function calculateShiftSummary(input: ShiftSummaryInput): ShiftSummary {
     .map(([method, v]) => ({ method, ...v }))
     .sort((a, b) => b.total - a.total)
 
-  const totalSales = regularSalesTotal + layawayPaymentsTotal
+  const totalSales = regularSalesTotal + layawayPaymentsTotal + creditPaymentsTotal
 
   // Egresos: el total (para el cuadre) es TODO; los reembolsos se separan solo
   // para la presentación. totalExpenses NO cambia → expectedCash idéntico.
@@ -191,6 +229,7 @@ export function calculateShiftSummary(input: ShiftSummaryInput): ShiftSummary {
     salesByMethod,
     regularSalesTotal,
     layawayPaymentsTotal,
+    creditPaymentsTotal,
     totalSales,
     cashSales,
     totalExpenses,

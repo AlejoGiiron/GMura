@@ -42,6 +42,7 @@ const PAYMENT_COLORS: Record<PaymentMethod, string> = {
   card:     '#8b5cf6',
   transfer: '#3b82f6',
   addi:     '#ec4899',
+  credit:   '#f59e0b',
 }
 
 const PAYMENT_LABELS: Record<PaymentMethod, string> = {
@@ -49,6 +50,7 @@ const PAYMENT_LABELS: Record<PaymentMethod, string> = {
   card:     'Tarjeta',
   transfer: 'Transferencia',
   addi:     'Addi',
+  credit:   'Fiado',
 }
 
 const LAYAWAY_STATUS_COLORS: Record<LayawayStatus, string> = {
@@ -90,6 +92,7 @@ type DailyBarRow = {
   card:     number
   transfer: number
   addi:     number
+  credit:   number
 }
 
 type PaymentSlice  = { name: string; value: number; color: string }
@@ -136,7 +139,7 @@ function pivotDailySales(rows: DailySalesSummary[]): DailyBarRow[] {
   for (const r of rows) {
     const entry = map.get(r.sale_date) ?? {
       label: fmtLabel(r.sale_date), rawDate: r.sale_date,
-      cash: 0, card: 0, transfer: 0, addi: 0,
+      cash: 0, card: 0, transfer: 0, addi: 0, credit: 0,
     }
     entry[r.payment_method] = (entry[r.payment_method] ?? 0) + Number(r.total_sum)
     map.set(r.sale_date, entry)

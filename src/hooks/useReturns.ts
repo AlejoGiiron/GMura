@@ -32,6 +32,9 @@ export type FoundOrder = {
   created_at: string
   total: number
   payment_method: PaymentMethod
+  // Fiado (029): para bloquear devoluciones de fiados con saldo pendiente.
+  is_credit: boolean
+  paid_amount: number
   customer_id: string | null
   customer: { full_name: string; phone: string | null } | null
   items: FoundOrderItem[]
@@ -97,6 +100,8 @@ type RawOrderDetail = {
   created_at: string
   total: number
   payment_method: string
+  is_credit: boolean
+  paid_amount: number
   customer_id: string | null
   customers: { full_name: string; phone: string | null } | null
   order_items: {
@@ -232,7 +237,8 @@ export function useOrderDetail(orderId: string | null) {
       const { data: raw, error } = await supabase
         .from('orders')
         .select(`
-          id, order_number, created_at, total, payment_method, customer_id,
+          id, order_number, created_at, total, payment_method, is_credit, paid_amount,
+          customer_id,
           customers(full_name, phone),
           order_items(
             id, variant_id, product_id, qty, unit_price, list_price,
@@ -270,6 +276,8 @@ export function useOrderDetail(orderId: string | null) {
         created_at: order.created_at,
         total: order.total,
         payment_method: order.payment_method as PaymentMethod,
+        is_credit: order.is_credit ?? false,
+        paid_amount: Number(order.paid_amount) || 0,
         customer_id: order.customer_id,
         customer: order.customers,
         items: order.order_items.map((oi) => ({

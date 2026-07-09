@@ -21,6 +21,14 @@ export interface LayawayPaymentRow {
   created_at: string
 }
 
+export interface CreditPaymentRow {
+  id: string
+  order_number: number
+  amount: number
+  payment_method: PaymentMethod
+  created_at: string
+}
+
 export interface ShiftClosingData {
   shift: CashShift
   expenses: CashExpense[]
@@ -33,6 +41,8 @@ export interface ShiftClosingData {
   orderCount: number
   layawayPayments: LayawayPaymentRow[]
   layawayPaymentsTotal: number
+  creditPayments: CreditPaymentRow[]
+  creditPaymentsTotal: number
   regularSalesTotal: number
   returnsIncome: number
   returnsExpense: number
@@ -55,6 +65,14 @@ type RawLayawayPayment = {
   payment_method: PaymentMethod
   created_at: string
   layaways: { layaway_number: number } | null
+}
+
+type RawCreditPayment = {
+  id: string
+  amount: number | string
+  payment_method: PaymentMethod
+  created_at: string
+  orders: { order_number: number } | null
 }
 
 type RawConvertedOrder = {
@@ -144,6 +162,9 @@ export function useShiftClosing(shiftId: string | null) {
         .eq('store_id' as never, storeId)
         .eq('shift_id' as never, shiftId)
         .eq('status' as never, 'completed')
+        // Las órdenes FIADAS (029) NO son efectivo del turno: su total no entró,
+        // solo entran los abonos (credit_payments, abajo). Se excluyen del cuadre.
+        .eq('is_credit' as never, false)
       if (ordersErr) throw ordersErr
 
       const { data: paysByShift, error: paymentsErr } = await supabase
@@ -160,20 +181,41 @@ export function useShiftClosing(shiftId: string | null) {
         .order('created_at' as never, { ascending: true })
       if (paymentsErr) throw paymentsErr
 
+      const { data: creditByShift, error: creditErr } = await supabase
+        .from('credit_payments')
+        .select(
+          `id, amount, payment_method, created_at,
+           orders:order_id(order_number)`,
+        )
+        .eq('store_id' as never, storeId)
+        .eq('shift_id' as never, shiftId)
+        // Excluir abonos históricos: dinero recibido antes de cargar el fiado
+        // viejo, no entró a esta caja (mismo criterio que #3C en separados).
+        .eq('is_historical' as never, false)
+        .order('created_at' as never, { ascending: true })
+      if (creditErr) throw creditErr
+
       let orders = (ordersByShift ?? []) as unknown as RawOrder[]
       let paymentsRaw = (paysByShift ?? []) as unknown as RawLayawayPayment[]
+      let creditRaw = (creditByShift ?? []) as unknown as RawCreditPayment[]
 
       // Fallback legacy (pre-026): ninguna fila imputada por shift_id → este
       // turno es anterior al deploy; reconstruir por ventana de tiempo + opened_by.
       // Para un turno NUEVO sin actividad este camino también da 0 (resultado
       // idéntico), así que no introduce imprecisión.
-      if (orders.length === 0 && paymentsRaw.length === 0) {
+      if (
+        orders.length === 0 &&
+        paymentsRaw.length === 0 &&
+        creditRaw.length === 0
+      ) {
         let oQuery = supabase
           .from('orders')
           .select('id, total, payment_method, return_id')
           .eq('store_id' as never, storeId)
           .eq('created_by' as never, shift.opened_by)
           .eq('status' as never, 'completed')
+          // También aquí se excluyen las fiadas del efectivo (ruta legacy).
+          .eq('is_credit' as never, false)
           .gte('created_at' as never, shift.opened_at)
         if (shift.closed_at) {
           oQuery = oQuery.lte('created_at' as never, shift.closed_at)
@@ -200,8 +242,28 @@ export function useShiftClosing(shiftId: string | null) {
           .order('created_at' as never, { ascending: true })
         if (lpErr) throw lpErr
 
+        // Ruta CRÍTICA (como en #3C): un abono histórico de fiado (shift_id NULL)
+        // sería absorbido por ventana + cajero sin el filtro is_historical.
+        let cQuery2 = supabase
+          .from('credit_payments')
+          .select(
+            `id, amount, payment_method, created_at,
+             orders:order_id(order_number)`,
+          )
+          .eq('store_id' as never, storeId)
+          .eq('created_by' as never, shift.opened_by)
+          .eq('is_historical' as never, false)
+          .gte('created_at' as never, shift.opened_at)
+        if (shift.closed_at) {
+          cQuery2 = cQuery2.lte('created_at' as never, shift.closed_at)
+        }
+        const { data: legacyCredit, error: lcErr } = await cQuery2
+          .order('created_at' as never, { ascending: true })
+        if (lcErr) throw lcErr
+
         orders = (legacyOrders ?? []) as unknown as RawOrder[]
         paymentsRaw = (legacyPays ?? []) as unknown as RawLayawayPayment[]
+        creditRaw = (legacyCredit ?? []) as unknown as RawCreditPayment[]
       }
 
       const layawayPayments: LayawayPaymentRow[] = paymentsRaw.map((p) => ({
@@ -210,6 +272,14 @@ export function useShiftClosing(shiftId: string | null) {
         payment_method: p.payment_method,
         created_at: p.created_at,
         layaway_number: p.layaways?.layaway_number ?? 0,
+      }))
+
+      const creditPayments: CreditPaymentRow[] = creditRaw.map((p) => ({
+        id: p.id,
+        amount: Number(p.amount),
+        payment_method: p.payment_method,
+        created_at: p.created_at,
+        order_number: p.orders?.order_number ?? 0,
       }))
 
       // 4. Egresos del turno
@@ -236,6 +306,10 @@ export function useShiftClosing(shiftId: string | null) {
         })),
         excludedOrderIds,
         layawayPayments,
+        creditPayments: creditPayments.map((p) => ({
+          amount: p.amount,
+          payment_method: p.payment_method,
+        })),
         expenses: expenses.map((e) => ({ amount: Number(e.amount), kind: e.kind })),
       })
 
@@ -251,6 +325,8 @@ export function useShiftClosing(shiftId: string | null) {
         orderCount: summary.orderCount,
         layawayPayments,
         layawayPaymentsTotal: summary.layawayPaymentsTotal,
+        creditPayments,
+        creditPaymentsTotal: summary.creditPaymentsTotal,
         regularSalesTotal: summary.regularSalesTotal,
         returnsIncome: summary.returnsIncome,
         returnsExpense: summary.returnsExpense,

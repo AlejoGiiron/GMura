@@ -5,6 +5,7 @@ import {
   shiftDifference,
   type ShiftOrderInput,
   type ShiftLayawayPaymentInput,
+  type ShiftCreditPaymentInput,
   type ShiftSummaryInput,
 } from './shiftCalc'
 
@@ -27,6 +28,13 @@ function abono(
   amount: number,
   payment_method: ShiftLayawayPaymentInput['payment_method'] = 'cash',
 ): ShiftLayawayPaymentInput {
+  return { amount, payment_method }
+}
+
+function creditAbono(
+  amount: number,
+  payment_method: ShiftCreditPaymentInput['payment_method'] = 'cash',
+): ShiftCreditPaymentInput {
   return { amount, payment_method }
 }
 
@@ -426,5 +434,72 @@ describe('calculateShiftSummary — abono histórico no cuenta en caja (028)', (
     expect(siSeColara.cashSales).toBe(100_000) // 60k histórico indebido + 40k
     expect(siSeColara.expectedCash).toBe(200_000) // inflado en los 60k del histórico
     // El cuadre correcto (solo el nuevo) esperaría 140.000, no 200.000.
+  })
+})
+
+describe('calculateShiftSummary — fiados (029)', () => {
+  // Contrato F2: la ORDEN fiada (is_credit) se EXCLUYE del efectivo en la query
+  // (.eq('is_credit', false)), así que NUNCA llega como orden a esta función. El
+  // efectivo del fiado entra SOLO por creditPayments. Estos tests fijan eso y la
+  // separación revenue (orden, ya en reportes) vs caja (abonos, flujo).
+
+  it('los abonos de fiado en efectivo suman al efectivo esperado', () => {
+    const r = calculateShiftSummary({
+      openingAmount: 100_000,
+      orders: [order('o1', 40_000, 'cash')],
+      layawayPayments: [],
+      creditPayments: [creditAbono(30_000, 'cash')],
+      expenses: [],
+    })
+    expect(r.creditPaymentsTotal).toBe(30_000)
+    // efectivo = 40.000 venta + 30.000 abono de fiado
+    expect(r.cashSales).toBe(70_000)
+    expect(r.expectedCash).toBe(170_000) // 100.000 + 70.000
+    expect(r.totalSales).toBe(70_000) // 40.000 venta regular + 30.000 abonos
+  })
+
+  it('un abono de fiado NO efectivo (tarjeta) no toca el efectivo', () => {
+    const r = calculateShiftSummary({
+      openingAmount: 100_000,
+      orders: [],
+      layawayPayments: [],
+      creditPayments: [creditAbono(50_000, 'card')],
+      expenses: [],
+    })
+    expect(r.creditPaymentsTotal).toBe(50_000)
+    expect(r.cashSales).toBe(0)
+    expect(r.expectedCash).toBe(100_000)
+    const card = r.salesByMethod.find((s) => s.method === 'card')
+    expect(card).toMatchObject({ method: 'card', creditTotal: 50_000, total: 50_000 })
+  })
+
+  it('la orden fiada se excluye aguas arriba: no llega, solo su abono cuenta', () => {
+    // Lo que la query pasa al cuadre: SOLO el abono (la orden fiada fue filtrada
+    // por is_credit=false). El total del fiado NO se cuenta como efectivo.
+    const r = calculateShiftSummary({
+      openingAmount: 100_000,
+      orders: [], // la orden fiada de $100.000 no llega
+      layawayPayments: [],
+      creditPayments: [creditAbono(30_000, 'cash')], // abono inicial del fiado
+      expenses: [],
+    })
+    expect(r.cashSales).toBe(30_000) // solo el abono, no los $100.000 del fiado
+    expect(r.expectedCash).toBe(130_000)
+    expect(r.orderCount).toBe(0) // ninguna venta regular
+  })
+
+  it('load-bearing: si la fiada NO se excluyera, inflaría el efectivo', () => {
+    // Simula el bug de NO filtrar is_credit: el total del fiado ($100.000) se
+    // colaría como orden cash, ADEMÁS del abono → efectivo inflado.
+    const siSeColara = calculateShiftSummary({
+      openingAmount: 100_000,
+      orders: [order('fiada', 100_000, 'cash')], // ERROR: fiada contada como venta cash
+      layawayPayments: [],
+      creditPayments: [creditAbono(30_000, 'cash')],
+      expenses: [],
+    })
+    expect(siSeColara.cashSales).toBe(130_000) // 100.000 del fiado (indebido) + 30.000
+    expect(siSeColara.expectedCash).toBe(230_000) // inflado en los $100.000 del fiado
+    // El cuadre correcto (solo el abono de 30k) esperaría 130.000, no 230.000.
   })
 })

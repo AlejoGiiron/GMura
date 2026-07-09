@@ -39,6 +39,14 @@ export interface SaleReceiptData {
   cash_received: number | null
   items: SaleReceiptItem[]
   customer: SaleReceiptCustomer | null
+  // Fiado (029): si viene, el recibo se rotula FIADO y muestra el abono inicial
+  // y el SALDO PENDIENTE que el cliente queda debiendo.
+  credit?: {
+    paid: number
+    balance: number
+    // Método del abono inicial (null si no hubo abono).
+    payment_method: PaymentMethod | null
+  } | null
 }
 
 export interface SaleReceiptProps {
@@ -101,7 +109,7 @@ export function SaleReceipt({ sale, storeName, printedAt }: SaleReceiptProps) {
         </div>
         <div style={{ fontSize: 11, ...monoLight }}>{storeName}</div>
         <div style={{ fontSize: 13, fontWeight: 700, marginTop: 4 }}>
-          VENTA #{sale.order_number}
+          {sale.credit ? 'FIADO' : 'VENTA'} #{sale.order_number}
         </div>
       </div>
 
@@ -199,32 +207,72 @@ export function SaleReceipt({ sale, storeName, printedAt }: SaleReceiptProps) {
             {fmtCOP(sale.total)}
           </span>
         </Line>
-        <Line>
-          <span style={monoLight}>Pago:</span>
-          <span>{PAYMENT_METHODS[sale.payment_method].label}</span>
-        </Line>
-        {sale.cash_received != null && (
-          <Line>
-            <span style={monoLight}>Recibido:</span>
-            <span>{fmtCOP(sale.cash_received)}</span>
-          </Line>
+        {!sale.credit && (
+          <>
+            <Line>
+              <span style={monoLight}>Pago:</span>
+              <span>{PAYMENT_METHODS[sale.payment_method].label}</span>
+            </Line>
+            {sale.cash_received != null && (
+              <Line>
+                <span style={monoLight}>Recibido:</span>
+                <span>{fmtCOP(sale.cash_received)}</span>
+              </Line>
+            )}
+            {change > 0 && (
+              <Line>
+                <span style={monoLight}>Cambio:</span>
+                <span>{fmtCOP(change)}</span>
+              </Line>
+            )}
+          </>
         )}
-        {change > 0 && (
-          <Line>
-            <span style={monoLight}>Cambio:</span>
-            <span>{fmtCOP(change)}</span>
-          </Line>
+
+        {sale.credit && (
+          <>
+            <Line>
+              <span style={monoLight}>Venta a crédito:</span>
+              <span>FIADO</span>
+            </Line>
+            <Line>
+              <span style={monoLight}>Abono inicial:</span>
+              <span>
+                {fmtCOP(sale.credit.paid)}
+                {sale.credit.payment_method
+                  ? ` (${PAYMENT_METHODS[sale.credit.payment_method].label})`
+                  : ''}
+              </span>
+            </Line>
+            <div style={monoLight}>{SUBDIV}</div>
+            <Line>
+              <span style={{ fontWeight: 700 }}>SALDO A DEBER:</span>
+              <span style={{ fontWeight: 700, fontSize: 13 }}>
+                {fmtCOP(sale.credit.balance)}
+              </span>
+            </Line>
+          </>
         )}
       </div>
 
       <div style={monoLight}>{DIVIDER}</div>
 
-      <div style={{ textAlign: 'center', marginTop: 6 }}>
-        <div style={{ fontWeight: 600 }}>¡Gracias por tu compra!</div>
-        <div style={{ ...monoLight, marginTop: 2 }}>
-          Conserva este recibo para devoluciones.
+      {sale.credit ? (
+        <div style={{ textAlign: 'center', marginTop: 6 }}>
+          <div style={{ fontWeight: 700 }}>
+            DEBE: {fmtCOP(sale.credit.balance)}
+          </div>
+          <div style={{ ...monoLight, marginTop: 2 }}>
+            Conserva este recibo. Gracias por tu compra.
+          </div>
         </div>
-      </div>
+      ) : (
+        <div style={{ textAlign: 'center', marginTop: 6 }}>
+          <div style={{ fontWeight: 600 }}>¡Gracias por tu compra!</div>
+          <div style={{ ...monoLight, marginTop: 2 }}>
+            Conserva este recibo para devoluciones.
+          </div>
+        </div>
+      )}
 
       <div style={{ textAlign: 'center', ...monoLight, marginTop: 6 }}>
         Impreso: {fmtDateTime(printedAt)}

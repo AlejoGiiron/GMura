@@ -26,6 +26,7 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
       { key: 'pos.usar', label: 'Vender (usar el POS)' },
       { key: 'ventas.anular', label: 'Anular ventas' },
       { key: 'ventas.regalo', label: 'Marcar ítems sin cargo' },
+      { key: 'ventas.fiar', label: 'Vender a crédito (fiar)' },
     ],
   },
   {
@@ -95,6 +96,7 @@ export const ALL_PERMISSIONS = [
   'pos.usar',
   'ventas.anular',
   'ventas.regalo',
+  'ventas.fiar',
   'separados.gestionar',
   'separados.eliminar',
   'devoluciones.gestionar',
