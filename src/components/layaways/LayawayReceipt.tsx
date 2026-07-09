@@ -185,6 +185,7 @@ export function LayawayReceipt({
             <Line key={p.id}>
               <span style={monoLight}>
                 {PAYMENT_METHODS[p.payment_method].label}
+                {p.is_historical ? ' (histórico)' : ''}
               </span>
               <span>{fmtCOP(p.amount)}</span>
             </Line>

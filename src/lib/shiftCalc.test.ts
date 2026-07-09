@@ -385,3 +385,46 @@ describe('calculateShiftSummary — devoluciones aparte (P5)', () => {
     expect(r.regularExpensesTotal).toBe(5_000)
   })
 })
+
+describe('calculateShiftSummary — abono histórico no cuenta en caja (028)', () => {
+  // Contrato de la Fase 2: las 4 queries de layaway_payments de useShiftClosing
+  // y useShiftHistory excluyen is_historical=true ANTES de llamar a esta
+  // función pura. Por eso el abono histórico simplemente NO llega acá. Estos
+  // tests fijan ese invariante: filtrar el histórico = calcular sin él.
+
+  it('el histórico se filtra antes: el cuadre es idéntico a no tenerlo', () => {
+    // Separado viejo: $60.000 recibidos antes (histórico, ya filtrado) + un
+    // abono nuevo de $40.000 en efectivo cobrado en este turno.
+    const conFiltro = calculateShiftSummary({
+      openingAmount: 100_000,
+      orders: [],
+      layawayPayments: [abono(40_000, 'cash')], // el histórico NO llega
+      expenses: [],
+    })
+    const baseline = calculateShiftSummary({
+      openingAmount: 100_000,
+      orders: [],
+      layawayPayments: [abono(40_000, 'cash')],
+      expenses: [],
+    })
+    expect(conFiltro).toEqual(baseline)
+    // Solo el abono nuevo mueve el efectivo esperado.
+    expect(conFiltro.cashSales).toBe(40_000)
+    expect(conFiltro.layawayPaymentsTotal).toBe(40_000)
+    expect(conFiltro.expectedCash).toBe(140_000) // 100.000 + 40.000
+  })
+
+  it('el filtro es load-bearing: si el histórico se colara, inflaría el efectivo', () => {
+    // Este caso demuestra por qué el filtro importa: pasar el histórico a la
+    // función (como si NO se hubiera filtrado) sube cashSales y expectedCash.
+    const siSeColara = calculateShiftSummary({
+      openingAmount: 100_000,
+      orders: [],
+      layawayPayments: [abono(60_000, 'cash'), abono(40_000, 'cash')], // histórico + nuevo
+      expenses: [],
+    })
+    expect(siSeColara.cashSales).toBe(100_000) // 60k histórico indebido + 40k
+    expect(siSeColara.expectedCash).toBe(200_000) // inflado en los 60k del histórico
+    // El cuadre correcto (solo el nuevo) esperaría 140.000, no 200.000.
+  })
+})

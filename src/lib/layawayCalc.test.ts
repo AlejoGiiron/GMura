@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   calculateRequiredInitialPayment,
+  resolveLayawayPaymentImputation,
   isLayawayOverdue,
   daysUntilExpiry,
 } from './layawayCalc'
@@ -75,6 +76,34 @@ describe('calculateRequiredInitialPayment', () => {
         layaway_initial_payment_value: 30_000,
       }),
     ).toBe(0)
+  })
+})
+
+describe('resolveLayawayPaymentImputation (028)', () => {
+  it('abono histórico → shift_id=null e is_historical=true (fuera del cuadre)', () => {
+    // Aunque haya un turno abierto, el histórico NO se imputa a él.
+    expect(resolveLayawayPaymentImputation(true, 'shift-abc')).toEqual({
+      shift_id: null,
+      is_historical: true,
+    })
+  })
+
+  it('abono normal → se imputa al turno abierto e is_historical=false', () => {
+    expect(resolveLayawayPaymentImputation(false, 'shift-abc')).toEqual({
+      shift_id: 'shift-abc',
+      is_historical: false,
+    })
+  })
+
+  it('abono normal sin turno abierto → shift_id=null (compat), is_historical=false', () => {
+    expect(resolveLayawayPaymentImputation(false, null)).toEqual({
+      shift_id: null,
+      is_historical: false,
+    })
+    expect(resolveLayawayPaymentImputation(false, undefined)).toEqual({
+      shift_id: null,
+      is_historical: false,
+    })
   })
 })
 

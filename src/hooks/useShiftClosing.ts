@@ -154,6 +154,9 @@ export function useShiftClosing(shiftId: string | null) {
         )
         .eq('store_id' as never, storeId)
         .eq('shift_id' as never, shiftId)
+        // Los abonos históricos (028) NO son ingreso de este turno: el dinero
+        // entró antes de cargar el separado. Se excluyen del cuadre.
+        .eq('is_historical' as never, false)
         .order('created_at' as never, { ascending: true })
       if (paymentsErr) throw paymentsErr
 
@@ -186,6 +189,9 @@ export function useShiftClosing(shiftId: string | null) {
           )
           .eq('store_id' as never, storeId)
           .eq('created_by' as never, shift.opened_by)
+          // Ruta CRÍTICA: sin este filtro, un abono histórico (shift_id NULL)
+          // sería absorbido por ventana de tiempo + cajero (028).
+          .eq('is_historical' as never, false)
           .gte('created_at' as never, shift.opened_at)
         if (shift.closed_at) {
           pQuery = pQuery.lte('created_at' as never, shift.closed_at)

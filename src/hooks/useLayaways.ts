@@ -64,6 +64,8 @@ export interface LayawayDetailPayment {
   created_at: string
   created_by: string
   created_by_name: string | null
+  // true = abono ya recibido antes de cargar el separado (028); no entró a caja.
+  is_historical: boolean
 }
 
 export interface LayawayDetail extends Layaway {
@@ -119,6 +121,7 @@ interface RawDetailPayment {
   notes: string | null
   created_at: string
   created_by: string
+  is_historical: boolean
   profiles: { full_name: string } | null
 }
 
@@ -277,7 +280,7 @@ export function useLayawayDetail(id: string | null) {
            layaway_items(id, variant_id, product_id, qty, unit_price, list_price,
              variants(size, color, products(name, brand))),
            layaway_payments(id, amount, payment_method, notes, created_at, created_by,
-             profiles(full_name))`,
+             is_historical, profiles(full_name))`,
         )
         .eq('id' as never, id)
         .eq('store_id' as never, storeId)
@@ -308,6 +311,7 @@ export function useLayawayDetail(id: string | null) {
           created_at: p.created_at,
           created_by: p.created_by,
           created_by_name: p.profiles?.full_name ?? null,
+          is_historical: p.is_historical === true,
         }))
         .sort((a, b) => (a.created_at < b.created_at ? 1 : -1))
 
