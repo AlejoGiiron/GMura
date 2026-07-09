@@ -15,6 +15,7 @@ import CashShiftsHistoryPage from '@/pages/CashShiftsHistoryPage'
 import ExpenseHistoryPage from '@/pages/ExpenseHistoryPage'
 import LayawaysPage from '@/pages/LayawaysPage'
 import SuppliersPage from '@/pages/SuppliersPage'
+import CarteraPage from '@/pages/CarteraPage'
 
 export default function App() {
   return (
@@ -52,6 +53,14 @@ export default function App() {
             }
           />
           <Route path="clientes" element={<CustomersPage />} />
+          <Route
+            path="cartera"
+            element={
+              <ProtectedRoute permission="pos.usar">
+                <CarteraPage />
+              </ProtectedRoute>
+            }
+          />
           <Route
             path="reportes"
             element={

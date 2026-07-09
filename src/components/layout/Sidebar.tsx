@@ -20,6 +20,7 @@ import {
   Bookmark,
   Truck,
   Building2,
+  HandCoins,
 } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import { usePermissions } from '@/hooks/usePermissions'
@@ -93,6 +94,7 @@ const NAV_GROUPS: NavGroup[] = [
     icon: Users,
     items: [
       { label: 'Clientes', path: '/clientes', icon: Users, permission: 'clientes.gestionar' },
+      { label: 'Cartera', path: '/cartera', icon: HandCoins, permission: 'pos.usar' },
     ],
   },
   {
