@@ -33,6 +33,9 @@ export type SalesHistoryRow = {
   payment_method: PaymentMethod
   status: OrderStatus
   cash_received: number | null
+  // Fiado (029): para mostrar "Pagado" / "Debe $X" derivado de paid_amount.
+  is_credit: boolean
+  paid_amount: number
   customer_id: string | null
   customer_name: string | null
   customer_phone: string | null
@@ -103,6 +106,8 @@ type RawOrderRow = {
   payment_method: string
   status: string
   cash_received: number | null
+  is_credit: boolean
+  paid_amount: number
   customer_id: string | null
   customers: { full_name: string; phone: string | null } | null
   order_items: { id: string }[]
@@ -172,7 +177,7 @@ export function useSalesHistory(filters: SalesHistoryFilters) {
         .from('orders')
         .select(
           `id, order_number, created_at, total, subtotal, discount,
-           payment_method, status, cash_received, customer_id,
+           payment_method, status, cash_received, is_credit, paid_amount, customer_id,
            customers(full_name, phone),
            order_items(id)`,
           { count: 'exact' },
@@ -225,6 +230,8 @@ export function useSalesHistory(filters: SalesHistoryFilters) {
           payment_method: r.payment_method as PaymentMethod,
           status: r.status as OrderStatus,
           cash_received: r.cash_received,
+          is_credit: r.is_credit ?? false,
+          paid_amount: Number(r.paid_amount) || 0,
           customer_id: r.customer_id,
           customer_name: r.customers?.full_name ?? null,
           customer_phone: r.customers?.phone ?? null,

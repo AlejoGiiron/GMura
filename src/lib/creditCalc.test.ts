@@ -3,6 +3,8 @@ import {
   creditBalance,
   validateCreditPaymentAmount,
   resolveCreditPaymentImputation,
+  isCreditFullyPaid,
+  isCreditReturnBlocked,
 } from './creditCalc'
 
 describe('creditBalance', () => {
@@ -43,6 +45,38 @@ describe('validateCreditPaymentAmount', () => {
     expect(validateCreditPaymentAmount(70_000.4, 100_000, 30_000)).toBeNull()
     // pero 70.001 sí excede
     expect(validateCreditPaymentAmount(70_001, 100_000, 30_000)).toBe('exceeds_balance')
+  })
+})
+
+describe('isCreditFullyPaid', () => {
+  it('saldado cuando pagado >= total', () => {
+    expect(isCreditFullyPaid(100_000, 100_000)).toBe(true)
+    expect(isCreditFullyPaid(100_000, 120_000)).toBe(true)
+  })
+  it('no saldado cuando falta', () => {
+    expect(isCreditFullyPaid(100_000, 70_000)).toBe(false)
+  })
+  it('tolera redondeo de 0.5', () => {
+    expect(isCreditFullyPaid(100_000, 99_999.6)).toBe(true)
+    expect(isCreditFullyPaid(100_000, 99_999)).toBe(false)
+  })
+})
+
+describe('isCreditReturnBlocked', () => {
+  it('fiado con saldo pendiente -> bloqueado', () => {
+    expect(
+      isCreditReturnBlocked({ is_credit: true, total: 100_000, paid_amount: 30_000 }),
+    ).toBe(true)
+  })
+  it('fiado ya saldado -> NO bloqueado (se comporta como venta normal)', () => {
+    expect(
+      isCreditReturnBlocked({ is_credit: true, total: 100_000, paid_amount: 100_000 }),
+    ).toBe(false)
+  })
+  it('venta normal (no fiado) -> NO bloqueada aunque paid_amount sea 0', () => {
+    expect(
+      isCreditReturnBlocked({ is_credit: false, total: 100_000, paid_amount: 0 }),
+    ).toBe(false)
   })
 })
 

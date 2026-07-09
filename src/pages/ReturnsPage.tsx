@@ -20,6 +20,7 @@ import { differenceInDays } from 'date-fns'
 import toast from 'react-hot-toast'
 import { fmtCOP } from '@/lib/formatters'
 import { getColorHex } from '@/lib/products'
+import { isCreditReturnBlocked, creditBalance } from '@/lib/creditCalc'
 import {
   useOrderSearch,
   useOrderDetail,
@@ -157,6 +158,15 @@ function Step1Search({
     if (!detail) return
     if (detail.payment_method === 'addi') {
       toast.error(ADDI_RETURN_BLOCK_MSG)
+      setSelectedId(null)
+      return
+    }
+    if (isCreditReturnBlocked(detail)) {
+      toast.error(
+        `No se puede devolver un fiado con saldo pendiente (${fmtCOP(
+          creditBalance(detail.total, detail.paid_amount),
+        )}). Este caso se gestiona manualmente.`,
+      )
       setSelectedId(null)
       return
     }
@@ -1404,6 +1414,15 @@ export default function ReturnsPage() {
 
     if (preloadDetail.payment_method === 'addi') {
       toast.error(ADDI_RETURN_BLOCK_MSG)
+      setSearchParams({}, { replace: true })
+      return
+    }
+    if (isCreditReturnBlocked(preloadDetail)) {
+      toast.error(
+        `No se puede devolver un fiado con saldo pendiente (${fmtCOP(
+          creditBalance(preloadDetail.total, preloadDetail.paid_amount),
+        )}). Este caso se gestiona manualmente.`,
+      )
       setSearchParams({}, { replace: true })
       return
     }

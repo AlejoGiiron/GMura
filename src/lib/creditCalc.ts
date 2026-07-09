@@ -6,6 +6,27 @@ export function creditBalance(total: number, paidAmount: number): number {
   return Math.max(0, Number(total) - Number(paidAmount))
 }
 
+/**
+ * Un fiado está SALDADO cuando lo pagado cubre el total (tolerancia 0.5). Se
+ * deriva en la UI; NO hay un status nuevo en la BD.
+ */
+export function isCreditFullyPaid(total: number, paidAmount: number): boolean {
+  return Number(paidAmount) + 0.5 >= Number(total)
+}
+
+/**
+ * Bloqueo de devolución (029): un fiado con SALDO PENDIENTE no se puede devolver
+ * por el flujo normal (se gestiona manualmente). Una venta normal, o un fiado ya
+ * saldado, no se bloquea. Tolerancia 0.5 por redondeo.
+ */
+export function isCreditReturnBlocked(order: {
+  is_credit: boolean
+  total: number
+  paid_amount: number
+}): boolean {
+  return order.is_credit && !isCreditFullyPaid(order.total, order.paid_amount)
+}
+
 export type CreditPaymentError = 'nonpositive' | 'exceeds_balance'
 
 /**
