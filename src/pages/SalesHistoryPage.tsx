@@ -4,7 +4,6 @@ import {
   Search,
   X,
   ShoppingBag,
-  Calendar,
   TrendingUp,
   Receipt,
   RotateCcw,
@@ -18,14 +17,6 @@ import {
   Copy,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
-import {
-  startOfDay,
-  endOfDay,
-  startOfWeek,
-  startOfMonth,
-  format,
-  subDays,
-} from 'date-fns'
 import { fmtCOP } from '@/lib/formatters'
 import { getColorHex } from '@/lib/products'
 import { isCreditFullyPaid, creditBalance } from '@/lib/creditCalc'
@@ -38,6 +29,11 @@ import {
   type SalesHistoryRow,
   type SaleDetail,
 } from '@/hooks/useSalesHistory'
+import {
+  DateRangeFilter,
+  type DateRangeValue,
+} from '@/components/ui/DateRangeFilter'
+import { resolveDateRange, type DateRangePreset } from '@/lib/dateRange'
 import type {
   OrderStatus,
   PaymentMethod,
@@ -72,39 +68,6 @@ const STATUS_OPTIONS: { id: OrderStatus | 'all'; label: string }[] = [
   { id: 'returned', label: 'Devueltas' },
   { id: 'cancelled', label: 'Canceladas' },
 ]
-
-type DatePreset = 'today' | 'week' | 'month' | 'custom'
-
-const DATE_PRESETS: { id: DatePreset; label: string }[] = [
-  { id: 'today', label: 'Hoy' },
-  { id: 'week', label: 'Esta semana' },
-  { id: 'month', label: 'Este mes' },
-  { id: 'custom', label: 'Personalizado' },
-]
-
-function resolvePresetRange(preset: DatePreset): {
-  dateFrom: string
-  dateTo: string
-} {
-  const now = new Date()
-  const toIso = (d: Date) => format(d, 'yyyy-MM-dd')
-  switch (preset) {
-    case 'today':
-      return { dateFrom: toIso(startOfDay(now)), dateTo: toIso(endOfDay(now)) }
-    case 'week':
-      return {
-        dateFrom: toIso(startOfWeek(now, { weekStartsOn: 1 })),
-        dateTo: toIso(endOfDay(now)),
-      }
-    case 'month':
-      return { dateFrom: toIso(startOfMonth(now)), dateTo: toIso(endOfDay(now)) }
-    case 'custom':
-      return { dateFrom: '', dateTo: '' }
-  }
-}
-
-const DEFAULT_FROM = format(subDays(new Date(), 30), 'yyyy-MM-dd')
-const DEFAULT_TO = format(new Date(), 'yyyy-MM-dd')
 
 // ── Badges ────────────────────────────────────────────────────────────────────
 
@@ -596,22 +559,11 @@ function SalesRow({
 interface FiltersProps {
   filters: SalesHistoryFilters
   setFilters: React.Dispatch<React.SetStateAction<SalesHistoryFilters>>
-  preset: DatePreset
-  setPreset: (p: DatePreset) => void
+  preset: DateRangePreset
+  onDateChange: (next: DateRangeValue) => void
 }
 
-function FiltersBar({ filters, setFilters, preset, setPreset }: FiltersProps) {
-  const handlePresetChange = useCallback(
-    (p: DatePreset) => {
-      setPreset(p)
-      if (p !== 'custom') {
-        const range = resolvePresetRange(p)
-        setFilters((f) => ({ ...f, ...range, page: 0 }))
-      }
-    },
-    [setFilters, setPreset],
-  )
-
+function FiltersBar({ filters, setFilters, preset, onDateChange }: FiltersProps) {
   return (
     <div className="rounded-2xl border border-[#ebe9e6] bg-white p-4">
       <div className="flex flex-wrap items-center gap-3">
@@ -637,21 +589,12 @@ function FiltersBar({ filters, setFilters, preset, setPreset }: FiltersProps) {
           )}
         </div>
 
-        <div className="flex items-center gap-1.5 rounded-lg border border-[#ebe9e6] bg-white p-0.5">
-          {DATE_PRESETS.map((p) => (
-            <button
-              key={p.id}
-              onClick={() => handlePresetChange(p.id)}
-              className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
-                preset === p.id
-                  ? 'bg-slate-900 text-white'
-                  : 'text-[#525252] hover:text-[#1a1a1a]'
-              }`}
-            >
-              {p.label}
-            </button>
-          ))}
-        </div>
+        <DateRangeFilter
+          preset={preset}
+          dateFrom={filters.dateFrom}
+          dateTo={filters.dateTo}
+          onChange={onDateChange}
+        />
 
         <select
           value={filters.paymentMethod}
@@ -689,29 +632,6 @@ function FiltersBar({ filters, setFilters, preset, setPreset }: FiltersProps) {
           ))}
         </select>
       </div>
-
-      {preset === 'custom' && (
-        <div className="mt-3 flex items-center gap-2">
-          <Calendar size={14} className="text-[#737373]" />
-          <input
-            type="date"
-            value={filters.dateFrom}
-            onChange={(e) =>
-              setFilters((f) => ({ ...f, dateFrom: e.target.value, page: 0 }))
-            }
-            className="h-9 rounded-lg border border-[#ebe9e6] bg-white px-3 text-sm outline-none focus:border-violet-400"
-          />
-          <span className="text-xs text-[#737373]">a</span>
-          <input
-            type="date"
-            value={filters.dateTo}
-            onChange={(e) =>
-              setFilters((f) => ({ ...f, dateTo: e.target.value, page: 0 }))
-            }
-            className="h-9 rounded-lg border border-[#ebe9e6] bg-white px-3 text-sm outline-none focus:border-violet-400"
-          />
-        </div>
-      )}
     </div>
   )
 }
@@ -719,16 +639,26 @@ function FiltersBar({ filters, setFilters, preset, setPreset }: FiltersProps) {
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 export default function SalesHistoryPage() {
-  const [filters, setFilters] = useState<SalesHistoryFilters>({
+  // Default: HOY (fase 2). El summary usa los mismos filtros → también hoy.
+  const [preset, setPreset] = useState<DateRangePreset>('today')
+  const [filters, setFilters] = useState<SalesHistoryFilters>(() => ({
     query: '',
-    dateFrom: DEFAULT_FROM,
-    dateTo: DEFAULT_TO,
+    ...resolveDateRange('today'),
     paymentMethod: 'all',
     status: 'all',
     page: 0,
-  })
-  const [preset, setPreset] = useState<DatePreset>('month')
+  }))
   const [expandedId, setExpandedId] = useState<string | null>(null)
+
+  const handleDateChange = useCallback((next: DateRangeValue) => {
+    setPreset(next.preset)
+    setFilters((f) => ({
+      ...f,
+      dateFrom: next.dateFrom,
+      dateTo: next.dateTo,
+      page: 0,
+    }))
+  }, [])
 
   const { data: listData, isLoading: listLoading } = useSalesHistory(filters)
   const { data: summary, isLoading: summaryLoading } = useSalesSummary(filters)
@@ -790,7 +720,7 @@ export default function SalesHistoryPage() {
         filters={filters}
         setFilters={setFilters}
         preset={preset}
-        setPreset={setPreset}
+        onDateChange={handleDateChange}
       />
 
       {/* Table */}
