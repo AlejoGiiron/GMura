@@ -20,3 +20,4 @@ fase que toque la base de datos (especialmente la migración a multi-tenancy).
 |-------|----------|---------|--------|--------------|
 <!-- El script agrega una fila aquí por cada backup. No editar manualmente las filas generadas. -->
 | 2026-06-29 12:00 | `pre-multitenancy` | `gmura_20260629_1159_pre-multitenancy.dump` | 423KB | `f7d6e794f4bc` |
+| 2026-07-09 23:33 | `pre-deploy-020-030` | `gmura_20260709_2333_pre-deploy-020-030.dump` | 489KB | `e8b98311e7c2` |
