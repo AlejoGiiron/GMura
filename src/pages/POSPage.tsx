@@ -37,6 +37,16 @@ import { useCategories } from '@/hooks/useProducts'
 import { useStoreConfig, useResolvedConfig } from '@/hooks/useConfig'
 import { fmtCOP } from '@/lib/formatters'
 import { getColorHex } from '@/lib/products'
+import {
+  pickerSizes,
+  pickerColors,
+  sizeHasStock,
+  colorHasStock,
+  matchVariant,
+  initialPickerSelection,
+  reconcileColorForSize,
+  reconcileSizeForColor,
+} from '@/lib/variantPicker'
 import { useDebounce } from '@/hooks/useDebounce'
 import { useCreateCustomer } from '@/hooks/useCustomerMutations'
 import { useCustomerSearch } from '@/hooks/useCustomers'
@@ -71,17 +81,30 @@ interface VariantPickerProps {
 }
 
 function VariantPickerModal({ product, onAdd, onClose }: VariantPickerProps) {
-  const sizes = [...new Set(product.variants.map((v) => v.size).filter(Boolean))] as string[]
-  const colors = [...new Set(product.variants.map((v) => v.color).filter(Boolean))] as string[]
+  const sizes = pickerSizes(product.variants)
+  const colors = pickerColors(product.variants)
 
-  const [selectedSize, setSelectedSize] = useState<string | null>(sizes[0] ?? null)
-  const [selectedColor, setSelectedColor] = useState<string | null>(colors[0] ?? null)
-
-  const matched = product.variants.find(
-    (v) =>
-      (sizes.length === 0 || v.size === selectedSize) &&
-      (colors.length === 0 || v.color === selectedColor),
+  // Selección inicial: primera combinación EXISTENTE con stock (no sizes[0]×colors[0]
+  // a ciegas, que en una matriz dispersa puede no existir).
+  const initial = useMemo(
+    () => initialPickerSelection(product.variants),
+    [product.variants],
   )
+  const [selectedSize, setSelectedSize] = useState<string | null>(initial.size)
+  const [selectedColor, setSelectedColor] = useState<string | null>(initial.color)
+
+  // Al elegir una talla, autoajustar el color a una combinación válida con stock
+  // (y viceversa) para que ninguna celda existente quede inalcanzable.
+  const chooseSize = (s: string) => {
+    setSelectedSize(s)
+    setSelectedColor((c) => reconcileColorForSize(product.variants, s, c))
+  }
+  const chooseColor = (c: string) => {
+    setSelectedColor(c)
+    setSelectedSize((s) => reconcileSizeForColor(product.variants, c, s))
+  }
+
+  const matched = matchVariant(product.variants, selectedSize, selectedColor)
   const available = matched?.stock_qty ?? 0
   const totalStock = matched?.total_stock_qty ?? 0
   const reserved = matched?.reserved_qty ?? 0
@@ -118,17 +141,12 @@ function VariantPickerModal({ product, onAdd, onClose }: VariantPickerProps) {
             </p>
             <div className="flex flex-wrap gap-2">
               {sizes.map((s) => {
-                const avail = product.variants.some(
-                  (v) =>
-                    v.size === s &&
-                    (colors.length === 0 || v.color === selectedColor) &&
-                    v.stock_qty > 0,
-                )
+                const avail = sizeHasStock(product.variants, s)
                 return (
                   <button
                     key={s}
                     disabled={!avail}
-                    onClick={() => setSelectedSize(s)}
+                    onClick={() => chooseSize(s)}
                     className={`min-w-[40px] rounded-lg border px-3 py-1.5 text-sm font-semibold transition-colors ${
                       selectedSize === s
                         ? 'border-slate-900 bg-slate-900 text-white'
@@ -152,17 +170,12 @@ function VariantPickerModal({ product, onAdd, onClose }: VariantPickerProps) {
             </p>
             <div className="flex flex-wrap gap-2.5">
               {colors.map((c) => {
-                const avail = product.variants.some(
-                  (v) =>
-                    v.color === c &&
-                    (sizes.length === 0 || v.size === selectedSize) &&
-                    v.stock_qty > 0,
-                )
+                const avail = colorHasStock(product.variants, c)
                 return (
                   <button
                     key={c}
                     disabled={!avail}
-                    onClick={() => setSelectedColor(c)}
+                    onClick={() => chooseColor(c)}
                     title={c}
                     className={`h-8 w-8 rounded-full transition-all ${!avail ? 'cursor-not-allowed opacity-30' : ''}`}
                     style={{
