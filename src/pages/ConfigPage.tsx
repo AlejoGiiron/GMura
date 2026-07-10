@@ -6,6 +6,7 @@ import {
   ShieldCheck,
   Tag,
   CreditCard,
+  Bookmark,
   Printer,
   type LucideIcon,
 } from 'lucide-react'
@@ -15,6 +16,7 @@ import UsersSection from '@/components/config/UsersSection'
 import RolesSection from '@/components/config/RolesSection'
 import ProductsSection from '@/components/config/ProductsSection'
 import CajaSection from '@/components/config/CajaSection'
+import SeparadosSection from '@/components/config/SeparadosSection'
 import EtiquetasSection from '@/components/config/EtiquetasSection'
 import CategoriesManager from '@/components/config/CategoriesManager'
 import { usePermissions } from '@/hooks/usePermissions'
@@ -26,6 +28,7 @@ type SectionId =
   | 'roles'
   | 'productos'
   | 'caja'
+  | 'separados'
   | 'etiquetas'
 
 const SECTIONS: {
@@ -41,6 +44,7 @@ const SECTIONS: {
   { id: 'roles', label: 'Roles', Icon: ShieldCheck, permission: 'roles.gestionar' },
   { id: 'productos', label: 'Productos', Icon: Tag },
   { id: 'caja', label: 'Caja', Icon: CreditCard },
+  { id: 'separados', label: 'Separados', Icon: Bookmark },
   { id: 'etiquetas', label: 'Etiquetas', Icon: Printer },
 ]
 
@@ -96,6 +100,7 @@ export default function ConfigPage() {
             {active === 'roles' && 'Crea roles y define qué puede hacer cada uno'}
             {active === 'productos' && 'Tallas, colores, marcas y límite de devoluciones'}
             {active === 'caja' && 'Métodos de pago, motivos de ajuste y QR para pagos'}
+            {active === 'separados' && 'Condiciones del separado que se imprimen en el recibo'}
             {active === 'etiquetas' && 'Formato y campos para etiquetas de precio'}
           </p>
         </div>
@@ -116,6 +121,7 @@ export default function ConfigPage() {
             </div>
           )}
           {active === 'caja' && <CajaSection />}
+          {active === 'separados' && <SeparadosSection />}
           {active === 'etiquetas' && <EtiquetasSection />}
         </div>
       </div>
