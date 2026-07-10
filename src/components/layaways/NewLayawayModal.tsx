@@ -44,6 +44,7 @@ import {
 import { useCustomerSearch } from '@/hooks/useCustomers'
 import { useCreateCustomer } from '@/hooks/useCustomerMutations'
 import { useStoreConfig, useResolvedConfig } from '@/hooks/useConfig'
+import { useResolvedOrgConfig } from '@/hooks/useOrg'
 import { useAuth } from '@/hooks/useAuth'
 import {
   PAYMENT_METHODS,
@@ -958,6 +959,7 @@ function Stepper({ current }: { current: number }) {
 export function NewLayawayModal({ prefill, onClose, onCreated }: Props) {
   const { data: storeData } = useStoreConfig()
   const config = useResolvedConfig()
+  const orgConfig = useResolvedOrgConfig()
   const { profile } = useAuth()
   // Gating legacy (rol enum en develop): el abono histórico es admin-only.
   // Migrar a can(...) cuando RBAC llegue a develop.
@@ -1184,6 +1186,7 @@ export function NewLayawayModal({ prefill, onClose, onCreated }: Props) {
                     layaway={createdDetail.data}
                     storeName={storeName}
                     printedAt={printedAtRef.current}
+                    terms={orgConfig.layaway_terms}
                   />
                 </div>
               ) : (
@@ -1214,6 +1217,7 @@ export function NewLayawayModal({ prefill, onClose, onCreated }: Props) {
             layaway={createdDetail.data}
             storeName={storeName}
             printedAt={printedAtRef.current}
+            terms={orgConfig.layaway_terms}
           />
         )}
       </>

@@ -22,6 +22,7 @@ import { fmtCOP } from '@/lib/formatters'
 import { getColorHex } from '@/lib/products'
 import { PAYMENT_METHODS } from '@/lib/paymentMethods'
 import { useStoreConfig } from '@/hooks/useConfig'
+import { useResolvedOrgConfig } from '@/hooks/useOrg'
 import {
   useLayawayList,
   useLayawayDetail,
@@ -637,6 +638,7 @@ export default function LayawaysPage() {
   const { data: storeData } = useStoreConfig()
   const storeName =
     (storeData as unknown as { name?: string } | undefined)?.name ?? 'G-Mura'
+  const orgConfig = useResolvedOrgConfig()
 
   const { data: list, isLoading } = useLayawayList(filters)
   const { data: counts } = useLayawayStatusCounts()
@@ -914,6 +916,7 @@ export default function LayawaysPage() {
           layaway={reprintLayaway}
           storeName={storeName}
           printedAt={printedAtRef.current}
+          terms={orgConfig.layaway_terms}
         />
       )}
     </div>

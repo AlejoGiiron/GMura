@@ -1,6 +1,7 @@
 import { fmtCOP } from '@/lib/formatters'
 import { PAYMENT_METHODS } from '@/lib/paymentMethods'
 import { useReceiptPrintStyle } from '@/lib/receiptPrint'
+import { DEFAULT_ORG_CONFIG } from '@/hooks/useOrg'
 import type { LayawayDetail } from '@/hooks/useLayaways'
 
 const LAYAWAY_PRINT_CONTAINER_ID = 'gmura-layaway-receipt-print'
@@ -13,6 +14,12 @@ export interface LayawayReceiptProps {
   layaway: LayawayDetail
   storeName: string
   printedAt: Date
+  /**
+   * Condiciones del separado (una por línea), configurables desde
+   * Configuración → Separados (organizations.config.layaway_terms). Si llega
+   * vacío se cae al default para no dejar el recibo sin condiciones.
+   */
+  terms: string[]
 }
 
 function fmtDateTime(iso: string | Date): string {
@@ -50,10 +57,13 @@ export function LayawayReceipt({
   layaway,
   storeName,
   printedAt,
+  terms,
 }: LayawayReceiptProps) {
   const monoLight: React.CSSProperties = { color: '#525252' }
   const sectionStyle: React.CSSProperties = { margin: '6px 0' }
   const balance = layaway.balance_pending
+  // Fallback defensivo: nunca dejar el recibo sin condiciones.
+  const finalTerms = terms.length > 0 ? terms : DEFAULT_ORG_CONFIG.layaway_terms
 
   return (
     <div
@@ -217,12 +227,11 @@ export function LayawayReceipt({
 
       <div style={{ marginTop: 4 }}>
         <div style={{ fontWeight: 700, marginBottom: 2 }}>IMPORTANTE</div>
-        <div style={monoLight}>
-          - Los abonos no se reembolsan al cancelar.
-        </div>
-        <div style={monoLight}>
-          - Si pasa la fecha de vencimiento sin completar, el separado expira.
-        </div>
+        {finalTerms.map((term, i) => (
+          <div key={i} style={monoLight}>
+            - {term}
+          </div>
+        ))}
       </div>
 
       <div style={{ textAlign: 'center', ...monoLight, marginTop: 6 }}>

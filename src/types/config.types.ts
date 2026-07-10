@@ -33,6 +33,22 @@ export interface SizeTypeConfig {
 export type LayawayInitialPaymentMode = 'none' | 'fixed' | 'percent'
 export type LayawayDiscountMode = 'none' | 'fixed'
 
+/**
+ * Configuración a nivel de ORGANIZACIÓN (todo el negocio, no por tienda).
+ * Vive en organizations.config (jsonb). A diferencia de StoreConfig, es UNA
+ * sola para todas las sedes. Escribir requiere el permiso config.gestionar
+ * (garantizado por la política RLS organizations_update_config, migración 031).
+ */
+export interface OrgConfig {
+  /**
+   * Texto de condiciones que se imprime en el recibo del separado, como lista
+   * de líneas (una condición por renglón). Editable desde Configuración →
+   * Separados. Si queda vacío se cae al DEFAULT_ORG_CONFIG (ver useOrg.ts) para
+   * que el recibo nunca quede sin condiciones.
+   */
+  layaway_terms: string[]
+}
+
 export interface StoreConfig {
   timezone: string
   currency: string
