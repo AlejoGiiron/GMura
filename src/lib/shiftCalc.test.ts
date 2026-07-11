@@ -4,6 +4,7 @@ import {
   reconcileCash,
   shiftDifference,
   type ShiftOrderInput,
+  type OrderPaymentInput,
   type ShiftLayawayPaymentInput,
   type ShiftCreditPaymentInput,
   type ShiftSummaryInput,
@@ -15,13 +16,26 @@ function label(diff: number): 'CUADRADO' | 'SOBRANTE' | 'FALTANTE' {
   return 'CUADRADO'
 }
 
+// Helper de un solo método: la venta trae UNA fila de order_payments cuyo monto
+// es el total. Equivale a la fuente anterior (un payment_method por orden), así
+// que los resultados esperados de los tests existentes NO cambian.
 function order(
   id: string,
   total: number,
-  payment_method: ShiftOrderInput['payment_method'] = 'cash',
+  method: OrderPaymentInput['method'] = 'cash',
   return_id: string | null = null,
 ): ShiftOrderInput {
-  return { id, total, payment_method, return_id }
+  return { id, total, payments: [{ method, amount: total }], return_id }
+}
+
+// Helper de venta MIXTA: varias filas de order_payments en una sola orden.
+function orderMixed(
+  id: string,
+  payments: OrderPaymentInput[],
+  return_id: string | null = null,
+): ShiftOrderInput {
+  const total = payments.reduce((s, p) => s + p.amount, 0)
+  return { id, total, payments, return_id }
 }
 
 function abono(
@@ -317,7 +331,12 @@ describe('calculateShiftSummary — devoluciones aparte (P5)', () => {
     // todos los egresos restan.
     const allCash =
       data.orders.reduce(
-        (s, o) => s + (o.payment_method === 'cash' ? o.total : 0),
+        (s, o) =>
+          s +
+          o.payments.reduce(
+            (ps, p) => ps + (p.method === 'cash' ? p.amount : 0),
+            0,
+          ),
         0,
       ) +
       data.layawayPayments.reduce(
@@ -501,5 +520,82 @@ describe('calculateShiftSummary — fiados (029)', () => {
     expect(siSeColara.cashSales).toBe(130_000) // 100.000 del fiado (indebido) + 30.000
     expect(siSeColara.expectedCash).toBe(230_000) // inflado en los $100.000 del fiado
     // El cuadre correcto (solo el abono de 30k) esperaría 130.000, no 230.000.
+  })
+})
+
+describe('calculateShiftSummary — pagos MIXTOS (032, Fase 2)', () => {
+  // El cuadre ya debe saber sumar una orden con varios métodos, aunque el POS
+  // todavía no los genere. Cada order_payment aporta a SU método; solo la
+  // porción en efectivo mueve el efectivo esperado.
+
+  it('una orden mixta ($50k cash + $30k card) suma cada método por separado', () => {
+    const r = calculateShiftSummary({
+      openingAmount: 100_000,
+      orders: [
+        orderMixed('m1', [
+          { method: 'cash', amount: 50_000 },
+          { method: 'card', amount: 30_000 },
+        ]),
+      ],
+      layawayPayments: [],
+      expenses: [],
+    })
+    // Efectivo: SOLO la porción cash ($50k), no el total de la orden.
+    expect(r.cashSales).toBe(50_000)
+    expect(r.expectedCash).toBe(150_000) // 100.000 + 50.000
+    // La orden cuenta como UNA venta aunque tenga dos pagos.
+    expect(r.orderCount).toBe(1)
+    expect(r.regularSalesTotal).toBe(80_000) // total de la orden
+    expect(r.totalSales).toBe(80_000)
+    // salesByMethod: una línea por método con su monto.
+    const cash = r.salesByMethod.find((s) => s.method === 'cash')
+    const card = r.salesByMethod.find((s) => s.method === 'card')
+    expect(cash).toMatchObject({ method: 'cash', total: 50_000, count: 1 })
+    expect(card).toMatchObject({ method: 'card', total: 30_000, count: 1 })
+  })
+
+  it('mixta sin efectivo (card + transfer) no mueve el efectivo esperado', () => {
+    const r = calculateShiftSummary({
+      openingAmount: 100_000,
+      orders: [
+        orderMixed('m1', [
+          { method: 'card', amount: 40_000 },
+          { method: 'transfer', amount: 20_000 },
+        ]),
+      ],
+      layawayPayments: [],
+      expenses: [],
+    })
+    expect(r.cashSales).toBe(0)
+    expect(r.expectedCash).toBe(100_000) // solo la apertura
+    expect(r.totalSales).toBe(60_000)
+    expect(r.salesByMethod.find((s) => s.method === 'card')?.total).toBe(40_000)
+    expect(r.salesByMethod.find((s) => s.method === 'transfer')?.total).toBe(20_000)
+  })
+
+  it('mixta + venta simple: agrega por método a través de las órdenes', () => {
+    const r = calculateShiftSummary({
+      openingAmount: 100_000,
+      orders: [
+        orderMixed('m1', [
+          { method: 'cash', amount: 50_000 },
+          { method: 'card', amount: 30_000 },
+        ]),
+        order('s1', 20_000, 'cash'), // venta simple en efectivo
+      ],
+      layawayPayments: [],
+      expenses: [],
+    })
+    // Efectivo total: 50k (mixta) + 20k (simple) = 70k
+    expect(r.cashSales).toBe(70_000)
+    expect(r.expectedCash).toBe(170_000)
+    expect(r.orderCount).toBe(2)
+    // cash acumula ambas órdenes: 50k + 20k = 70k en 2 pagos
+    expect(r.salesByMethod.find((s) => s.method === 'cash')).toMatchObject({
+      method: 'cash',
+      total: 70_000,
+      count: 2,
+    })
+    expect(r.salesByMethod.find((s) => s.method === 'card')?.total).toBe(30_000)
   })
 })

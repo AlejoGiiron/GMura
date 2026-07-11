@@ -168,52 +168,63 @@ export function useShiftHistory(filters: ShiftHistoryFilters) {
       }
 
       // ── Ventas en efectivo ────────────────────────────────────────────────
-      // NUEVO (026): órdenes imputadas por shift_id.
+      // La PORCIÓN en efectivo de cada venta vive en order_payments (032). Antes
+      // se sumaba orders.total de las órdenes con payment_method='cash'; ahora se
+      // suman las filas method='cash' de order_payments (una venta mixta aporta
+      // solo su parte efectivo). JOIN orders!inner para heredar shift_id/ventana,
+      // estado y is_credit. Los fiados no tienen filas en order_payments (032) y
+      // además se filtran con is_credit=false.
+      // NUEVO (026): filas cash imputadas por orders.shift_id.
       const { data: newOrders, error: newOrdersErr } = await supabase
-        .from('orders')
-        .select('id, total, shift_id')
+        .from('order_payments')
+        .select('amount, orders!inner(id, shift_id, is_credit, status)')
         .eq('store_id' as never, storeId)
-        .eq('payment_method' as never, 'cash')
-        .eq('status' as never, 'completed')
-        // Las órdenes FIADAS (029) no son efectivo del turno (su total no entró);
-        // el efectivo entra por los credit_payments, más abajo.
-        .eq('is_credit' as never, false)
-        .in('shift_id' as never, shiftIds)
+        .eq('method' as never, 'cash')
+        .eq('orders.status' as never, 'completed')
+        .eq('orders.is_credit' as never, false)
+        .in('orders.shift_id' as never, shiftIds)
       if (newOrdersErr) throw newOrdersErr
-      for (const o of (newOrders ?? []) as unknown as {
-        id: string
-        total: number | string
-        shift_id: string
+      for (const row of (newOrders ?? []) as unknown as {
+        amount: number | string
+        orders: { id: string; shift_id: string | null } | null
       }[]) {
+        const o = row.orders
+        if (!o || !o.shift_id) continue
         if (excludedOrderIds.has(o.id)) continue
         cashByShift.set(
           o.shift_id,
-          (cashByShift.get(o.shift_id) ?? 0) + Number(o.total),
+          (cashByShift.get(o.shift_id) ?? 0) + Number(row.amount),
         )
       }
 
-      // PRE-026: órdenes con shift_id NULL, por opened_by + ventana.
+      // PRE-026: filas cash de órdenes con shift_id NULL, por opened_by + ventana.
       const { data: legacyOrders, error: legacyOrdersErr } = await supabase
-        .from('orders')
-        .select('id, total, created_at, created_by')
+        .from('order_payments')
+        .select(
+          'amount, orders!inner(id, created_at, created_by, shift_id, is_credit, status)',
+        )
         .eq('store_id' as never, storeId)
-        .eq('payment_method' as never, 'cash')
-        .eq('status' as never, 'completed')
-        .is('shift_id' as never, null)
+        .eq('method' as never, 'cash')
+        .eq('orders.status' as never, 'completed')
         // También aquí se excluyen las fiadas del efectivo (ruta legacy).
-        .eq('is_credit' as never, false)
-        .in('created_by' as never, userIds)
-        .gte('created_at' as never, earliest)
-        .lte('created_at' as never, latest)
+        .eq('orders.is_credit' as never, false)
+        .is('orders.shift_id' as never, null)
+        .in('orders.created_by' as never, userIds)
+        .gte('orders.created_at' as never, earliest)
+        .lte('orders.created_at' as never, latest)
       if (legacyOrdersErr) throw legacyOrdersErr
-      for (const o of (legacyOrders ?? []) as unknown as {
-        id: string
-        total: number | string
-        created_at: string
-        created_by: string
+      for (const row of (legacyOrders ?? []) as unknown as {
+        amount: number | string
+        orders: {
+          id: string
+          created_at: string
+          created_by: string
+        } | null
       }[]) {
+        const o = row.orders
+        if (!o) continue
         if (excludedOrderIds.has(o.id)) continue
-        addLegacyByWindow(o.created_by, o.created_at, Number(o.total))
+        addLegacyByWindow(o.created_by, o.created_at, Number(row.amount))
       }
 
       // ── Abonos de separados en efectivo ────────────────────────────────────

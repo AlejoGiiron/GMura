@@ -2,7 +2,11 @@ import { useQuery } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from './useAuth'
 import { getActiveStoreId } from './useActiveStoreId'
-import { calculateShiftSummary, type SalesByMethod } from '@/lib/shiftCalc'
+import {
+  calculateShiftSummary,
+  type SalesByMethod,
+  type OrderPaymentInput,
+} from '@/lib/shiftCalc'
 import type {
   CashShift,
   CashExpense,
@@ -55,8 +59,13 @@ export interface ShiftClosingData {
 type RawOrder = {
   id: string
   total: number | string
-  payment_method: PaymentMethod
   return_id: string | null
+}
+
+type RawOrderPayment = {
+  order_id: string
+  method: PaymentMethod
+  amount: number | string
 }
 
 type RawLayawayPayment = {
@@ -158,7 +167,7 @@ export function useShiftClosing(shiftId: string | null) {
       //   mezclado, así que basta ver si el filtro por shift_id devuelve algo.
       const { data: ordersByShift, error: ordersErr } = await supabase
         .from('orders')
-        .select('id, total, payment_method, return_id')
+        .select('id, total, return_id')
         .eq('store_id' as never, storeId)
         .eq('shift_id' as never, shiftId)
         .eq('status' as never, 'completed')
@@ -210,7 +219,7 @@ export function useShiftClosing(shiftId: string | null) {
       ) {
         let oQuery = supabase
           .from('orders')
-          .select('id, total, payment_method, return_id')
+          .select('id, total, return_id')
           .eq('store_id' as never, storeId)
           .eq('created_by' as never, shift.opened_by)
           .eq('status' as never, 'completed')
@@ -266,6 +275,28 @@ export function useShiftClosing(shiftId: string | null) {
         creditRaw = (legacyCredit ?? []) as unknown as RawCreditPayment[]
       }
 
+      // Desglose de pagos por orden (032). La selección de QUÉ órdenes entran
+      // al turno ya se resolvió arriba (shift_id moderno o ventana legacy); acá
+      // solo traemos el reparto por método de esas órdenes. Los fiados no tienen
+      // filas en order_payments (excluidos en la 032) y además ya se filtraron
+      // con is_credit=false, así que no aportan efectivo. Una venta de un solo
+      // método trae una fila (monto = total) → cuadre idéntico al anterior.
+      const orderIds = orders.map((o) => o.id)
+      const paymentsByOrder = new Map<string, OrderPaymentInput[]>()
+      if (orderIds.length > 0) {
+        const { data: opRaw, error: opErr } = await supabase
+          .from('order_payments')
+          .select('order_id, method, amount')
+          .eq('store_id' as never, storeId)
+          .in('order_id' as never, orderIds)
+        if (opErr) throw opErr
+        for (const p of (opRaw ?? []) as unknown as RawOrderPayment[]) {
+          const list = paymentsByOrder.get(p.order_id) ?? []
+          list.push({ method: p.method, amount: Number(p.amount) })
+          paymentsByOrder.set(p.order_id, list)
+        }
+      }
+
       const layawayPayments: LayawayPaymentRow[] = paymentsRaw.map((p) => ({
         id: p.id,
         amount: Number(p.amount),
@@ -301,7 +332,7 @@ export function useShiftClosing(shiftId: string | null) {
         orders: orders.map((o) => ({
           id: o.id,
           total: Number(o.total),
-          payment_method: o.payment_method,
+          payments: paymentsByOrder.get(o.id) ?? [],
           return_id: o.return_id,
         })),
         excludedOrderIds,
