@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useRef, useEffect, useCallback } from 'react'
 import {
   Package,
   AlertCircle,
@@ -10,7 +10,9 @@ import {
   X,
   ChevronLeft,
   ChevronRight,
+  ScanLine,
 } from 'lucide-react'
+import toast from 'react-hot-toast'
 import { format } from 'date-fns'
 import { useStockLevels, useStockMovements, useStoreProfiles, MOV_PAGE_SIZE } from '@/hooks/useInventory'
 import type { MovementFilters, VariantRow } from '@/hooks/useInventory'
@@ -18,6 +20,8 @@ import { useInventoryMutations } from '@/hooks/useInventoryMutations'
 import { usePermissions } from '@/hooks/usePermissions'
 import { useCategories } from '@/hooks/useProducts'
 import { useDebounce } from '@/hooks/useDebounce'
+import { useBarcode } from '@/hooks/useBarcode'
+import { findByBarcode } from '@/lib/barcodeMatch'
 import { fmtCOP } from '@/lib/formatters'
 import { getColorHex } from '@/lib/products'
 import type { StockMovementType } from '@/types/database.types'
@@ -158,6 +162,46 @@ function AdjustModal({ open, onClose }: AdjustModalProps) {
   const { data: allVariants = [] } = useStockLevels()
   const { adjustStock } = useInventoryMutations()
 
+  const searchInputRef = useRef<HTMLInputElement>(null)
+  const qtyInputRef = useRef<HTMLInputElement>(null)
+
+  // Escaneo: busca la variante por barcode exacto, la selecciona y salta a la
+  // cantidad. El lector "teclea" el código + Enter (ver useBarcode).
+  const handleScan = useCallback(
+    (code: string) => {
+      const match = findByBarcode(allVariants, code)
+      if (!match) {
+        toast.error(`Código no encontrado: ${code}`)
+        return
+      }
+      setSelectedVariant(match)
+      setVariantSearch('')
+    },
+    [allVariants],
+  )
+
+  const { handleKeyDown: barcodeKeyDown } = useBarcode(handleScan)
+
+  const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    const consumed = barcodeKeyDown(e)
+    if (consumed) {
+      setVariantSearch('')
+      return
+    }
+    // Enter manual (tecleo lento) — intenta resolver el código escrito.
+    if (e.key === 'Enter' && variantSearch.trim()) {
+      e.preventDefault()
+      handleScan(variantSearch.trim())
+    }
+  }
+
+  // Foco listo sin clickear: al seleccionar variante saltar a la cantidad; al
+  // limpiar la selección volver al buscador para seguir escaneando.
+  useEffect(() => {
+    if (selectedVariant) qtyInputRef.current?.focus()
+    else if (open) searchInputRef.current?.focus()
+  }, [selectedVariant, open])
+
   const searchResults = useMemo(() => {
     if (!debouncedSearch.trim()) return []
     const q = debouncedSearch.toLowerCase()
@@ -247,13 +291,15 @@ function AdjustModal({ open, onClose }: AdjustModalProps) {
                 Buscar variante
               </label>
               <div className="relative">
-                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#a8a29e]" />
+                <ScanLine size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-violet-500" />
                 <input
+                  ref={searchInputRef}
                   autoFocus
                   className="h-10 w-full rounded-lg border border-[#ebe9e6] bg-white pl-9 pr-3 text-sm outline-none transition-[border-color,box-shadow] focus:border-[#8b5cf6] focus:shadow-[0_0_0_4px_#8b5cf61a]"
-                  placeholder="Nombre del producto, SKU o código de barras..."
+                  placeholder="Escanea o busca por nombre, SKU o código…"
                   value={variantSearch}
                   onChange={(e) => setVariantSearch(e.target.value)}
+                  onKeyDown={handleSearchKeyDown}
                 />
               </div>
               {searchResults.length > 0 && (
@@ -358,6 +404,7 @@ function AdjustModal({ open, onClose }: AdjustModalProps) {
               </span>
             </label>
             <input
+              ref={qtyInputRef}
               type="number"
               className="h-10 w-full rounded-lg border border-[#ebe9e6] bg-white px-3 font-mono text-sm outline-none transition-[border-color,box-shadow] focus:border-[#8b5cf6] focus:shadow-[0_0_0_4px_#8b5cf61a]"
               placeholder="Ej: 10 o -5"

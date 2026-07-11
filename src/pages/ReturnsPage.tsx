@@ -15,6 +15,7 @@ import {
   AlertTriangle,
   RefreshCw,
   Plus,
+  ScanLine,
 } from 'lucide-react'
 import { differenceInDays } from 'date-fns'
 import toast from 'react-hot-toast'
@@ -26,11 +27,14 @@ import {
   useOrderDetail,
   useReturnHistory,
   useVariantSearch,
+  useVariantByBarcode,
   type FoundOrder,
   type ReturnHistoryFilters,
   type ReturnHistoryRow,
   type ExchangeVariantOption,
 } from '@/hooks/useReturns'
+import { useBarcode } from '@/hooks/useBarcode'
+import { resolveReturnScan } from '@/lib/barcodeMatch'
 import { useCreateReturn, type ExchangeItemInput } from '@/hooks/useReturnMutations'
 import {
   ADDI_RETURN_BLOCK_MSG,
@@ -282,6 +286,57 @@ function Step1Search({
   )
 }
 
+// ── Campo de escaneo reutilizable ─────────────────────────────────────────────
+// Input siempre listo para el lector de código (que "teclea" el código + Enter).
+// Combina la detección de ráfaga de useBarcode con un fallback de Enter manual
+// (para probar tecleando en el lab). Se auto-enfoca al montar y cuando cambia
+// `refocusKey`, para que el vendedor no tenga que clickear antes de escanear.
+function ScanField({
+  onScan,
+  placeholder,
+  refocusKey,
+}: {
+  onScan: (code: string) => void
+  placeholder: string
+  refocusKey?: unknown
+}) {
+  const [value, setValue] = useState('')
+  const inputRef = useRef<HTMLInputElement>(null)
+  const { handleKeyDown: barcodeKeyDown } = useBarcode(onScan)
+
+  useEffect(() => {
+    inputRef.current?.focus()
+  }, [refocusKey])
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    const consumed = barcodeKeyDown(e)
+    if (consumed) {
+      setValue('')
+      return
+    }
+    // Enter manual (tecleo lento) — intenta resolver el código escrito.
+    if (e.key === 'Enter' && value.trim()) {
+      e.preventDefault()
+      onScan(value.trim())
+      setValue('')
+    }
+  }
+
+  return (
+    <div className="flex items-center gap-2.5 rounded-xl border-2 border-dashed border-violet-200 bg-violet-50/60 px-4 py-2.5 transition-colors focus-within:border-violet-400">
+      <ScanLine size={16} className="shrink-0 text-violet-500" />
+      <input
+        ref={inputRef}
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        onKeyDown={handleKeyDown}
+        placeholder={placeholder}
+        className="flex-1 bg-transparent text-sm outline-none placeholder:text-violet-400/80"
+      />
+    </div>
+  )
+}
+
 // ── Step 2 — Seleccionar ítems ────────────────────────────────────────────────
 
 interface Step2Props {
@@ -295,6 +350,39 @@ interface Step2Props {
 function Step2Items({ order, returnQtys, onQtyChange, onBack, onNext }: Step2Props) {
   const returnableItems = order.items.filter((i) => i.qty - i.qty_returned > 0)
   const totalSelected = Object.values(returnQtys).reduce((s, q) => s + q, 0)
+
+  // Escaneo: cada escaneo suma 1 unidad del ítem, sin exceder lo comprado.
+  const handleScan = useCallback(
+    (code: string) => {
+      const res = resolveReturnScan(order.items, returnQtys, code)
+      switch (res.kind) {
+        case 'not-found':
+          toast.error('Este producto no está en esta venta')
+          return
+        case 'exhausted':
+          toast.error(`${res.item.product_name}: ya fue devuelto por completo`)
+          return
+        case 'at-cap':
+          toast.error(
+            `${res.item.product_name}: ya marcaste las ${res.max} unidad${res.max !== 1 ? 'es' : ''} disponibles`,
+          )
+          return
+        case 'increment': {
+          onQtyChange(res.item.variant_id, res.nextQty)
+          const detail = [
+            res.item.size ? `T.${res.item.size}` : null,
+            res.item.color,
+          ]
+            .filter(Boolean)
+            .join(' · ')
+          toast.success(
+            `Devolver: ${res.item.product_name}${detail ? ` — ${detail}` : ''} (×${res.nextQty})`,
+          )
+        }
+      }
+    },
+    [order.items, returnQtys, onQtyChange],
+  )
 
   return (
     <div className="flex h-full flex-col">
@@ -320,6 +408,13 @@ function Step2Items({ order, returnQtys, onQtyChange, onBack, onNext }: Step2Pro
             </p>
           </div>
         </div>
+      </div>
+
+      <div className="border-b border-[#ebe9e6] px-6 py-3">
+        <ScanField
+          onScan={handleScan}
+          placeholder="Escanea el producto a devolver…"
+        />
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto">
@@ -592,6 +687,30 @@ function Step3Type({
   onNext,
 }: Step3Props) {
   const [pickerOpen, setPickerOpen] = useState(false)
+  const lookupByBarcode = useVariantByBarcode()
+
+  // Escaneo: busca la variante por barcode exacto y la agrega al cambio.
+  const handleExchangeScan = useCallback(
+    async (code: string) => {
+      try {
+        const v = await lookupByBarcode(code)
+        if (!v) {
+          toast.error(`Código no encontrado: ${code}`)
+          return
+        }
+        const existing = exchangeItems.find((e) => e.variant_id === v.id)
+        if (v.stock_qty <= 0 || (existing && existing.qty >= v.stock_qty)) {
+          toast.error(`Sin más stock de ${v.product_name} (máx. ${v.stock_qty})`)
+          return
+        }
+        onAddExchange(v)
+        toast.success(`Cambio: ${v.product_name}`)
+      } catch {
+        toast.error('Error al buscar el código')
+      }
+    },
+    [lookupByBarcode, exchangeItems, onAddExchange],
+  )
 
   const selectedItems = order.items.filter((i) => (returnQtys[i.variant_id] ?? 0) > 0)
 
@@ -744,6 +863,14 @@ function Step3Type({
                   >
                     <Plus size={13} /> Agregar producto
                   </button>
+                </div>
+
+                <div className="mb-3">
+                  <ScanField
+                    onScan={handleExchangeScan}
+                    placeholder="Escanea el producto nuevo del cambio…"
+                    refocusKey={pickerOpen}
+                  />
                 </div>
 
                 {exchangeItems.length === 0 ? (
