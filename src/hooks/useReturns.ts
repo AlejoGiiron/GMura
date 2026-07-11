@@ -1,3 +1,4 @@
+import { useCallback } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from './useAuth'
@@ -24,6 +25,8 @@ export type FoundOrderItem = {
   brand: string | null
   size: string | null
   color: string | null
+  // Para escaneo en el Paso 2 (marcar lo devuelto por lector de código).
+  barcode: string | null
 }
 
 export type FoundOrder = {
@@ -79,6 +82,7 @@ export type ExchangeVariantOption = {
   price: number
   stock_qty: number
   sku: string | null
+  barcode: string | null
 }
 
 // ── Raw shapes from Supabase ──────────────────────────────────────────────────
@@ -114,6 +118,7 @@ type RawOrderDetail = {
     variants: {
       size: string | null
       color: string | null
+      barcode: string | null
       products: { name: string; brand: string | null }
     } | null
   }[]
@@ -242,7 +247,7 @@ export function useOrderDetail(orderId: string | null) {
           customers(full_name, phone),
           order_items(
             id, variant_id, product_id, qty, unit_price, list_price,
-            variants(size, color, products(name, brand))
+            variants(size, color, barcode, products(name, brand))
           )
         `)
         .eq('id' as never, orderId)
@@ -292,6 +297,7 @@ export function useOrderDetail(orderId: string | null) {
           brand: oi.variants?.products?.brand ?? null,
           size: oi.variants?.size ?? null,
           color: oi.variants?.color ?? null,
+          barcode: oi.variants?.barcode ?? null,
         })),
       }
     },
@@ -360,6 +366,36 @@ export function useReturnHistory(filters: ReturnHistoryFilters) {
 
 // ── useVariantSearch (para selector de cambio) ────────────────────────────────
 
+// Forma cruda de una variante para el selector/lookup de cambio.
+type RawVariantOption = {
+  id: string
+  product_id: string
+  size: string | null
+  color: string | null
+  price: number
+  stock_qty: number
+  sku: string | null
+  barcode: string | null
+  products: { name: string } | null
+}
+
+const VARIANT_OPTION_SELECT =
+  'id, product_id, size, color, price, stock_qty, sku, barcode, products(name)'
+
+function toExchangeOption(r: RawVariantOption): ExchangeVariantOption {
+  return {
+    id: r.id,
+    product_id: r.product_id,
+    product_name: r.products?.name ?? '',
+    size: r.size,
+    color: r.color,
+    price: r.price,
+    stock_qty: r.stock_qty,
+    sku: r.sku,
+    barcode: r.barcode,
+  }
+}
+
 export function useVariantSearch(query: string) {
   const { profile } = useAuth()
   const storeId = getActiveStoreId(profile)
@@ -370,36 +406,17 @@ export function useVariantSearch(query: string) {
     queryFn: async (): Promise<ExchangeVariantOption[]> => {
       if (dq.length < 2) return []
 
-      type RawVar = {
-        id: string
-        product_id: string
-        size: string | null
-        color: string | null
-        price: number
-        stock_qty: number
-        sku: string | null
-        products: { name: string } | null
-      }
+      type RawVar = RawVariantOption
+      const toOption = toExchangeOption
 
-      const toOption = (r: RawVar): ExchangeVariantOption => ({
-        id: r.id,
-        product_id: r.product_id,
-        product_name: r.products?.name ?? '',
-        size: r.size,
-        color: r.color,
-        price: r.price,
-        stock_qty: r.stock_qty,
-        sku: r.sku,
-      })
-
-      // Query 1: match by SKU, size, or color server-side
+      // Query 1: match by barcode, SKU, size, or color server-side
       const q1 = await supabase
         .from('variants')
-        .select('id, product_id, size, color, price, stock_qty, sku, products(name)')
+        .select(VARIANT_OPTION_SELECT)
         .eq('store_id' as never, storeId)
         .eq('is_active' as never, true)
         .or(
-          `sku.ilike.%${dq}%,size.ilike.%${dq}%,color.ilike.%${dq}%` as never,
+          `barcode.ilike.%${dq}%,sku.ilike.%${dq}%,size.ilike.%${dq}%,color.ilike.%${dq}%` as never,
         )
         .limit(50)
 
@@ -421,7 +438,7 @@ export function useVariantSearch(query: string) {
       if (productIds.length > 0) {
         const q2 = await supabase
           .from('variants')
-          .select('id, product_id, size, color, price, stock_qty, sku, products(name)')
+          .select(VARIANT_OPTION_SELECT)
           .eq('store_id' as never, storeId)
           .eq('is_active' as never, true)
           .in('product_id' as never, productIds)
@@ -445,4 +462,37 @@ export function useVariantSearch(query: string) {
     enabled: !!storeId && dq.length >= 2,
     staleTime: 20_000,
   })
+}
+
+// ── useVariantByBarcode (lookup exacto para escaneo en el selector de cambio) ──
+
+/**
+ * Devuelve una función imperativa que busca UNA variante activa por barcode
+ * exacto en la tienda activa. Usada al escanear un producto nuevo del cambio.
+ * Devuelve null si no existe (código no encontrado).
+ */
+export function useVariantByBarcode() {
+  const { profile } = useAuth()
+  const storeId = getActiveStoreId(profile)
+
+  return useCallback(
+    async (code: string): Promise<ExchangeVariantOption | null> => {
+      const c = code.trim()
+      if (!c || !storeId) return null
+
+      const { data, error } = await supabase
+        .from('variants')
+        .select(VARIANT_OPTION_SELECT)
+        .eq('store_id' as never, storeId)
+        .eq('is_active' as never, true)
+        .eq('barcode' as never, c)
+        .limit(1)
+        .maybeSingle()
+
+      if (error) throw error
+      if (!data) return null
+      return toExchangeOption(data as unknown as RawVariantOption)
+    },
+    [storeId],
+  )
 }
