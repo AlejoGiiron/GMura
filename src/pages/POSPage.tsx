@@ -18,6 +18,8 @@ import {
   Wallet,
   Bookmark,
   HandCoins,
+  Split,
+  Trash2,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useCartStore, cartTotals } from '@/stores/cartStore'
@@ -32,6 +34,7 @@ import type { POSProduct, POSVariant } from '@/hooks/usePOSSearch'
 import { useBarcode } from '@/hooks/useBarcode'
 import BarcodeScanner from '@/components/pos/BarcodeScanner'
 import { useCreateOrder } from '@/hooks/useCreateOrder'
+import type { OrderPaymentLine } from '@/hooks/useCreateOrder'
 import { useCreateCreditOrder } from '@/hooks/useCreditMutations'
 import { useCategories } from '@/hooks/useProducts'
 import { useStoreConfig, useResolvedConfig } from '@/hooks/useConfig'
@@ -268,7 +271,7 @@ interface PaymentModalProps {
   enabledMethods: PaymentMethod[]
   paymentQrUrl: string | null
   onConfirm: (
-    method: PaymentMethod,
+    payments: OrderPaymentLine[],
     cashReceived?: number,
     surcharge?: number,
   ) => void
@@ -294,6 +297,12 @@ function PaymentModal({
   isPending,
 }: PaymentModalProps) {
   const visibleMethods = PAYMENT_METHOD_KEYS.filter((m) => enabledMethods.includes(m))
+
+  // Modo DIVIDIR (mixto). Por defecto OFF → el caso común (un método) queda
+  // exactamente igual de rápido que antes.
+  const [splitMode, setSplitMode] = useState(false)
+
+  // ── Estado del modo SIMPLE (un método) ────────────────────────────────────
   const [method, setMethod] = useState<PaymentMethod>(
     enabledMethods.includes('cash') ? 'cash' : (enabledMethods[0] ?? 'cash'),
   )
@@ -303,10 +312,87 @@ function PaymentModal({
 
   const surcharge = method === 'addi' ? Math.max(0, parseFloat(surchargeInput) || 0) : 0
   const finalTotal = total + surcharge
-
   const cashAmt = parseFloat(cashReceived) || 0
   const change = cashAmt - finalTotal
-  const canConfirm = method !== 'cash' || cashAmt >= finalTotal
+  const canConfirmSimple = method !== 'cash' || cashAmt >= finalTotal
+
+  // ── Estado del modo DIVIDIR (varias líneas método+monto) ───────────────────
+  const [lines, setLines] = useState<{ method: PaymentMethod; amount: string }[]>([])
+  const [splitSurchargeInput, setSplitSurchargeInput] = useState('')
+  const [splitCashReceived, setSplitCashReceived] = useState('')
+
+  const usedMethods = new Set(lines.map((l) => l.method))
+  const availableToAdd = visibleMethods.filter((m) => !usedMethods.has(m))
+  const hasAddiLine = lines.some((l) => l.method === 'addi')
+  // El recargo Addi (si hay línea Addi) sube el total a cubrir; su monto queda
+  // dentro de la línea Addi. Σ líneas debe igualar total + recargo.
+  const splitSurcharge = hasAddiLine
+    ? Math.max(0, parseFloat(splitSurchargeInput) || 0)
+    : 0
+  const splitTarget = total + splitSurcharge
+  const splitPaid = lines.reduce((s, l) => s + (parseFloat(l.amount) || 0), 0)
+  const splitRemaining = Math.round((splitTarget - splitPaid) * 100) / 100
+  const cashLine = lines.find((l) => l.method === 'cash')
+  const cashLineAmt = cashLine ? parseFloat(cashLine.amount) || 0 : 0
+  const splitCashAmt = parseFloat(splitCashReceived) || 0
+  const splitChange = splitCashAmt - cashLineAmt
+  const allAmountsPositive =
+    lines.length > 0 && lines.every((l) => (parseFloat(l.amount) || 0) > 0)
+  // El vuelto solo aplica a la línea EFECTIVO: lo recibido debe cubrir esa línea.
+  const cashOk = !cashLine || splitCashAmt >= cashLineAmt
+  const canConfirmSplit =
+    allAmountsPositive && Math.abs(splitRemaining) < 0.5 && cashOk
+
+  const enterSplit = () => {
+    // Sembrar con el método actual y monto VACÍO: el cajero escribe el primer
+    // importe y "Agregar método" (o "Resto") completa el resto — sin tener que
+    // borrar un total precargado.
+    setLines([{ method, amount: '' }])
+    setSplitSurchargeInput('')
+    setSplitCashReceived('')
+    setSplitMode(true)
+  }
+  const addLine = () => {
+    const next = availableToAdd[0]
+    if (!next) return
+    // La línea nueva arranca con lo que falta para cuadrar (el caso típico:
+    // "el resto en este método"). El cajero puede ajustarlo.
+    setLines((prev) => [
+      ...prev,
+      { method: next, amount: String(Math.max(0, splitRemaining)) },
+    ])
+  }
+  const removeLine = (i: number) =>
+    setLines((prev) => prev.filter((_, idx) => idx !== i))
+  const setLineMethod = (i: number, m: PaymentMethod) =>
+    setLines((prev) => prev.map((l, idx) => (idx === i ? { ...l, method: m } : l)))
+  const setLineAmount = (i: number, amt: string) =>
+    setLines((prev) => prev.map((l, idx) => (idx === i ? { ...l, amount: amt } : l)))
+  // Completa una línea con el faltante para cuadrar (evita la cuenta mental):
+  // rest_i = total objetivo − suma de las OTRAS líneas = restante + su monto.
+  const fillRest = (i: number) => {
+    const amt = parseFloat(lines[i].amount) || 0
+    const rest = Math.max(0, Math.round((splitRemaining + amt) * 100) / 100)
+    setLineAmount(i, String(rest))
+  }
+
+  const confirmSimple = () =>
+    onConfirm(
+      [{ method, amount: finalTotal }],
+      method === 'cash' ? cashAmt : undefined,
+      surcharge,
+    )
+  const confirmSplit = () =>
+    onConfirm(
+      lines.map((l) => ({
+        method: l.method,
+        amount: Math.round((parseFloat(l.amount) || 0) * 100) / 100,
+      })),
+      cashLine ? splitCashAmt : undefined,
+      splitSurcharge,
+    )
+
+  const headerTotal = splitMode ? splitTarget : finalTotal
 
   return (
     <div
@@ -314,7 +400,7 @@ function PaymentModal({
       onClick={onClose}
     >
       <div
-        className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl"
+        className="max-h-[90vh] w-full max-w-sm overflow-y-auto rounded-2xl bg-white p-6 shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-5 flex items-start justify-between">
@@ -323,7 +409,7 @@ function PaymentModal({
               Cobrar venta
             </p>
             <p className="mt-0.5 font-mono text-2xl font-bold text-slate-900">
-              {fmtCOP(finalTotal)}
+              {fmtCOP(headerTotal)}
             </p>
           </div>
           <button
@@ -334,191 +420,389 @@ function PaymentModal({
           </button>
         </div>
 
-        <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-500">
-          Método de pago
-        </p>
-        <div className="mb-5 grid grid-cols-2 gap-2">
-          {visibleMethods.map((id) => {
-            const meta = PAYMENT_META[id]
-            const Icon = meta.icon
-            const active = method === id
-            return (
-              <button
-                key={id}
-                onClick={() => setMethod(id)}
-                className={`flex items-center gap-2.5 rounded-xl border px-4 py-3 text-sm font-medium transition-colors ${
-                  active
-                    ? 'border-violet-600 bg-violet-50 text-violet-700'
-                    : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'
-                }`}
-              >
-                <Icon size={18} style={{ color: active ? undefined : meta.hex }} />
-                {meta.label}
-              </button>
-            )
-          })}
-        </div>
-
-        {method === 'cash' && (
-          <div className="mb-5">
-            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-500">
-              ¿Con cuánto paga?
-            </label>
-            <input
-              autoFocus
-              type="number"
-              value={cashReceived}
-              onChange={(e) => setCashReceived(e.target.value)}
-              placeholder="0"
-              className="w-full rounded-xl border border-slate-200 px-4 py-3 font-mono text-lg font-semibold outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-100"
-            />
-            {finalTotal > 0 && (
-              <div className="mt-2 flex flex-wrap gap-1.5">
-                <button
-                  type="button"
-                  onClick={() => setCashReceived(String(finalTotal))}
-                  className={`rounded-lg border px-2.5 py-1 text-xs font-semibold transition-colors ${
-                    cashAmt === finalTotal
-                      ? 'border-violet-600 bg-violet-50 text-violet-700'
-                      : 'border-slate-200 bg-white text-slate-700 hover:border-violet-300 hover:bg-violet-50'
-                  }`}
-                >
-                  Exacto
-                </button>
-                {suggestCashAmounts(finalTotal).map((amt) => (
+        {!splitMode ? (
+          /* ══ MODO SIMPLE (un método) ═══════════════════════════════════════ */
+          <>
+            <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-500">
+              Método de pago
+            </p>
+            <div className="mb-4 grid grid-cols-2 gap-2">
+              {visibleMethods.map((id) => {
+                const meta = PAYMENT_META[id]
+                const Icon = meta.icon
+                const active = method === id
+                return (
                   <button
-                    key={amt}
-                    type="button"
-                    onClick={() => setCashReceived(String(amt))}
-                    className={`rounded-lg border px-2.5 py-1 font-mono text-xs font-semibold transition-colors ${
-                      cashAmt === amt
+                    key={id}
+                    onClick={() => setMethod(id)}
+                    className={`flex items-center gap-2.5 rounded-xl border px-4 py-3 text-sm font-medium transition-colors ${
+                      active
                         ? 'border-violet-600 bg-violet-50 text-violet-700'
-                        : 'border-slate-200 bg-white text-slate-700 hover:border-violet-300 hover:bg-violet-50'
+                        : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'
                     }`}
                   >
-                    {fmtCOP(amt)}
+                    <Icon size={18} style={{ color: active ? undefined : meta.hex }} />
+                    {meta.label}
                   </button>
-                ))}
-              </div>
-            )}
-            {cashAmt >= finalTotal && (
-              <p className="mt-2 text-sm text-green-600">
-                Cambio:{' '}
-                <span className="font-semibold">{fmtCOP(change)}</span>
-              </p>
-            )}
-          </div>
-        )}
+                )
+              })}
+            </div>
 
-        {method === 'transfer' && paymentQrUrl && (
-          <div className="mb-5 flex flex-col items-center gap-2 rounded-xl border border-blue-100 bg-blue-50/50 p-4">
-            <img
-              src={paymentQrUrl}
-              alt="QR para pagos"
-              className="h-40 w-40 rounded-lg border border-blue-100 bg-white object-contain p-2"
-            />
-            <p className="text-center text-xs text-slate-600">
-              Cliente escanea para transferir
-            </p>
-          </div>
-        )}
+            {/* Dividir en varios métodos (opt-in; no estorba el caso simple) */}
+            {visibleMethods.length > 1 && (
+              <button
+                type="button"
+                onClick={enterSplit}
+                className="mb-5 flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-slate-300 py-2.5 text-xs font-semibold text-slate-600 hover:border-violet-300 hover:bg-violet-50 hover:text-violet-700"
+              >
+                <Split size={14} /> Dividir en varios métodos
+              </button>
+            )}
 
-        {method === 'addi' && (
-          <div className="mb-5 space-y-3">
-            <div>
-              <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-500">
-                Recargo Addi
-              </label>
-              <div className="relative">
-                <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 font-mono text-lg font-semibold text-slate-400">
-                  $
-                </span>
+            {method === 'cash' && (
+              <div className="mb-5">
+                <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-500">
+                  ¿Con cuánto paga?
+                </label>
                 <input
                   autoFocus
                   type="number"
-                  min={0}
-                  value={surchargeInput}
-                  onChange={(e) => setSurchargeInput(e.target.value)}
+                  value={cashReceived}
+                  onChange={(e) => setCashReceived(e.target.value)}
                   placeholder="0"
-                  className="w-full rounded-xl border border-slate-200 py-3 pl-8 pr-4 font-mono text-lg font-semibold outline-none focus:border-pink-500 focus:ring-2 focus:ring-pink-100"
+                  className="w-full rounded-xl border border-slate-200 px-4 py-3 font-mono text-lg font-semibold outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-100"
                 />
+                {finalTotal > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setCashReceived(String(finalTotal))}
+                      className={`rounded-lg border px-2.5 py-1 text-xs font-semibold transition-colors ${
+                        cashAmt === finalTotal
+                          ? 'border-violet-600 bg-violet-50 text-violet-700'
+                          : 'border-slate-200 bg-white text-slate-700 hover:border-violet-300 hover:bg-violet-50'
+                      }`}
+                    >
+                      Exacto
+                    </button>
+                    {suggestCashAmounts(finalTotal).map((amt) => (
+                      <button
+                        key={amt}
+                        type="button"
+                        onClick={() => setCashReceived(String(amt))}
+                        className={`rounded-lg border px-2.5 py-1 font-mono text-xs font-semibold transition-colors ${
+                          cashAmt === amt
+                            ? 'border-violet-600 bg-violet-50 text-violet-700'
+                            : 'border-slate-200 bg-white text-slate-700 hover:border-violet-300 hover:bg-violet-50'
+                        }`}
+                      >
+                        {fmtCOP(amt)}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {cashAmt >= finalTotal && (
+                  <p className="mt-2 text-sm text-green-600">
+                    Cambio:{' '}
+                    <span className="font-semibold">{fmtCOP(change)}</span>
+                  </p>
+                )}
               </div>
-            </div>
+            )}
 
-            {/* Desglose en vivo */}
-            <div className="space-y-1 rounded-xl border border-pink-100 bg-pink-50/50 p-4 text-sm">
-              <div className="flex justify-between text-slate-600">
-                <span>Productos</span>
-                <span className="font-mono">{fmtCOP(subtotal)}</span>
+            {method === 'transfer' && paymentQrUrl && (
+              <div className="mb-5 flex flex-col items-center gap-2 rounded-xl border border-blue-100 bg-blue-50/50 p-4">
+                <img
+                  src={paymentQrUrl}
+                  alt="QR para pagos"
+                  className="h-40 w-40 rounded-lg border border-blue-100 bg-white object-contain p-2"
+                />
+                <p className="text-center text-xs text-slate-600">
+                  Cliente escanea para transferir
+                </p>
               </div>
-              {discount > 0 && (
-                <div className="flex justify-between text-slate-600">
-                  <span>Descuento</span>
-                  <span className="font-mono">-{fmtCOP(discount)}</span>
+            )}
+
+            {method === 'addi' && (
+              <div className="mb-5 space-y-3">
+                <div>
+                  <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-500">
+                    Recargo Addi
+                  </label>
+                  <div className="relative">
+                    <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 font-mono text-lg font-semibold text-slate-400">
+                      $
+                    </span>
+                    <input
+                      autoFocus
+                      type="number"
+                      min={0}
+                      value={surchargeInput}
+                      onChange={(e) => setSurchargeInput(e.target.value)}
+                      placeholder="0"
+                      className="w-full rounded-xl border border-slate-200 py-3 pl-8 pr-4 font-mono text-lg font-semibold outline-none focus:border-pink-500 focus:ring-2 focus:ring-pink-100"
+                    />
+                  </div>
                 </div>
+
+                {/* Desglose en vivo */}
+                <div className="space-y-1 rounded-xl border border-pink-100 bg-pink-50/50 p-4 text-sm">
+                  <div className="flex justify-between text-slate-600">
+                    <span>Productos</span>
+                    <span className="font-mono">{fmtCOP(subtotal)}</span>
+                  </div>
+                  {discount > 0 && (
+                    <div className="flex justify-between text-slate-600">
+                      <span>Descuento</span>
+                      <span className="font-mono">-{fmtCOP(discount)}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between text-slate-600">
+                    <span>Recargo Addi</span>
+                    <span className="font-mono">+{fmtCOP(surcharge)}</span>
+                  </div>
+                  <div className="flex justify-between border-t border-pink-100 pt-1.5 font-semibold text-slate-900">
+                    <span>Total</span>
+                    <span className="font-mono">{fmtCOP(finalTotal)}</span>
+                  </div>
+                </div>
+
+                <p className="text-center text-xs text-slate-500">
+                  Pago en cuotas con Addi — confirma desde la app del cliente
+                </p>
+              </div>
+            )}
+
+            <button
+              disabled={!canConfirmSimple || isPending}
+              onClick={confirmSimple}
+              className="flex w-full items-center justify-center gap-2 rounded-xl bg-violet-600 py-3.5 text-sm font-semibold text-white transition-opacity disabled:cursor-not-allowed disabled:opacity-40 hover:bg-violet-700"
+            >
+              {isPending ? (
+                'Procesando…'
+              ) : (
+                <>
+                  <CheckCircle size={16} /> Confirmar pago
+                </>
               )}
-              <div className="flex justify-between text-slate-600">
-                <span>Recargo Addi</span>
-                <span className="font-mono">+{fmtCOP(surcharge)}</span>
-              </div>
-              <div className="flex justify-between border-t border-pink-100 pt-1.5 font-semibold text-slate-900">
-                <span>Total</span>
-                <span className="font-mono">{fmtCOP(finalTotal)}</span>
-              </div>
+            </button>
+
+            <div className="mt-3 flex items-center gap-2">
+              <span className="h-px flex-1 bg-slate-200" />
+              <span className="text-[10.5px] font-semibold uppercase tracking-wider text-slate-400">
+                o
+              </span>
+              <span className="h-px flex-1 bg-slate-200" />
             </div>
 
-            <p className="text-center text-xs text-slate-500">
-              Pago en cuotas con Addi — confirma desde la app del cliente
-            </p>
-          </div>
-        )}
+            <button
+              type="button"
+              onClick={onLayaway}
+              disabled={isPending}
+              className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl border border-violet-200 bg-violet-50 py-3 text-sm font-semibold text-violet-700 hover:bg-violet-100 disabled:opacity-50"
+            >
+              <Bookmark size={15} /> Crear separado
+            </button>
 
-        <button
-          disabled={!canConfirm || isPending}
-          onClick={() =>
-            onConfirm(
-              method,
-              method === 'cash' ? cashAmt : undefined,
-              surcharge,
-            )
-          }
-          className="flex w-full items-center justify-center gap-2 rounded-xl bg-violet-600 py-3.5 text-sm font-semibold text-white transition-opacity disabled:cursor-not-allowed disabled:opacity-40 hover:bg-violet-700"
-        >
-          {isPending ? (
-            'Procesando…'
-          ) : (
-            <>
-              <CheckCircle size={16} /> Confirmar pago
-            </>
-          )}
-        </button>
+            {canFiar && (
+              <button
+                type="button"
+                onClick={onFiar}
+                disabled={isPending}
+                className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl border border-amber-200 bg-amber-50 py-3 text-sm font-semibold text-amber-700 hover:bg-amber-100 disabled:opacity-50"
+              >
+                <HandCoins size={15} /> Fiar (venta a crédito)
+              </button>
+            )}
+          </>
+        ) : (
+          /* ══ MODO DIVIDIR (varios métodos) ═════════════════════════════════ */
+          <>
+            <div className="mb-3 flex items-center justify-between">
+              <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                Dividir pago
+              </p>
+              <button
+                type="button"
+                onClick={() => setSplitMode(false)}
+                className="text-xs font-semibold text-slate-500 hover:text-violet-700"
+              >
+                ← Pago simple
+              </button>
+            </div>
 
-        <div className="mt-3 flex items-center gap-2">
-          <span className="h-px flex-1 bg-slate-200" />
-          <span className="text-[10.5px] font-semibold uppercase tracking-wider text-slate-400">
-            o
-          </span>
-          <span className="h-px flex-1 bg-slate-200" />
-        </div>
+            <div className="mb-3 space-y-2">
+              {lines.map((line, i) => (
+                <div key={i} className="flex items-center gap-2">
+                  <select
+                    value={line.method}
+                    onChange={(e) =>
+                      setLineMethod(i, e.target.value as PaymentMethod)
+                    }
+                    className="rounded-xl border border-slate-200 px-2.5 py-2.5 text-sm font-medium text-slate-700 outline-none focus:border-violet-500"
+                  >
+                    {visibleMethods
+                      .filter((m) => m === line.method || !usedMethods.has(m))
+                      .map((m) => (
+                        <option key={m} value={m}>
+                          {PAYMENT_META[m].label}
+                        </option>
+                      ))}
+                  </select>
+                  <div className="relative flex-1">
+                    <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 font-mono text-sm font-semibold text-slate-400">
+                      $
+                    </span>
+                    <input
+                      type="number"
+                      min={0}
+                      value={line.amount}
+                      onChange={(e) => setLineAmount(i, e.target.value)}
+                      placeholder="0"
+                      className="w-full rounded-xl border border-slate-200 py-2.5 pl-7 pr-3 font-mono text-sm font-semibold outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-100"
+                    />
+                  </div>
+                  {Math.abs(splitRemaining) >= 0.5 && (
+                    <button
+                      type="button"
+                      onClick={() => fillRest(i)}
+                      className="shrink-0 rounded-lg border border-slate-200 px-2 py-2 text-[11px] font-semibold text-slate-600 hover:border-violet-300 hover:bg-violet-50 hover:text-violet-700"
+                      title="Completar con lo que falta"
+                    >
+                      Resto
+                    </button>
+                  )}
+                  {lines.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => removeLine(i)}
+                      className="shrink-0 rounded-lg p-2 text-slate-400 hover:bg-red-50 hover:text-red-500"
+                      aria-label="Quitar método"
+                    >
+                      <Trash2 size={15} />
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
 
-        <button
-          type="button"
-          onClick={onLayaway}
-          disabled={isPending}
-          className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl border border-violet-200 bg-violet-50 py-3 text-sm font-semibold text-violet-700 hover:bg-violet-100 disabled:opacity-50"
-        >
-          <Bookmark size={15} /> Crear separado
-        </button>
+            {availableToAdd.length > 0 && (
+              <button
+                type="button"
+                onClick={addLine}
+                className="mb-3 flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-slate-300 py-2 text-xs font-semibold text-slate-600 hover:border-violet-300 hover:bg-violet-50 hover:text-violet-700"
+              >
+                <Plus size={14} /> Agregar método
+              </button>
+            )}
 
-        {canFiar && (
-          <button
-            type="button"
-            onClick={onFiar}
-            disabled={isPending}
-            className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl border border-amber-200 bg-amber-50 py-3 text-sm font-semibold text-amber-700 hover:bg-amber-100 disabled:opacity-50"
-          >
-            <HandCoins size={15} /> Fiar (venta a crédito)
-          </button>
+            {/* Recargo Addi (solo si hay una línea Addi): sube el total a cubrir */}
+            {hasAddiLine && (
+              <div className="mb-3">
+                <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-500">
+                  Recargo Addi
+                </label>
+                <div className="relative">
+                  <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 font-mono text-sm font-semibold text-slate-400">
+                    $
+                  </span>
+                  <input
+                    type="number"
+                    min={0}
+                    value={splitSurchargeInput}
+                    onChange={(e) => setSplitSurchargeInput(e.target.value)}
+                    placeholder="0"
+                    className="w-full rounded-xl border border-slate-200 py-2.5 pl-7 pr-3 font-mono text-sm font-semibold outline-none focus:border-pink-500 focus:ring-2 focus:ring-pink-100"
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Vuelto: SOLO sobre la porción efectivo */}
+            {cashLine && (
+              <div className="mb-3">
+                <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-500">
+                  Efectivo recibido (para el vuelto)
+                </label>
+                <input
+                  type="number"
+                  value={splitCashReceived}
+                  onChange={(e) => setSplitCashReceived(e.target.value)}
+                  placeholder={String(cashLineAmt)}
+                  className="w-full rounded-xl border border-slate-200 px-4 py-2.5 font-mono text-sm font-semibold outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-100"
+                />
+                {/* Chips de monto rápido (Exacto + denominaciones), como en el
+                    pago simple, pero sobre la PORCIÓN efectivo de la venta. */}
+                {cashLineAmt > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setSplitCashReceived(String(cashLineAmt))}
+                      className={`rounded-lg border px-2.5 py-1 text-xs font-semibold transition-colors ${
+                        splitCashAmt === cashLineAmt
+                          ? 'border-violet-600 bg-violet-50 text-violet-700'
+                          : 'border-slate-200 bg-white text-slate-700 hover:border-violet-300 hover:bg-violet-50'
+                      }`}
+                    >
+                      Exacto
+                    </button>
+                    {suggestCashAmounts(cashLineAmt).map((amt) => (
+                      <button
+                        key={amt}
+                        type="button"
+                        onClick={() => setSplitCashReceived(String(amt))}
+                        className={`rounded-lg border px-2.5 py-1 font-mono text-xs font-semibold transition-colors ${
+                          splitCashAmt === amt
+                            ? 'border-violet-600 bg-violet-50 text-violet-700'
+                            : 'border-slate-200 bg-white text-slate-700 hover:border-violet-300 hover:bg-violet-50'
+                        }`}
+                      >
+                        {fmtCOP(amt)}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {splitCashAmt >= cashLineAmt && cashLineAmt > 0 && (
+                  <p className="mt-1.5 text-sm text-green-600">
+                    Cambio:{' '}
+                    <span className="font-semibold">{fmtCOP(splitChange)}</span>
+                  </p>
+                )}
+              </div>
+            )}
+
+            {/* Estado en vivo: falta / sobra / cuadra */}
+            <div className="mb-4 flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm">
+              <span className="text-slate-500">
+                Pagado {fmtCOP(splitPaid)} de {fmtCOP(splitTarget)}
+              </span>
+              {Math.abs(splitRemaining) < 0.5 ? (
+                <span className="font-semibold text-green-600">Cuadra ✓</span>
+              ) : splitRemaining > 0 ? (
+                <span className="font-semibold text-amber-600">
+                  Falta {fmtCOP(splitRemaining)}
+                </span>
+              ) : (
+                <span className="font-semibold text-red-500">
+                  Sobra {fmtCOP(-splitRemaining)}
+                </span>
+              )}
+            </div>
+
+            <button
+              disabled={!canConfirmSplit || isPending}
+              onClick={confirmSplit}
+              className="flex w-full items-center justify-center gap-2 rounded-xl bg-violet-600 py-3.5 text-sm font-semibold text-white transition-opacity disabled:cursor-not-allowed disabled:opacity-40 hover:bg-violet-700"
+            >
+              {isPending ? (
+                'Procesando…'
+              ) : (
+                <>
+                  <CheckCircle size={16} /> Confirmar pago
+                </>
+              )}
+            </button>
+          </>
         )}
       </div>
     </div>
@@ -1630,7 +1914,7 @@ export default function POSPage() {
   }
 
   const handleConfirmPayment = (
-    method: PaymentMethod,
+    payments: OrderPaymentLine[],
     cashReceived?: number,
     surcharge?: number,
   ) => {
@@ -1646,7 +1930,7 @@ export default function POSPage() {
         // global); useCreateOrder deriva subtotal/discount/total de los ítems.
         items,
         customer_id,
-        payment_method: method,
+        payments,
         cash_received: cashReceived,
         surcharge,
       },
