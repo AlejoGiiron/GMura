@@ -899,6 +899,7 @@ interface TicketModalProps {
   items: CartItem[]
   customer: Customer | null
   storeName: string
+  payments?: OrderPaymentLine[]
   credit?: CompletedSale['credit']
   onClose: () => void
 }
@@ -908,6 +909,7 @@ function TicketModal({
   items,
   customer,
   storeName,
+  payments,
   credit,
   onClose,
 }: TicketModalProps) {
@@ -924,6 +926,7 @@ function TicketModal({
     total: order.total,
     payment_method: order.payment_method,
     cash_received: order.cash_received,
+    payments: payments?.map((p) => ({ method: p.method, amount: p.amount })),
     customer: customer
       ? { full_name: customer.full_name, phone: customer.phone }
       : null,
@@ -1672,6 +1675,9 @@ type CompletedSale = {
   order: Order
   items: CartItem[]
   customer: Customer | null
+  // Líneas de pago (order_payments) para el desglose mixto del ticket. Ausente
+  // en fiados (el bloque de crédito muestra el abono inicial).
+  payments?: OrderPaymentLine[]
   // Presente cuando la venta es un FIADO: abono inicial + saldo para el ticket.
   credit?: {
     paid: number
@@ -1843,6 +1849,8 @@ export default function POSPage() {
       // en el snapshot desde ya (el render del tachado es fase 9).
       items: [...items],
       customer: selectedCustomer,
+      // Las líneas de pago para el desglose mixto del ticket.
+      payments,
     }
     createOrder.mutate(
       {
@@ -2125,6 +2133,7 @@ export default function POSPage() {
           items={completedSale.items}
           customer={completedSale.customer}
           storeName={storeData?.name ?? 'G-Mura'}
+          payments={completedSale.payments}
           credit={completedSale.credit}
           onClose={handleTicketClose}
         />

@@ -200,6 +200,7 @@ function SaleDetailRow({ detail }: { detail: SaleDetail }) {
       total: detail.total,
       payment_method: detail.payment_method,
       cash_received: detail.cash_received,
+      payments: detail.payments,
       customer: detail.customer
         ? {
             full_name: detail.customer.full_name,

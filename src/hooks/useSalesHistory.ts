@@ -89,6 +89,8 @@ export type SaleDetail = {
   total: number
   payment_method: PaymentMethod
   cash_received: number | null
+  // Desglose de pagos (order_payments, 032). Vacío para fiados/ventas sin filas.
+  payments: { method: PaymentMethod; amount: number }[]
   customer: { id: string; full_name: string; phone: string | null } | null
   items: SaleDetailItem[]
   returns: SaleDetailReturn[]
@@ -138,6 +140,7 @@ type RawOrderDetail = {
       products: { name: string; brand: string | null } | null
     } | null
   }[]
+  order_payments: { method: string; amount: number }[]
 }
 
 type RawReturnRow = {
@@ -339,6 +342,7 @@ export function useSaleDetail(orderId: string | null) {
           id, order_number, created_at, status, subtotal, discount, surcharge, total,
           payment_method, cash_received,
           customers(id, full_name, phone),
+          order_payments(method, amount),
           order_items(
             id, variant_id, product_id, qty, unit_price, list_price,
             variants(size, color, products(name, brand))
@@ -386,6 +390,10 @@ export function useSaleDetail(orderId: string | null) {
         total: order.total,
         payment_method: order.payment_method as PaymentMethod,
         cash_received: order.cash_received,
+        payments: (order.order_payments ?? []).map((p) => ({
+          method: p.method as PaymentMethod,
+          amount: Number(p.amount),
+        })),
         customer: order.customers
           ? {
               id: order.customers.id,
