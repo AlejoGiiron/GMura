@@ -50,6 +50,8 @@ export interface SaleReceiptData {
     balance: number
     // Método del abono inicial (null si no hubo abono).
     payment_method: PaymentMethod | null
+    // Desglose del abono inicial cuando fue MIXTO (>1 método).
+    payments?: { method: PaymentMethod; amount: number }[]
   } | null
 }
 
@@ -258,15 +260,33 @@ export function SaleReceipt({ sale, storeName, printedAt }: SaleReceiptProps) {
               <span style={monoLight}>Venta a crédito:</span>
               <span>FIADO</span>
             </Line>
-            <Line>
-              <span style={monoLight}>Abono inicial:</span>
-              <span>
-                {fmtCOP(sale.credit.paid)}
-                {sale.credit.payment_method
-                  ? ` (${PAYMENT_METHODS[sale.credit.payment_method].label})`
-                  : ''}
-              </span>
-            </Line>
+            {(sale.credit.payments?.length ?? 0) > 1 ? (
+              <>
+                <Line>
+                  <span style={monoLight}>Abono inicial (mixto):</span>
+                  <span>{fmtCOP(sale.credit.paid)}</span>
+                </Line>
+                {sale.credit.payments!.map((p) => (
+                  <Line key={p.method}>
+                    <span style={monoLight}>
+                      {' '}
+                      {PAYMENT_METHODS[p.method].label}:
+                    </span>
+                    <span style={monoLight}>{fmtCOP(p.amount)}</span>
+                  </Line>
+                ))}
+              </>
+            ) : (
+              <Line>
+                <span style={monoLight}>Abono inicial:</span>
+                <span>
+                  {fmtCOP(sale.credit.paid)}
+                  {sale.credit.payment_method
+                    ? ` (${PAYMENT_METHODS[sale.credit.payment_method].label})`
+                    : ''}
+                </span>
+              </Line>
+            )}
             <div style={monoLight}>{SUBDIV}</div>
             <Line>
               <span style={{ fontWeight: 700 }}>SALDO A DEBER:</span>

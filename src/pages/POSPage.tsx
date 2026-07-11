@@ -36,6 +36,11 @@ import { useCreateOrder } from '@/hooks/useCreateOrder'
 import type { OrderPaymentLine } from '@/hooks/useCreateOrder'
 import { PaymentSplitLines } from '@/components/pos/PaymentSplitLines'
 import { sumSplitLines, type SplitLine } from '@/lib/paymentSplit'
+import {
+  sumPaymentLines,
+  primaryPaymentMethod,
+  type PaymentLine,
+} from '@/lib/orderPayments'
 import { useCreateCreditOrder } from '@/hooks/useCreditMutations'
 import { useCategories } from '@/hooks/useProducts'
 import { useStoreConfig, useResolvedConfig } from '@/hooks/useConfig'
@@ -735,7 +740,7 @@ interface CreditCheckoutModalProps {
   total: number
   customer: Customer
   enabledMethods: PaymentMethod[]
-  onConfirm: (initial: { amount: number; method: PaymentMethod }) => void
+  onConfirm: (initial: { payments: PaymentLine[] }) => void
   onClose: () => void
   isPending: boolean
 }
@@ -753,9 +758,31 @@ function CreditCheckoutModal({
   const [method, setMethod] = useState<PaymentMethod>(
     enabledMethods.includes('cash') ? 'cash' : (enabledMethods[0] ?? 'cash'),
   )
+  // Split del abono inicial (Model A): el input de monto define el abono; las
+  // líneas lo reparten (Σ líneas == abono).
+  const [splitMode, setSplitMode] = useState(false)
+  const [lines, setLines] = useState<SplitLine[]>([])
   const paid = Math.max(0, parseInt(amount.replace(/\D/g, ''), 10) || 0)
   const balance = Math.max(0, total - paid)
-  const canConfirm = paid <= total && !isPending
+  const splitPaid = sumSplitLines(lines)
+  const splitRemaining = Math.round((paid - splitPaid) * 100) / 100
+  const splitOk =
+    !splitMode ||
+    paid === 0 ||
+    (Math.abs(splitRemaining) < 0.5 &&
+      lines.length > 0 &&
+      lines.every((l) => (parseFloat(l.amount) || 0) > 0))
+  const canConfirm = paid <= total && splitOk && !isPending
+
+  const buildPayments = (): PaymentLine[] =>
+    paid <= 0
+      ? []
+      : splitMode
+        ? lines.map((l) => ({
+            method: l.method,
+            amount: Math.round((parseFloat(l.amount) || 0) * 100) / 100,
+          }))
+        : [{ method, amount: paid }]
 
   return (
     <div
@@ -835,34 +862,86 @@ function CreditCheckoutModal({
         )}
 
         {/* Método (solo si hay abono) */}
-        {paid > 0 && (
-          <div className="mt-4">
-            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-500">
-              Método del abono
-            </label>
-            <div className="grid grid-cols-2 gap-2">
-              {visibleMethods.map((id) => {
-                const meta = PAYMENT_META[id]
-                const Icon = meta.icon
-                const active = method === id
-                return (
+        {paid > 0 &&
+          (!splitMode ? (
+            <div className="mt-4">
+              <div className="mb-1.5 flex items-center justify-between">
+                <label className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                  Método del abono
+                </label>
+                {visibleMethods.length > 1 && (
                   <button
-                    key={id}
-                    onClick={() => setMethod(id)}
-                    className={`flex items-center gap-2 rounded-xl border px-3 py-2.5 text-sm font-medium transition-colors ${
-                      active
-                        ? 'border-violet-600 bg-violet-50 text-violet-700'
-                        : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'
-                    }`}
+                    type="button"
+                    onClick={() => {
+                      setLines([{ method, amount: String(paid) }])
+                      setSplitMode(true)
+                    }}
+                    className="flex items-center gap-1 text-[11px] font-semibold text-slate-500 hover:text-violet-700"
                   >
-                    <Icon size={16} style={{ color: active ? undefined : meta.hex }} />
-                    {meta.label}
+                    <Split size={12} /> Dividir
                   </button>
-                )
-              })}
+                )}
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                {visibleMethods.map((id) => {
+                  const meta = PAYMENT_META[id]
+                  const Icon = meta.icon
+                  const active = method === id
+                  return (
+                    <button
+                      key={id}
+                      onClick={() => setMethod(id)}
+                      className={`flex items-center gap-2 rounded-xl border px-3 py-2.5 text-sm font-medium transition-colors ${
+                        active
+                          ? 'border-violet-600 bg-violet-50 text-violet-700'
+                          : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'
+                      }`}
+                    >
+                      <Icon size={16} style={{ color: active ? undefined : meta.hex }} />
+                      {meta.label}
+                    </button>
+                  )
+                })}
+              </div>
             </div>
-          </div>
-        )}
+          ) : (
+            <div className="mt-4">
+              <div className="mb-2 flex items-center justify-between">
+                <label className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                  Dividir abono
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setSplitMode(false)}
+                  className="text-[11px] font-semibold text-slate-500 hover:text-violet-700"
+                >
+                  ← Un solo método
+                </button>
+              </div>
+              <PaymentSplitLines
+                lines={lines}
+                onChange={setLines}
+                enabledMethods={enabledMethods}
+                reference={paid}
+              />
+              <div className="mt-3 flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm">
+                <span className="text-slate-500">
+                  Repartido {fmtCOP(splitPaid)} de {fmtCOP(paid)}
+                </span>
+                {Math.abs(splitRemaining) < 0.5 ? (
+                  <span className="font-semibold text-green-600">Cuadra ✓</span>
+                ) : splitRemaining > 0 ? (
+                  <span className="font-semibold text-amber-600">
+                    Falta {fmtCOP(splitRemaining)}
+                  </span>
+                ) : (
+                  <span className="font-semibold text-red-500">
+                    Sobra {fmtCOP(-splitRemaining)}
+                  </span>
+                )}
+              </div>
+            </div>
+          ))}
 
         {/* Saldo que quedará */}
         <div className="mt-4 flex items-baseline justify-between rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
@@ -876,7 +955,7 @@ function CreditCheckoutModal({
 
         <button
           disabled={!canConfirm}
-          onClick={() => onConfirm({ amount: paid, method })}
+          onClick={() => onConfirm({ payments: buildPayments() })}
           className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-amber-600 py-3.5 text-sm font-semibold text-white transition-opacity disabled:cursor-not-allowed disabled:opacity-40 hover:bg-amber-700"
         >
           {isPending ? (
@@ -935,6 +1014,7 @@ function TicketModal({
           paid: credit.paid,
           balance: credit.balance,
           payment_method: credit.payment_method,
+          payments: credit.payments,
         }
       : null,
     items: items.map((it) => ({
@@ -1683,6 +1763,8 @@ type CompletedSale = {
     paid: number
     balance: number
     payment_method: PaymentMethod | null
+    // Desglose del abono inicial (mixto) para el recibo.
+    payments?: PaymentLine[]
   }
 }
 
@@ -1918,18 +2000,17 @@ export default function POSPage() {
     setShowFiar(true)
   }
 
-  function handleConfirmFiar(initial: { amount: number; method: PaymentMethod }) {
+  function handleConfirmFiar(initial: { payments: PaymentLine[] }) {
     if (!selectedCustomer) return
     const total = cartTotals(items).total
+    const paid = sumPaymentLines(initial.payments)
     const snapshot = { items: [...items], customer: selectedCustomer }
     createCredit.mutate(
       {
         items,
         customer_id: selectedCustomer.id,
         initial_payment:
-          initial.amount > 0
-            ? { amount: initial.amount, method: initial.method }
-            : undefined,
+          paid > 0 ? { payments: initial.payments } : undefined,
       },
       {
         onSuccess: (order) => {
@@ -1938,9 +2019,11 @@ export default function POSPage() {
             order,
             ...snapshot,
             credit: {
-              paid: initial.amount,
-              balance: Math.max(0, total - initial.amount),
-              payment_method: initial.amount > 0 ? initial.method : null,
+              paid,
+              balance: Math.max(0, total - paid),
+              // Método primario para el rótulo; el desglose va en credit.payments.
+              payment_method: paid > 0 ? primaryPaymentMethod(initial.payments) : null,
+              payments: initial.payments,
             },
           })
         },

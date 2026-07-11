@@ -9,6 +9,7 @@ import { fmtCOP } from '@/lib/formatters'
 import { resolveLayawayPaymentImputation } from '@/lib/layawayCalc'
 import {
   assertValidAbono,
+  assertValidSplitLines,
   sumPaymentLines,
   primaryPaymentMethod,
   type PaymentLine,
@@ -37,8 +38,8 @@ export interface CreateLayawayInput {
   items: NewLayawayItem[]
   expires_at: string // ISO
   initial_payment?: {
-    amount: number
-    method: PaymentMethod
+    // El abono inicial puede ser MIXTO (N líneas método+monto). Σ <= total.
+    payments: PaymentLine[]
     notes?: string
     // true = abono ya recibido ANTES de cargar el separado (028). Se inserta
     // con is_historical=true y shift_id=null: NO cuenta como ingreso de este
@@ -171,12 +172,11 @@ export function useCreateLayaway() {
         }
       }
 
-      // Validar abono inicial
+      // Validar abono inicial (puede ser mixto): ≥1 línea, método válido,
+      // monto>0, sin repetir, y Σ <= total (el resto queda como saldo).
       if (input.initial_payment) {
-        if (input.initial_payment.amount <= 0) {
-          throw new Error('El abono inicial debe ser mayor a cero')
-        }
-        if (input.initial_payment.amount > total) {
+        assertValidSplitLines(input.initial_payment.payments)
+        if (sumPaymentLines(input.initial_payment.payments) > total + 0.5) {
           throw new Error('El abono inicial no puede superar el total')
         }
       }
@@ -229,7 +229,8 @@ export function useCreateLayaway() {
         throw new Error(`No se pudo reservar el stock: ${itemsErr.message}`)
       }
 
-      // INSERT abono inicial (opcional)
+      // INSERT abono inicial (opcional). Puede ser MIXTO → N filas con la misma
+      // imputación y momento (nota en la primera).
       if (input.initial_payment) {
         // Abono histórico (028): dinero recibido antes de cargar el separado.
         // NO es ingreso de este turno → shift_id=null e is_historical=true, para
@@ -238,20 +239,22 @@ export function useCreateLayaway() {
           input.initial_payment.is_historical === true,
           currentShift?.id,
         )
+        const initNotes = input.initial_payment.notes?.trim()
+          ? input.initial_payment.notes.trim()
+          : null
+        const rows = input.initial_payment.payments.map((p, idx) => ({
+          layaway_id: layaway.id,
+          store_id: storeId,
+          amount: p.amount,
+          payment_method: p.method,
+          created_by: userId,
+          shift_id: imputation.shift_id,
+          is_historical: imputation.is_historical,
+          notes: idx === 0 ? initNotes : null,
+        }))
         const { error: payErr } = await supabase
           .from('layaway_payments')
-          .insert({
-            layaway_id: layaway.id,
-            store_id: storeId,
-            amount: input.initial_payment.amount,
-            payment_method: input.initial_payment.method,
-            created_by: userId,
-            shift_id: imputation.shift_id,
-            is_historical: imputation.is_historical,
-            notes: input.initial_payment.notes?.trim()
-              ? input.initial_payment.notes.trim()
-              : null,
-          } as never)
+          .insert(rows as never)
         if (payErr) {
           // No revertimos la reserva: el separado se creó OK, solo el abono
           // falló. Mostramos un error claro y el operador puede registrar
