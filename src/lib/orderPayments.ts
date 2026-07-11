@@ -26,14 +26,16 @@ export function primaryPaymentMethod(lines: PaymentLine[]): PaymentMethod {
   )[0].method
 }
 
-// Valida las líneas contra el total. Lanza Error con mensaje accionable si algo
-// no cuadra:
+export function sumPaymentLines(lines: PaymentLine[]): number {
+  return lines.reduce((s, l) => s + l.amount, 0)
+}
+
+// Validaciones COMUNES a una venta y a un abono (separado/fiado):
 //  · al menos una línea
 //  · método válido (no 'credit')
 //  · cada monto > 0
 //  · un método por línea (consolidado, sin repetir)
-//  · Σ montos == total (tolerancia de 0.5 por redondeo de centavos)
-export function assertValidPayments(lines: PaymentLine[], total: number): void {
+export function assertValidSplitLines(lines: PaymentLine[]): void {
   if (!lines || lines.length === 0) {
     throw new Error('Falta el método de pago')
   }
@@ -50,10 +52,26 @@ export function assertValidPayments(lines: PaymentLine[], total: number): void {
     }
     seen.add(l.method)
   }
-  const paid = lines.reduce((s, l) => s + l.amount, 0)
+}
+
+// VENTA: las líneas deben sumar EXACTAMENTE el total (tolerancia de 0.5 por
+// redondeo de centavos).
+export function assertValidPayments(lines: PaymentLine[], total: number): void {
+  assertValidSplitLines(lines)
+  const paid = sumPaymentLines(lines)
   if (Math.abs(paid - total) > 0.5) {
     throw new Error(
       `Los pagos (${fmtCOP(paid)}) no cuadran con el total (${fmtCOP(total)})`,
     )
+  }
+}
+
+// ABONO (separado/fiado): las líneas pueden sumar cualquier monto > 0 que NO
+// supere el saldo pendiente. El total del abono es Σ líneas.
+export function assertValidAbono(lines: PaymentLine[], maxAmount: number): void {
+  assertValidSplitLines(lines)
+  const paid = sumPaymentLines(lines)
+  if (paid > maxAmount + 0.5) {
+    throw new Error(`El abono no puede superar el saldo (${fmtCOP(maxAmount)})`)
   }
 }

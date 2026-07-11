@@ -19,7 +19,6 @@ import {
   Bookmark,
   HandCoins,
   Split,
-  Trash2,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useCartStore, cartTotals } from '@/stores/cartStore'
@@ -35,6 +34,8 @@ import { useBarcode } from '@/hooks/useBarcode'
 import BarcodeScanner from '@/components/pos/BarcodeScanner'
 import { useCreateOrder } from '@/hooks/useCreateOrder'
 import type { OrderPaymentLine } from '@/hooks/useCreateOrder'
+import { PaymentSplitLines } from '@/components/pos/PaymentSplitLines'
+import { sumSplitLines, type SplitLine } from '@/lib/paymentSplit'
 import { useCreateCreditOrder } from '@/hooks/useCreditMutations'
 import { useCategories } from '@/hooks/useProducts'
 import { useStoreConfig, useResolvedConfig } from '@/hooks/useConfig'
@@ -317,12 +318,10 @@ function PaymentModal({
   const canConfirmSimple = method !== 'cash' || cashAmt >= finalTotal
 
   // ── Estado del modo DIVIDIR (varias líneas método+monto) ───────────────────
-  const [lines, setLines] = useState<{ method: PaymentMethod; amount: string }[]>([])
+  const [lines, setLines] = useState<SplitLine[]>([])
   const [splitSurchargeInput, setSplitSurchargeInput] = useState('')
   const [splitCashReceived, setSplitCashReceived] = useState('')
 
-  const usedMethods = new Set(lines.map((l) => l.method))
-  const availableToAdd = visibleMethods.filter((m) => !usedMethods.has(m))
   const hasAddiLine = lines.some((l) => l.method === 'addi')
   // El recargo Addi (si hay línea Addi) sube el total a cubrir; su monto queda
   // dentro de la línea Addi. Σ líneas debe igualar total + recargo.
@@ -330,7 +329,7 @@ function PaymentModal({
     ? Math.max(0, parseFloat(splitSurchargeInput) || 0)
     : 0
   const splitTarget = total + splitSurcharge
-  const splitPaid = lines.reduce((s, l) => s + (parseFloat(l.amount) || 0), 0)
+  const splitPaid = sumSplitLines(lines)
   const splitRemaining = Math.round((splitTarget - splitPaid) * 100) / 100
   const cashLine = lines.find((l) => l.method === 'cash')
   const cashLineAmt = cashLine ? parseFloat(cashLine.amount) || 0 : 0
@@ -351,29 +350,6 @@ function PaymentModal({
     setSplitSurchargeInput('')
     setSplitCashReceived('')
     setSplitMode(true)
-  }
-  const addLine = () => {
-    const next = availableToAdd[0]
-    if (!next) return
-    // La línea nueva arranca con lo que falta para cuadrar (el caso típico:
-    // "el resto en este método"). El cajero puede ajustarlo.
-    setLines((prev) => [
-      ...prev,
-      { method: next, amount: String(Math.max(0, splitRemaining)) },
-    ])
-  }
-  const removeLine = (i: number) =>
-    setLines((prev) => prev.filter((_, idx) => idx !== i))
-  const setLineMethod = (i: number, m: PaymentMethod) =>
-    setLines((prev) => prev.map((l, idx) => (idx === i ? { ...l, method: m } : l)))
-  const setLineAmount = (i: number, amt: string) =>
-    setLines((prev) => prev.map((l, idx) => (idx === i ? { ...l, amount: amt } : l)))
-  // Completa una línea con el faltante para cuadrar (evita la cuenta mental):
-  // rest_i = total objetivo − suma de las OTRAS líneas = restante + su monto.
-  const fillRest = (i: number) => {
-    const amt = parseFloat(lines[i].amount) || 0
-    const rest = Math.max(0, Math.round((splitRemaining + amt) * 100) / 100)
-    setLineAmount(i, String(rest))
   }
 
   const confirmSimple = () =>
@@ -631,70 +607,14 @@ function PaymentModal({
               </button>
             </div>
 
-            <div className="mb-3 space-y-2">
-              {lines.map((line, i) => (
-                <div key={i} className="flex items-center gap-2">
-                  <select
-                    value={line.method}
-                    onChange={(e) =>
-                      setLineMethod(i, e.target.value as PaymentMethod)
-                    }
-                    className="rounded-xl border border-slate-200 px-2.5 py-2.5 text-sm font-medium text-slate-700 outline-none focus:border-violet-500"
-                  >
-                    {visibleMethods
-                      .filter((m) => m === line.method || !usedMethods.has(m))
-                      .map((m) => (
-                        <option key={m} value={m}>
-                          {PAYMENT_META[m].label}
-                        </option>
-                      ))}
-                  </select>
-                  <div className="relative flex-1">
-                    <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 font-mono text-sm font-semibold text-slate-400">
-                      $
-                    </span>
-                    <input
-                      type="number"
-                      min={0}
-                      value={line.amount}
-                      onChange={(e) => setLineAmount(i, e.target.value)}
-                      placeholder="0"
-                      className="w-full rounded-xl border border-slate-200 py-2.5 pl-7 pr-3 font-mono text-sm font-semibold outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-100"
-                    />
-                  </div>
-                  {Math.abs(splitRemaining) >= 0.5 && (
-                    <button
-                      type="button"
-                      onClick={() => fillRest(i)}
-                      className="shrink-0 rounded-lg border border-slate-200 px-2 py-2 text-[11px] font-semibold text-slate-600 hover:border-violet-300 hover:bg-violet-50 hover:text-violet-700"
-                      title="Completar con lo que falta"
-                    >
-                      Resto
-                    </button>
-                  )}
-                  {lines.length > 1 && (
-                    <button
-                      type="button"
-                      onClick={() => removeLine(i)}
-                      className="shrink-0 rounded-lg p-2 text-slate-400 hover:bg-red-50 hover:text-red-500"
-                      aria-label="Quitar método"
-                    >
-                      <Trash2 size={15} />
-                    </button>
-                  )}
-                </div>
-              ))}
+            <div className="mb-3">
+              <PaymentSplitLines
+                lines={lines}
+                onChange={setLines}
+                enabledMethods={enabledMethods}
+                reference={splitTarget}
+              />
             </div>
-
-            {availableToAdd.length > 0 && (
-              <button
-                type="button"
-                onClick={addLine}
-                className="mb-3 flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-slate-300 py-2 text-xs font-semibold text-slate-600 hover:border-violet-300 hover:bg-violet-50 hover:text-violet-700"
-              >
-                <Plus size={14} /> Agregar método
-              </button>
-            )}
 
             {/* Recargo Addi (solo si hay una línea Addi): sube el total a cubrir */}
             {hasAddiLine && (

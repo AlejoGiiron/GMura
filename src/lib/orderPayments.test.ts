@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import {
   assertValidPayments,
+  assertValidAbono,
+  sumPaymentLines,
   primaryPaymentMethod,
   isDirectPaymentMethod,
   type PaymentLine,
@@ -100,5 +102,47 @@ describe('assertValidPayments', () => {
     expect(() =>
       assertValidPayments([line('cash', 50_000), line('card', 30_000.3)], 80_000),
     ).not.toThrow()
+  })
+})
+
+describe('sumPaymentLines', () => {
+  it('suma los montos de las líneas', () => {
+    expect(sumPaymentLines([line('cash', 30_000), line('card', 20_000)])).toBe(
+      50_000,
+    )
+    expect(sumPaymentLines([])).toBe(0)
+  })
+})
+
+describe('assertValidAbono', () => {
+  it('abono de un método por debajo del saldo: no lanza', () => {
+    expect(() => assertValidAbono([line('cash', 30_000)], 50_000)).not.toThrow()
+  })
+
+  it('abono MIXTO que no supera el saldo: no lanza', () => {
+    // Abono de $50k = $30k efectivo + $20k tarjeta, saldo $80k.
+    expect(() =>
+      assertValidAbono([line('cash', 30_000), line('card', 20_000)], 80_000),
+    ).not.toThrow()
+  })
+
+  it('abono igual al saldo (payoff): no lanza', () => {
+    expect(() =>
+      assertValidAbono([line('cash', 50_000), line('card', 30_000)], 80_000),
+    ).not.toThrow()
+  })
+
+  it('abono que SUPERA el saldo: lanza', () => {
+    expect(() =>
+      assertValidAbono([line('cash', 50_000), line('card', 40_000)], 80_000),
+    ).toThrow('no puede superar el saldo')
+  })
+
+  it('reusa las validaciones comunes (método repetido, monto>0, sin líneas)', () => {
+    expect(() =>
+      assertValidAbono([line('cash', 20_000), line('cash', 10_000)], 80_000),
+    ).toThrow('No repitas el mismo método')
+    expect(() => assertValidAbono([line('cash', 0)], 80_000)).toThrow('mayor a $0')
+    expect(() => assertValidAbono([], 80_000)).toThrow('Falta el método de pago')
   })
 })
