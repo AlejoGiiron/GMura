@@ -13,6 +13,7 @@ import {
   ChevronRight,
   ChevronLeft,
   CheckCircle,
+  Split,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { addDays, format } from 'date-fns'
@@ -32,6 +33,9 @@ import {
   useCreateLayaway,
   type NewLayawayItem,
 } from '@/hooks/useLayawayMutations'
+import { PaymentSplitLines } from '@/components/pos/PaymentSplitLines'
+import { sumSplitLines, type SplitLine } from '@/lib/paymentSplit'
+import type { PaymentLine } from '@/lib/orderPayments'
 import { useLayawayDetail } from '@/hooks/useLayaways'
 import { calculateRequiredInitialPayment } from '@/lib/layawayCalc'
 import { cartTotals, clampItemPrice } from '@/stores/cartStore'
@@ -715,6 +719,10 @@ interface ConfirmStepProps {
   setAmount: (v: string) => void
   method: PaymentMethod
   setMethod: (m: PaymentMethod) => void
+  splitMode: boolean
+  setSplitMode: (v: boolean) => void
+  lines: SplitLine[]
+  setLines: (v: SplitLine[]) => void
   notes: string
   setNotes: (v: string) => void
   enabledMethods: PaymentMethod[]
@@ -733,6 +741,10 @@ function ConfirmStep({
   setAmount,
   method,
   setMethod,
+  splitMode,
+  setSplitMode,
+  lines,
+  setLines,
   notes,
   setNotes,
   enabledMethods,
@@ -744,6 +756,8 @@ function ConfirmStep({
   const visibleMethods = PAYMENT_METHOD_KEYS.filter((m) =>
     enabledMethods.includes(m),
   )
+  const splitPaid = sumSplitLines(lines)
+  const splitRemaining = Math.round((parsedAmount - splitPaid) * 100) / 100
 
   return (
     <div className="flex flex-col gap-5">
@@ -870,35 +884,87 @@ function ConfirmStep({
         </label>
       )}
 
-      {parsedAmount > 0 && (
-        <div>
-          <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[.05em] text-[#737373]">
-            {isHistorical ? 'Método del abono histórico' : 'Método de pago'}
-          </label>
-          <div className="grid grid-cols-2 gap-2">
-            {visibleMethods.map((id) => {
-              const meta = PAYMENT_METHODS[id]
-              const Icon = meta.icon
-              const active = method === id
-              return (
+      {parsedAmount > 0 &&
+        (!splitMode ? (
+          <div>
+            <div className="mb-1.5 flex items-center justify-between">
+              <label className="text-[11px] font-semibold uppercase tracking-[.05em] text-[#737373]">
+                {isHistorical ? 'Método del abono histórico' : 'Método de pago'}
+              </label>
+              {visibleMethods.length > 1 && (
                 <button
-                  key={id}
                   type="button"
-                  onClick={() => setMethod(id)}
-                  className={`flex items-center gap-2 rounded-lg border px-3 py-2.5 text-sm font-medium transition-colors ${
-                    active
-                      ? 'border-violet-600 bg-violet-50 text-violet-700'
-                      : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'
-                  }`}
+                  onClick={() => {
+                    setLines([{ method, amount: String(parsedAmount) }])
+                    setSplitMode(true)
+                  }}
+                  className="flex items-center gap-1 text-[11px] font-semibold text-slate-500 hover:text-violet-700"
                 >
-                  <Icon size={15} style={{ color: active ? undefined : meta.hex }} />
-                  {meta.label}
+                  <Split size={12} /> Dividir
                 </button>
-              )
-            })}
+              )}
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              {visibleMethods.map((id) => {
+                const meta = PAYMENT_METHODS[id]
+                const Icon = meta.icon
+                const active = method === id
+                return (
+                  <button
+                    key={id}
+                    type="button"
+                    onClick={() => setMethod(id)}
+                    className={`flex items-center gap-2 rounded-lg border px-3 py-2.5 text-sm font-medium transition-colors ${
+                      active
+                        ? 'border-violet-600 bg-violet-50 text-violet-700'
+                        : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'
+                    }`}
+                  >
+                    <Icon size={15} style={{ color: active ? undefined : meta.hex }} />
+                    {meta.label}
+                  </button>
+                )
+              })}
+            </div>
           </div>
-        </div>
-      )}
+        ) : (
+          <div>
+            <div className="mb-2 flex items-center justify-between">
+              <label className="text-[11px] font-semibold uppercase tracking-[.05em] text-[#737373]">
+                {isHistorical ? 'Dividir abono histórico' : 'Dividir abono'}
+              </label>
+              <button
+                type="button"
+                onClick={() => setSplitMode(false)}
+                className="text-[11px] font-semibold text-slate-500 hover:text-violet-700"
+              >
+                ← Un solo método
+              </button>
+            </div>
+            <PaymentSplitLines
+              lines={lines}
+              onChange={setLines}
+              enabledMethods={enabledMethods}
+              reference={parsedAmount}
+            />
+            <div className="mt-3 flex items-center justify-between rounded-xl border border-[#ebe9e6] bg-[#fafaf9] px-4 py-2.5 text-sm">
+              <span className="text-[#737373]">
+                Repartido {fmtCOP(splitPaid)} de {fmtCOP(parsedAmount)}
+              </span>
+              {Math.abs(splitRemaining) < 0.5 ? (
+                <span className="font-semibold text-green-600">Cuadra ✓</span>
+              ) : splitRemaining > 0 ? (
+                <span className="font-semibold text-amber-600">
+                  Falta {fmtCOP(splitRemaining)}
+                </span>
+              ) : (
+                <span className="font-semibold text-red-500">
+                  Sobra {fmtCOP(-splitRemaining)}
+                </span>
+              )}
+            </div>
+          </div>
+        ))}
 
       <div>
         <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[.05em] text-[#737373]">
@@ -982,6 +1048,10 @@ export function NewLayawayModal({ prefill, onClose, onCreated }: Props) {
   const [method, setMethod] = useState<PaymentMethod>(
     enabledMethods.includes('cash') ? 'cash' : (enabledMethods[0] ?? 'cash'),
   )
+  // Split del abono inicial (Model A): el input de monto define el abono; las
+  // líneas lo REPARTEN entre métodos (Σ líneas == monto).
+  const [splitMode, setSplitMode] = useState(false)
+  const [lines, setLines] = useState<SplitLine[]>([])
   const [isHistorical, setIsHistorical] = useState(false)
   const [createdLayawayId, setCreatedLayawayId] = useState<string | null>(null)
   const printedAtRef = useRef(new Date())
@@ -1073,6 +1143,14 @@ export function NewLayawayModal({ prefill, onClose, onCreated }: Props) {
     step === 2
 
   const parsedAmount = parseCOP(amount)
+  // En modo dividir, las líneas deben sumar EXACTO el monto del abono.
+  const splitPaid = sumSplitLines(lines)
+  const splitOk =
+    !splitMode ||
+    parsedAmount === 0 ||
+    (Math.abs(splitPaid - parsedAmount) < 0.5 &&
+      lines.length > 0 &&
+      lines.every((l) => (parseFloat(l.amount) || 0) > 0))
   const canSubmit =
     step === 2 &&
     parsedAmount >= effectiveRequired &&
@@ -1081,6 +1159,7 @@ export function NewLayawayModal({ prefill, onClose, onCreated }: Props) {
     // sentido marcarlo. Los normales sí pueden ser 0 cuando no hay mínimo.
     (!isHistorical || parsedAmount > 0) &&
     total > 0 &&
+    splitOk &&
     !create.isPending
 
   function handleSubmit() {
@@ -1093,6 +1172,16 @@ export function NewLayawayModal({ prefill, onClose, onCreated }: Props) {
       }
       return
     }
+    // Abono inicial: mixto = las líneas; simple = una línea; $0 = sin abono.
+    const initialPayments: PaymentLine[] =
+      parsedAmount <= 0
+        ? []
+        : splitMode
+          ? lines.map((l) => ({
+              method: l.method,
+              amount: Math.round((parseFloat(l.amount) || 0) * 100) / 100,
+            }))
+          : [{ method, amount: parsedAmount }]
     create.mutate(
       {
         customer_id: customer.id,
@@ -1107,8 +1196,8 @@ export function NewLayawayModal({ prefill, onClose, onCreated }: Props) {
         expires_at: new Date(expiresAt + 'T23:59:59-05:00').toISOString(),
         notes,
         initial_payment:
-          parsedAmount > 0
-            ? { amount: parsedAmount, method, is_historical: isHistorical }
+          initialPayments.length > 0
+            ? { payments: initialPayments, is_historical: isHistorical }
             : undefined,
       },
       {
@@ -1321,6 +1410,10 @@ export function NewLayawayModal({ prefill, onClose, onCreated }: Props) {
               setAmount={setAmount}
               method={method}
               setMethod={setMethod}
+              splitMode={splitMode}
+              setSplitMode={setSplitMode}
+              lines={lines}
+              setLines={setLines}
               notes={notes}
               setNotes={setNotes}
               enabledMethods={enabledMethods}

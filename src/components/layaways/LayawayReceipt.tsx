@@ -65,6 +65,23 @@ export function LayawayReceipt({
   // Fallback defensivo: nunca dejar el recibo sin condiciones.
   const finalTerms = terms.length > 0 ? terms : DEFAULT_ORG_CONFIG.layaway_terms
 
+  // Agrupa los abonos por momento (created_at): N filas del mismo instante son
+  // un abono MIXTO (pagos mixtos, 032) → se muestran como un abono con desglose,
+  // no como abonos separados. Preserva el orden de aparición.
+  type AbonoPayment = (typeof layaway.payments)[number]
+  const paymentGroups: AbonoPayment[][] = []
+  const byMoment = new Map<string, AbonoPayment[]>()
+  for (const p of layaway.payments) {
+    const g = byMoment.get(p.created_at)
+    if (g) {
+      g.push(p)
+    } else {
+      const ng = [p]
+      byMoment.set(p.created_at, ng)
+      paymentGroups.push(ng)
+    }
+  }
+
   return (
     <div
       style={{
@@ -191,15 +208,42 @@ export function LayawayReceipt({
         {layaway.payments.length === 0 ? (
           <div style={{ ...monoLight, fontStyle: 'italic' }}>Sin abonos</div>
         ) : (
-          layaway.payments.map((p) => (
-            <Line key={p.id}>
-              <span style={monoLight}>
-                {PAYMENT_METHODS[p.payment_method].label}
-                {p.is_historical ? ' (histórico)' : ''}
-              </span>
-              <span>{fmtCOP(p.amount)}</span>
-            </Line>
-          ))
+          paymentGroups.map((group) => {
+            // Abono de un solo método: una línea, como antes.
+            if (group.length === 1) {
+              const p = group[0]
+              return (
+                <Line key={p.id}>
+                  <span style={monoLight}>
+                    {PAYMENT_METHODS[p.payment_method].label}
+                    {p.is_historical ? ' (histórico)' : ''}
+                  </span>
+                  <span>{fmtCOP(p.amount)}</span>
+                </Line>
+              )
+            }
+            // Abono MIXTO: total del abono + desglose por método debajo.
+            const sum = group.reduce((s, p) => s + p.amount, 0)
+            return (
+              <div key={group[0].id}>
+                <Line>
+                  <span style={monoLight}>
+                    Abono mixto
+                    {group[0].is_historical ? ' (histórico)' : ''}:
+                  </span>
+                  <span>{fmtCOP(sum)}</span>
+                </Line>
+                {group.map((p) => (
+                  <Line key={p.id}>
+                    <span style={{ ...monoLight, paddingLeft: 10 }}>
+                      {PAYMENT_METHODS[p.payment_method].label}:
+                    </span>
+                    <span style={monoLight}>{fmtCOP(p.amount)}</span>
+                  </Line>
+                ))}
+              </div>
+            )
+          })
         )}
         <div style={monoLight}>{SUBDIV}</div>
         <Line>

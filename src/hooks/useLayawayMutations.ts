@@ -7,6 +7,13 @@ import { useCurrentShift } from './useCashShift'
 import { useResolvedConfig } from './useConfig'
 import { fmtCOP } from '@/lib/formatters'
 import { resolveLayawayPaymentImputation } from '@/lib/layawayCalc'
+import {
+  assertValidAbono,
+  assertValidSplitLines,
+  sumPaymentLines,
+  primaryPaymentMethod,
+  type PaymentLine,
+} from '@/lib/orderPayments'
 import { cartTotals, orderTotals, minFinalPrice } from '@/stores/cartStore'
 import type {
   Layaway,
@@ -31,8 +38,8 @@ export interface CreateLayawayInput {
   items: NewLayawayItem[]
   expires_at: string // ISO
   initial_payment?: {
-    amount: number
-    method: PaymentMethod
+    // El abono inicial puede ser MIXTO (N líneas método+monto). Σ <= total.
+    payments: PaymentLine[]
     notes?: string
     // true = abono ya recibido ANTES de cargar el separado (028). Se inserta
     // con is_historical=true y shift_id=null: NO cuenta como ingreso de este
@@ -44,8 +51,9 @@ export interface CreateLayawayInput {
 
 export interface AddPaymentInput {
   layaway_id: string
-  amount: number
-  method: PaymentMethod
+  // Un abono puede pagarse con VARIOS métodos (pagos mixtos). Una fila por
+  // método; el abono total = Σ payments. Un abono simple es una sola línea.
+  payments: PaymentLine[]
   notes?: string
 }
 
@@ -57,8 +65,8 @@ export interface CancelLayawayInput {
 export interface CompleteLayawayInput {
   id: string
   final_payment?: {
-    amount: number
-    method: PaymentMethod
+    // El pago final que salda el separado también puede ser MIXTO (N líneas).
+    payments: PaymentLine[]
     notes?: string
   }
 }
@@ -164,12 +172,11 @@ export function useCreateLayaway() {
         }
       }
 
-      // Validar abono inicial
+      // Validar abono inicial (puede ser mixto): ≥1 línea, método válido,
+      // monto>0, sin repetir, y Σ <= total (el resto queda como saldo).
       if (input.initial_payment) {
-        if (input.initial_payment.amount <= 0) {
-          throw new Error('El abono inicial debe ser mayor a cero')
-        }
-        if (input.initial_payment.amount > total) {
+        assertValidSplitLines(input.initial_payment.payments)
+        if (sumPaymentLines(input.initial_payment.payments) > total + 0.5) {
           throw new Error('El abono inicial no puede superar el total')
         }
       }
@@ -222,7 +229,8 @@ export function useCreateLayaway() {
         throw new Error(`No se pudo reservar el stock: ${itemsErr.message}`)
       }
 
-      // INSERT abono inicial (opcional)
+      // INSERT abono inicial (opcional). Puede ser MIXTO → N filas con la misma
+      // imputación y momento (nota en la primera).
       if (input.initial_payment) {
         // Abono histórico (028): dinero recibido antes de cargar el separado.
         // NO es ingreso de este turno → shift_id=null e is_historical=true, para
@@ -231,20 +239,22 @@ export function useCreateLayaway() {
           input.initial_payment.is_historical === true,
           currentShift?.id,
         )
+        const initNotes = input.initial_payment.notes?.trim()
+          ? input.initial_payment.notes.trim()
+          : null
+        const rows = input.initial_payment.payments.map((p, idx) => ({
+          layaway_id: layaway.id,
+          store_id: storeId,
+          amount: p.amount,
+          payment_method: p.method,
+          created_by: userId,
+          shift_id: imputation.shift_id,
+          is_historical: imputation.is_historical,
+          notes: idx === 0 ? initNotes : null,
+        }))
         const { error: payErr } = await supabase
           .from('layaway_payments')
-          .insert({
-            layaway_id: layaway.id,
-            store_id: storeId,
-            amount: input.initial_payment.amount,
-            payment_method: input.initial_payment.method,
-            created_by: userId,
-            shift_id: imputation.shift_id,
-            is_historical: imputation.is_historical,
-            notes: input.initial_payment.notes?.trim()
-              ? input.initial_payment.notes.trim()
-              : null,
-          } as never)
+          .insert(rows as never)
         if (payErr) {
           // No revertimos la reserva: el separado se creó OK, solo el abono
           // falló. Mostramos un error claro y el operador puede registrar
@@ -279,9 +289,6 @@ export function useAddLayawayPayment() {
       if (!storeId || !userId) {
         throw new Error('Sesión inválida. Vuelve a iniciar sesión.')
       }
-      if (input.amount <= 0) {
-        throw new Error('El abono debe ser mayor a cero')
-      }
 
       // Validar saldo
       const { data: laRaw, error: laErr } = await supabase
@@ -301,22 +308,27 @@ export function useAddLayawayPayment() {
         throw new Error('Solo se pueden registrar abonos en separados activos')
       }
       const remaining = Number(la.total) - Number(la.paid_amount)
-      if (input.amount > remaining) {
-        throw new Error(`El abono no puede superar el saldo (${fmtCOP(remaining)})`)
-      }
+      // Valida ≥1 línea, método válido, monto>0, sin repetir y Σ <= saldo.
+      assertValidAbono(input.payments, remaining)
 
+      // Un abono mixto = N filas con el MISMO shift_id y momento (created_at
+      // default now() = timestamp de la transacción). El trigger
+      // update_layaway_paid_amount suma cada fila al saldo. La nota va en la
+      // primera fila (representa el abono) para no duplicarla.
+      const notes = input.notes?.trim() ? input.notes.trim() : null
+      const rows = input.payments.map((p, idx) => ({
+        layaway_id: input.layaway_id,
+        store_id: storeId,
+        amount: p.amount,
+        payment_method: p.method,
+        created_by: userId,
+        // Imputa el abono al turno abierto de la tienda (026).
+        shift_id: currentShift?.id ?? null,
+        notes: idx === 0 ? notes : null,
+      }))
       const { error: payErr } = await supabase
         .from('layaway_payments')
-        .insert({
-          layaway_id: input.layaway_id,
-          store_id: storeId,
-          amount: input.amount,
-          payment_method: input.method,
-          created_by: userId,
-          // Imputa el abono al turno abierto de la tienda (026).
-          shift_id: currentShift?.id ?? null,
-          notes: input.notes?.trim() ? input.notes.trim() : null,
-        } as never)
+        .insert(rows as never)
       if (payErr) {
         throw new Error(`No se pudo registrar el abono: ${payErr.message}`)
       }
@@ -326,7 +338,7 @@ export function useAddLayawayPayment() {
       void queryClient.invalidateQueries({
         queryKey: ['layaways', 'detail', input.layaway_id],
       })
-      toast.success(`Abono ${fmtCOP(input.amount)} registrado`)
+      toast.success(`Abono ${fmtCOP(sumPaymentLines(input.payments))} registrado`)
     },
     onError: (err: Error) => toast.error(err.message),
   })
@@ -444,28 +456,25 @@ export function useCompleteLayaway() {
       // 2. Si hay pago final, validar e insertar
       const remainingBefore = Number(la.total) - Number(la.paid_amount)
       if (input.final_payment) {
-        if (input.final_payment.amount <= 0) {
-          throw new Error('El pago final debe ser mayor a cero')
-        }
-        if (input.final_payment.amount > remainingBefore) {
-          throw new Error(
-            `El pago final no puede superar el saldo (${fmtCOP(remainingBefore)})`,
-          )
-        }
+        // Valida ≥1 línea, método, monto>0, sin repetir y Σ <= saldo. El pago
+        // final puede ser mixto: N filas con el mismo shift_id y momento.
+        assertValidAbono(input.final_payment.payments, remainingBefore)
+        const finalNotes = input.final_payment.notes?.trim()
+          ? input.final_payment.notes.trim()
+          : null
+        const rows = input.final_payment.payments.map((p, idx) => ({
+          layaway_id: la.id,
+          store_id: storeId,
+          amount: p.amount,
+          payment_method: p.method,
+          created_by: userId,
+          // Imputa el pago final al turno abierto de la tienda (026).
+          shift_id: currentShift?.id ?? null,
+          notes: idx === 0 ? finalNotes : null,
+        }))
         const { error: payErr } = await supabase
           .from('layaway_payments')
-          .insert({
-            layaway_id: la.id,
-            store_id: storeId,
-            amount: input.final_payment.amount,
-            payment_method: input.final_payment.method,
-            created_by: userId,
-            // Imputa el pago final al turno abierto de la tienda (026).
-            shift_id: currentShift?.id ?? null,
-            notes: input.final_payment.notes?.trim()
-              ? input.final_payment.notes.trim()
-              : null,
-          } as never)
+          .insert(rows as never)
         if (payErr) {
           throw new Error(`No se pudo registrar el pago final: ${payErr.message}`)
         }
@@ -491,8 +500,13 @@ export function useCompleteLayaway() {
       const sortedPayments = la.layaway_payments
         .slice()
         .sort((a, b) => (a.created_at < b.created_at ? 1 : -1))
+      // Método de la orden de conversión (denormalización; la orden se excluye
+      // del cuadre y los reportes la leen por su payment_method). Si el pago
+      // final fue mixto, el método PRIMARIO (mayor monto); si no, el último abono.
       const lastMethod =
-        input.final_payment?.method ??
+        (input.final_payment
+          ? primaryPaymentMethod(input.final_payment.payments)
+          : undefined) ??
         sortedPayments[0]?.payment_method ??
         ('cash' as PaymentMethod)
 

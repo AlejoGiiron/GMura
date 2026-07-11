@@ -14,10 +14,21 @@ export interface SalesByMethod {
   creditTotal: number
 }
 
+export interface OrderPaymentInput {
+  method: PaymentMethod
+  amount: number
+}
+
 export interface ShiftOrderInput {
   id: string
   total: number
-  payment_method: PaymentMethod
+  // Desglose de pagos de la venta (order_payments, 032). Una venta de un solo
+  // método trae UNA fila; una venta MIXTA, varias. La suma de amount = total
+  // (paridad garantizada por el backfill/escritura). Antes había un único
+  // payment_method; ahora el cuadre suma por método desde estas filas. Los
+  // fiados no traen filas (su efectivo entra por creditPayments) y además la
+  // orden fiada ya se excluye aguas arriba, así que nunca llega acá.
+  payments: OrderPaymentInput[]
   // Si la orden es la diferencia cobrada en un cambio, apunta a la devolución.
   // Esas órdenes son INGRESO por devolución → se muestran aparte, no en ventas.
   return_id?: string | null
@@ -148,29 +159,35 @@ export function calculateShiftSummary(input: ShiftSummaryInput): ShiftSummary {
   let regularOrderCount = 0
 
   for (const o of orders) {
-    const t = o.total
-    // Todo el efectivo cuenta para el cuadre (incluido el ingreso por cambio),
-    // por eso cashSales NO se ve afectado por la clasificación → expectedCash
-    // queda idéntico.
-    if (o.payment_method === 'cash') cashSales += t
+    // El efectivo de la orden = suma de sus pagos en efectivo (antes: el total
+    // si payment_method==='cash'). Cuenta para el cuadre aunque la orden sea el
+    // ingreso por un cambio (return_id) → expectedCash queda idéntico.
+    for (const p of o.payments) {
+      if (p.method === 'cash') cashSales += p.amount
+    }
 
     if (o.return_id) {
       // Ingreso por devolución (diferencia de cambio): se muestra aparte, no
       // entra a ventas regulares ni a salesByMethod.
-      returnsIncome += t
+      returnsIncome += o.total
       continue
     }
 
     regularOrderCount += 1
-    regularSalesTotal += t
-    const prev = aggMap.get(o.payment_method) ?? emptyAgg()
-    aggMap.set(o.payment_method, {
-      count: prev.count + 1,
-      total: prev.total + t,
-      regularTotal: prev.regularTotal + t,
-      layawayTotal: prev.layawayTotal,
-      creditTotal: prev.creditTotal,
-    })
+    regularSalesTotal += o.total
+    // Una fila de salesByMethod por cada pago: una venta mixta aporta a varios
+    // métodos. Para una venta de un solo método equivale a leer el
+    // payment_method anterior (un único pago cuyo monto = el total).
+    for (const p of o.payments) {
+      const prev = aggMap.get(p.method) ?? emptyAgg()
+      aggMap.set(p.method, {
+        count: prev.count + 1,
+        total: prev.total + p.amount,
+        regularTotal: prev.regularTotal + p.amount,
+        layawayTotal: prev.layawayTotal,
+        creditTotal: prev.creditTotal,
+      })
+    }
   }
 
   for (const p of input.layawayPayments) {

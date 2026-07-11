@@ -7,16 +7,27 @@ import { useResolvedConfig } from './useConfig'
 import toast from 'react-hot-toast'
 import { fmtCOP } from '@/lib/formatters'
 import type { Order, PaymentMethod } from '@/types/database.types'
+import { assertValidPayments, primaryPaymentMethod } from '@/lib/orderPayments'
 import { orderTotals, minFinalPrice } from '@/stores/cartStore'
 import type { CartItem } from '@/stores/cartStore'
 import { isValidGiftReason } from '@/lib/giftReasons'
+
+// Una línea de pago de la venta: método + monto. Una venta simple trae UNA
+// línea (amount = total); una venta MIXTA, varias. Σ amount == total.
+export interface OrderPaymentLine {
+  method: PaymentMethod
+  amount: number
+}
 
 export interface CreateOrderInput {
   // Cada ítem lleva unit_price (precio final vendido) y list_price (catálogo).
   // El descuento se deriva por ítem; ya no hay descuento global de cabecera.
   items: CartItem[]
   customer_id: string | null
-  payment_method: PaymentMethod
+  // Pagos de la venta (order_payments, 032). Una o varias líneas; su suma debe
+  // ser igual al total (incluido el recargo). Reemplaza al payment_method único.
+  payments: OrderPaymentLine[]
+  // Recibido en la línea EFECTIVO (para calcular el vuelto). Solo cash.
   cash_received?: number
   // Recargo manual (ej. Addi). Se suma al total. Default 0.
   surcharge?: number
@@ -98,11 +109,24 @@ export function useCreateOrder() {
         throw new Error('El total no puede ser negativo')
       }
 
+      // Validación de las líneas de pago (pagos mixtos, 032): ≥1 línea, método
+      // válido (no 'credit'), monto > 0, sin método repetido y Σ montos == total
+      // (tolerancia de centavos). Lógica pura testeada en lib/orderPayments.
+      const lines = input.payments
+      assertValidPayments(lines, total)
+
+      // orders.payment_method = método PRIMARIO (el de mayor monto; desempate
+      // estable). Denormalización legacy: el cuadre y los reportes ya leen
+      // order_payments, no este campo. Para una venta de un solo método es ese
+      // método (idéntico a antes); evita agregar 'mixed' al enum.
+      const primaryMethod = primaryPaymentMethod(lines)
+
       console.info('[useCreateOrder] Creando orden…', {
         items: input.items.length,
         total,
         surcharge,
-        payment_method: input.payment_method,
+        payments: lines.length,
+        primaryMethod,
       })
 
       const { data: order, error: orderError } = await supabase
@@ -116,7 +140,7 @@ export function useCreateOrder() {
           discount,
           surcharge,
           total,
-          payment_method: input.payment_method,
+          payment_method: primaryMethod,
           cash_received: input.cash_received ?? null,
           // Imputa la venta al turno abierto de la tienda (026). El POS exige
           // turno para vender, así que normalmente estará presente; null si no.
@@ -133,8 +157,45 @@ export function useCreateOrder() {
       }
 
       const o = order as Order
+
+      // Rollback compensatorio: borra la orden recién creada. El ON DELETE
+      // CASCADE de order_payments y order_items limpia los hijos ya insertados
+      // (no hay transacciones en el cliente Supabase, de ahí el borrado manual).
+      const rollbackOrder = async (context: string) => {
+        const { error: rbErr } = await supabase
+          .from('orders')
+          .delete()
+          .eq('id' as never, o.id)
+        if (rbErr) {
+          console.error(`[useCreateOrder] Rollback (${context}) falló:`, rbErr)
+        }
+      }
+
+      // Líneas de pago (order_payments, 032). Se insertan ANTES que los ítems:
+      // si fallan, se borra la orden sin haber tocado stock (los ítems disparan
+      // la deducción). Una venta simple inserta una sola fila.
       console.info(
-        `[useCreateOrder] Orden creada con id ${o.id}, insertando ${input.items.length} ítems…`,
+        `[useCreateOrder] Orden ${o.id} creada, insertando ${lines.length} pago(s)…`,
+      )
+      const { error: paymentsError } = await supabase.from('order_payments').insert(
+        lines.map((l) => ({
+          order_id: o.id,
+          store_id: storeId,
+          method: l.method,
+          amount: l.amount,
+        })) as never,
+      )
+      if (paymentsError) {
+        console.error(
+          '[useCreateOrder] Error insertando pagos, ejecutando rollback…',
+          paymentsError,
+        )
+        await rollbackOrder('order_payments')
+        throw new Error(`Error al guardar el pago: ${paymentsError.message}`)
+      }
+
+      console.info(
+        `[useCreateOrder] Insertando ${input.items.length} ítems…`,
       )
 
       const { error: itemsError } = await supabase.from('order_items').insert(
@@ -159,16 +220,7 @@ export function useCreateOrder() {
           '[useCreateOrder] Error insertando ítems, ejecutando rollback…',
           itemsError,
         )
-        const { error: rollbackError } = await supabase
-          .from('orders')
-          .delete()
-          .eq('id' as never, o.id)
-        if (rollbackError) {
-          console.error(
-            '[useCreateOrder] Rollback de orden falló:',
-            rollbackError,
-          )
-        }
+        await rollbackOrder('order_items')
         throw new Error(`Error al guardar venta: ${itemsError.message}`)
       }
 

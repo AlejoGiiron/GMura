@@ -37,6 +37,10 @@ export interface SaleReceiptData {
   total: number
   payment_method: PaymentMethod
   cash_received: number | null
+  // Desglose de pagos (order_payments, 032). Con >1 línea es una venta MIXTA →
+  // el recibo muestra cada método con su monto. Con 1 línea o ausente, se
+  // muestra el método único (payment_method), igual que antes.
+  payments?: { method: PaymentMethod; amount: number }[]
   items: SaleReceiptItem[]
   customer: SaleReceiptCustomer | null
   // Fiado (029): si viene, el recibo se rotula FIADO y muestra el abono inicial
@@ -46,6 +50,8 @@ export interface SaleReceiptData {
     balance: number
     // Método del abono inicial (null si no hubo abono).
     payment_method: PaymentMethod | null
+    // Desglose del abono inicial cuando fue MIXTO (>1 método).
+    payments?: { method: PaymentMethod; amount: number }[]
   } | null
 }
 
@@ -85,9 +91,14 @@ function Line({ children }: { children: React.ReactNode }) {
 export function SaleReceipt({ sale, storeName, printedAt }: SaleReceiptProps) {
   const monoLight: React.CSSProperties = { color: '#525252' }
   const sectionStyle: React.CSSProperties = { margin: '6px 0' }
+  // Venta mixta = más de una línea de pago. El vuelto se calcula sobre la
+  // PORCIÓN efectivo (en simple, esa porción es el total).
+  const isMixed = (sale.payments?.length ?? 0) > 1
+  const cashPortion =
+    sale.payments?.find((p) => p.method === 'cash')?.amount ?? sale.total
   const change =
-    sale.cash_received != null && sale.cash_received > sale.total
-      ? sale.cash_received - sale.total
+    sale.cash_received != null && sale.cash_received > cashPortion
+      ? sale.cash_received - cashPortion
       : 0
 
   return (
@@ -209,10 +220,25 @@ export function SaleReceipt({ sale, storeName, printedAt }: SaleReceiptProps) {
         </Line>
         {!sale.credit && (
           <>
-            <Line>
-              <span style={monoLight}>Pago:</span>
-              <span>{PAYMENT_METHODS[sale.payment_method].label}</span>
-            </Line>
+            {isMixed ? (
+              <>
+                <div style={{ ...monoLight, marginTop: 2 }}>Pago (mixto):</div>
+                {sale.payments!.map((p) => (
+                  <Line key={p.method}>
+                    <span style={monoLight}>
+                      {' '}
+                      {PAYMENT_METHODS[p.method].label}:
+                    </span>
+                    <span>{fmtCOP(p.amount)}</span>
+                  </Line>
+                ))}
+              </>
+            ) : (
+              <Line>
+                <span style={monoLight}>Pago:</span>
+                <span>{PAYMENT_METHODS[sale.payment_method].label}</span>
+              </Line>
+            )}
             {sale.cash_received != null && (
               <Line>
                 <span style={monoLight}>Recibido:</span>
@@ -234,15 +260,33 @@ export function SaleReceipt({ sale, storeName, printedAt }: SaleReceiptProps) {
               <span style={monoLight}>Venta a crédito:</span>
               <span>FIADO</span>
             </Line>
-            <Line>
-              <span style={monoLight}>Abono inicial:</span>
-              <span>
-                {fmtCOP(sale.credit.paid)}
-                {sale.credit.payment_method
-                  ? ` (${PAYMENT_METHODS[sale.credit.payment_method].label})`
-                  : ''}
-              </span>
-            </Line>
+            {(sale.credit.payments?.length ?? 0) > 1 ? (
+              <>
+                <Line>
+                  <span style={monoLight}>Abono inicial (mixto):</span>
+                  <span>{fmtCOP(sale.credit.paid)}</span>
+                </Line>
+                {sale.credit.payments!.map((p) => (
+                  <Line key={p.method}>
+                    <span style={monoLight}>
+                      {' '}
+                      {PAYMENT_METHODS[p.method].label}:
+                    </span>
+                    <span style={monoLight}>{fmtCOP(p.amount)}</span>
+                  </Line>
+                ))}
+              </>
+            ) : (
+              <Line>
+                <span style={monoLight}>Abono inicial:</span>
+                <span>
+                  {fmtCOP(sale.credit.paid)}
+                  {sale.credit.payment_method
+                    ? ` (${PAYMENT_METHODS[sale.credit.payment_method].label})`
+                    : ''}
+                </span>
+              </Line>
+            )}
             <div style={monoLight}>{SUBDIV}</div>
             <Line>
               <span style={{ fontWeight: 700 }}>SALDO A DEBER:</span>
