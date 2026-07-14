@@ -30,6 +30,17 @@ export function assertShiftForPayment(
 }
 
 /**
+ * ¿Este pago requiere turno abierto? Versión BOOLEANA de assertShiftForPayment
+ * (misma decisión, sin lanzar) para la UX: decidir si deshabilitar el botón y
+ * mostrar el aviso ANTES de intentar. Un pago histórico (#3C) no lo requiere.
+ */
+export function paymentRequiresShift(
+  opts: { isHistorical?: boolean } = {},
+): boolean {
+  return opts.isHistorical !== true
+}
+
+/**
  * ¿Una devolución/cambio MUEVE efectivo del cajón o cobra una diferencia?
  *
  * - Reembolso en efectivo (> 0): sale plata → exige turno para registrar el
