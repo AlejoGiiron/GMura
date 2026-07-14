@@ -485,7 +485,7 @@ function DetailActions({
   if (layaway.status === 'completed') {
     return (
       <div className="flex flex-wrap gap-2 border-t border-[#ebe9e6] bg-white px-6 py-4">
-        {layaway.converted_order_id && (
+        {layaway.converted_order_id && can('historial.ver') && (
           <button
             onClick={() =>
               navigate(
