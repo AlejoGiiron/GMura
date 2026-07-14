@@ -1,11 +1,14 @@
 -- ============================================================
--- create-lab-org.sql — Crear una 2ª organización (negocio-lab) por SQL
+-- create-lab-org.sql — Crear una organización nueva por SQL
 --
--- Replica lo que 020/021 hicieron para La Bodega, con los permisos AL DÍA
--- (incluye los agregados por 023/027/029: gastos.gestionar, ventas.anular,
--- inventario.gestionar, clientes.eliminar, separados.eliminar, ventas.regalo,
--- ventas.fiar).
+-- Replica lo que 020/021 hicieron para La Bodega. Los roles/permisos NO van
+-- inline (antes driftearon: faltaba historial.ver de la 034): se delegan a
+-- seed_org_roles(org_id) — la FUENTE ÚNICA DE VERDAD de la migración 035, que
+-- ya incluye todos los permisos al día (023/027/029/034 y los que vengan).
+-- Para cambiar los permisos de un rol se edita canonical_role_permissions()
+-- en la 035, NUNCA este script.
 --
+-- REQUIERE la migración 035 aplicada (seed_org_roles).
 -- REQUIERE un parámetro: lab_owner_id = el UUID del usuario auth del Dueño,
 -- que se crea FUERA DE BANDA (Dashboard → Authentication → Add user, o Admin
 -- API con service_role). La Edge Function create-user NO sirve para el PRIMER
@@ -36,25 +39,15 @@ INSERT INTO public.organizations (name)
 VALUES (:'org_name')
 RETURNING id AS org_id \gset
 
--- 2) Roles base (INSERT no dispara trg_roles_protect_owner: es UPDATE/DELETE) -
---    Dueño: comodín. Administrador/Vendedor: arrays AL DÍA (copiados de prod).
-INSERT INTO public.roles (organization_id, name, permissions)
-VALUES (:'org_id', 'Dueño', '["*"]'::jsonb)
-RETURNING id AS role_owner_id \gset
+-- 2) Roles base — vía la fuente única de verdad (035). Crea Dueño /
+--    Administrador / Vendedor con los permisos canónicos al día. Sin arrays
+--    inline → nunca vuelve a driftear.
+SELECT public.seed_org_roles(:'org_id');
 
-INSERT INTO public.roles (organization_id, name, permissions)
-VALUES (
-  :'org_id', 'Administrador',
-  '["pos.usar","separados.gestionar","devoluciones.gestionar","clientes.gestionar","inventario.ver","gastos.gestionar","productos.gestionar","compras.gestionar","reportes.ver","gastos.ver","config.gestionar","usuarios.gestionar","ventas.anular","inventario.gestionar","clientes.eliminar","separados.eliminar","ventas.regalo","ventas.fiar"]'::jsonb
-)
-RETURNING id AS role_admin_id \gset
-
-INSERT INTO public.roles (organization_id, name, permissions)
-VALUES (
-  :'org_id', 'Vendedor',
-  '["pos.usar","separados.gestionar","devoluciones.gestionar","clientes.gestionar","inventario.ver","gastos.gestionar"]'::jsonb
-)
-RETURNING id AS role_seller_id \gset
+-- Recuperar los ids de los roles recién creados (para el profile y el resumen).
+SELECT id AS role_owner_id  FROM public.roles WHERE organization_id = :'org_id' AND name = 'Dueño'         \gset
+SELECT id AS role_admin_id  FROM public.roles WHERE organization_id = :'org_id' AND name = 'Administrador' \gset
+SELECT id AS role_seller_id FROM public.roles WHERE organization_id = :'org_id' AND name = 'Vendedor'      \gset
 
 -- 3) Tienda del lab (config '{}' → resolveConfig rellena los defaults) --------
 INSERT INTO public.stores (name, organization_id)
