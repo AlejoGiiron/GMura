@@ -68,7 +68,7 @@ const NAV_GROUPS: NavGroup[] = [
     icon: ShoppingCart,
     items: [
       { label: 'Ventas', path: '/ventas', icon: Store, end: true, permission: 'pos.usar' },
-      { label: 'Historial', path: '/ventas/historial', icon: History, permission: 'pos.usar' },
+      { label: 'Historial', path: '/ventas/historial', icon: History, permission: 'historial.ver' },
       {
         label: 'Separados',
         path: '/separados',

@@ -32,7 +32,14 @@ export default function App() {
         >
           <Route index element={<Navigate to="/ventas" replace />} />
           <Route path="ventas" element={<POSPage />} />
-          <Route path="ventas/historial" element={<SalesHistoryPage />} />
+          <Route
+            path="ventas/historial"
+            element={
+              <ProtectedRoute permission="historial.ver">
+                <SalesHistoryPage />
+              </ProtectedRoute>
+            }
+          />
           <Route path="separados" element={<LayawaysPage />} />
           <Route
             path="productos"
