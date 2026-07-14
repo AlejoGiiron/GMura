@@ -465,6 +465,8 @@ export function CloseShiftModal({ shift, onClose }: CloseShiftModalProps) {
                   printedAt={printedAtRef.current}
                   layawayPayments={closing.layawayPayments}
                   layawayPaymentsTotal={closing.layawayPaymentsTotal}
+                  creditPayments={closing.creditPayments}
+                  creditPaymentsTotal={closing.creditPaymentsTotal}
                   regularSalesTotal={closing.regularSalesTotal}
                   returnsIncome={closing.returnsIncome}
                   returnsExpense={closing.returnsExpense}
@@ -513,6 +515,8 @@ export function CloseShiftModal({ shift, onClose }: CloseShiftModalProps) {
           printedAt={printedAtRef.current}
           layawayPayments={closing.layawayPayments}
           layawayPaymentsTotal={closing.layawayPaymentsTotal}
+          creditPayments={closing.creditPayments}
+          creditPaymentsTotal={closing.creditPaymentsTotal}
           regularSalesTotal={closing.regularSalesTotal}
           returnsIncome={closing.returnsIncome}
           returnsExpense={closing.returnsExpense}
