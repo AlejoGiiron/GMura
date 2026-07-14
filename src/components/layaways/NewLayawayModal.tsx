@@ -37,6 +37,9 @@ import { PaymentSplitLines } from '@/components/pos/PaymentSplitLines'
 import { sumSplitLines, type SplitLine } from '@/lib/paymentSplit'
 import type { PaymentLine } from '@/lib/orderPayments'
 import { useLayawayDetail } from '@/hooks/useLayaways'
+import { useRequireShift } from '@/hooks/useRequireShift'
+import { ShiftRequiredNotice } from '@/components/cash/ShiftRequiredNotice'
+import { paymentRequiresShift } from '@/lib/shiftGuard'
 import { calculateRequiredInitialPayment } from '@/lib/layawayCalc'
 import { cartTotals, clampItemPrice } from '@/stores/cartStore'
 import { ItemPriceField } from '@/components/pos/ItemPriceField'
@@ -768,6 +771,8 @@ interface ConfirmStepProps {
   enabledMethods: PaymentMethod[]
   // Abono histórico (028): solo admin puede marcarlo.
   canMarkHistorical: boolean
+  // true = hay un abono inicial no histórico sin turno abierto → bloquear.
+  shiftBlocked: boolean
   isHistorical: boolean
   setIsHistorical: (v: boolean) => void
 }
@@ -789,6 +794,7 @@ function ConfirmStep({
   setNotes,
   enabledMethods,
   canMarkHistorical,
+  shiftBlocked,
   isHistorical,
   setIsHistorical,
 }: ConfirmStepProps) {
@@ -801,6 +807,10 @@ function ConfirmStep({
 
   return (
     <div className="flex flex-col gap-5">
+      {shiftBlocked && (
+        <ShiftRequiredNotice message="Abre un turno para registrar el abono inicial (o márcalo como histórico si ya se recibió)." />
+      )}
+
       {/* Desglose subtotal / descuento / total */}
       <div className="rounded-xl border border-[#ebe9e6] bg-[#fafaf9] px-4 py-3">
         <p className="mb-2 text-[11px] font-semibold uppercase tracking-[.05em] text-[#737373]">
@@ -1098,6 +1108,7 @@ export function NewLayawayModal({ prefill, onClose, onCreated }: Props) {
 
   const create = useCreateLayaway()
   const createdDetail = useLayawayDetail(createdLayawayId)
+  const { hasShift } = useRequireShift()
 
   const maxItemDiscount = config.max_item_discount
   // Totales derivados por ítem: subtotal = catálogo, total = final,
@@ -1191,6 +1202,11 @@ export function NewLayawayModal({ prefill, onClose, onCreated }: Props) {
     (Math.abs(splitPaid - parsedAmount) < 0.5 &&
       lines.length > 0 &&
       lines.every((l) => (parseFloat(l.amount) || 0) > 0))
+  // Un abono inicial NO histórico que entra ahora exige turno abierto. Sin
+  // turno, se bloquea el submit y se muestra el aviso. Si el usuario marca
+  // "histórico" (#3C) o deja el abono en $0, el bloqueo desaparece.
+  const initialPaymentBlocked =
+    paymentRequiresShift({ isHistorical }) && parsedAmount > 0 && !hasShift
   const canSubmit =
     step === 2 &&
     parsedAmount >= effectiveRequired &&
@@ -1200,6 +1216,7 @@ export function NewLayawayModal({ prefill, onClose, onCreated }: Props) {
     (!isHistorical || parsedAmount > 0) &&
     total > 0 &&
     splitOk &&
+    !initialPaymentBlocked &&
     !create.isPending
 
   function handleSubmit() {
@@ -1458,6 +1475,7 @@ export function NewLayawayModal({ prefill, onClose, onCreated }: Props) {
               setNotes={setNotes}
               enabledMethods={enabledMethods}
               canMarkHistorical={isAdmin}
+              shiftBlocked={initialPaymentBlocked}
               isHistorical={isHistorical}
               setIsHistorical={setIsHistorical}
             />

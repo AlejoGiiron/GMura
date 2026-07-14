@@ -7,6 +7,8 @@ import {
 } from '@/hooks/useLayawayMutations'
 import { PAYMENT_METHODS, PAYMENT_METHOD_KEYS } from '@/lib/paymentMethods'
 import { useResolvedConfig } from '@/hooks/useConfig'
+import { useRequireShift } from '@/hooks/useRequireShift'
+import { ShiftRequiredNotice } from '@/components/cash/ShiftRequiredNotice'
 import { migrateLegacyPaymentMethods } from '@/lib/paymentMethods'
 import { PaymentSplitLines } from '@/components/pos/PaymentSplitLines'
 import { sumSplitLines, type SplitLine } from '@/lib/paymentSplit'
@@ -58,6 +60,11 @@ export function AddPaymentModal({
   const completeLayaway = useCompleteLayaway()
   const pending = addPayment.isPending || completeLayaway.isPending
 
+  // Abonar/completar un separado ENTRA a la caja → exige turno abierto. Sin él,
+  // el botón queda deshabilitado y se muestra el aviso (no hay caso histórico
+  // por esta vía: el histórico solo existe al CREAR el separado).
+  const { hasShift } = useRequireShift()
+
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && !pending) onClose()
@@ -79,7 +86,8 @@ export function AddPaymentModal({
     abonoTotal > 0 &&
     !overBalance &&
     splitAmountsOk &&
-    visibleMethods.length > 0
+    visibleMethods.length > 0 &&
+    hasShift
 
   const enterSplit = () => {
     setLines([{ method, amount: amount || '' }])
@@ -157,6 +165,11 @@ export function AddPaymentModal({
 
         {/* Contenido scrollable */}
         <div className="flex-1 overflow-y-auto px-6 py-5">
+          {!hasShift && (
+            <div className="mb-5">
+              <ShiftRequiredNotice message="Abre un turno de caja para registrar este abono." />
+            </div>
+          )}
           <div className="mb-5 rounded-lg border border-[#ebe9e6] bg-[#fafaf9] px-4 py-3">
             <p className="text-[11px] font-semibold uppercase tracking-[.05em] text-[#737373]">
               Saldo pendiente

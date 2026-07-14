@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   assertShiftForPayment,
+  paymentRequiresShift,
   returnMovesCash,
   REQUIRE_SHIFT_MESSAGE,
 } from './shiftGuard'
@@ -49,6 +50,18 @@ describe('assertShiftForPayment — guard de turno para pagos', () => {
     expect(() =>
       assertShiftForPayment('shift-123', { isHistorical: true }),
     ).not.toThrow()
+  })
+})
+
+describe('paymentRequiresShift — decisión booleana para la UX', () => {
+  it('un pago normal (sin opts) requiere turno', () => {
+    expect(paymentRequiresShift()).toBe(true)
+    expect(paymentRequiresShift({})).toBe(true)
+    expect(paymentRequiresShift({ isHistorical: false })).toBe(true)
+  })
+
+  it('#3C: un pago histórico NO requiere turno (el bloqueo desaparece)', () => {
+    expect(paymentRequiresShift({ isHistorical: true })).toBe(false)
   })
 })
 

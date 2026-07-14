@@ -49,7 +49,10 @@ import {
   isAtStockCap,
   type ExchangeLine,
 } from '@/lib/exchangeCart'
+import { returnMovesCash } from '@/lib/shiftGuard'
 import { useResolvedConfig } from '@/hooks/useConfig'
+import { useRequireShift } from '@/hooks/useRequireShift'
+import { ShiftRequiredNotice } from '@/components/cash/ShiftRequiredNotice'
 import type { PaymentMethod, ReturnType, Return } from '@/types/database.types'
 
 // ── Helpers de cálculo (Fase 1/2) ─────────────────────────────────────────────
@@ -1025,6 +1028,7 @@ interface Step4Props {
   notes: string
   exchangeItems: ExchangeLine[]
   isPending: boolean
+  hasShift: boolean
   onBack: () => void
   onConfirm: () => void
 }
@@ -1037,6 +1041,7 @@ function Step4Confirm({
   notes,
   exchangeItems,
   isPending,
+  hasShift,
   onBack,
   onConfirm,
 }: Step4Props) {
@@ -1047,6 +1052,19 @@ function Step4Confirm({
   )
   const summary = exchangeSummary(order, returnQtys, exchangeItems)
   const priceDiff = summary.difference
+
+  // ¿Esta operación MUEVE efectivo (reembolso en efectivo o diferencia cobrada)?
+  // Misma decisión que el guard de la mutation (shiftGuard.returnMovesCash). Si
+  // mueve caja y no hay turno abierto → bloquear. Una devolución no-efectivo o
+  // un cambio del mismo valor no mueven el cajón → no se bloquean.
+  const movesCash = returnMovesCash({
+    type: returnType,
+    refundMethod,
+    returnedValue: refundTotal,
+    exchangeRefundDue: summary.refundDue,
+    exchangeCharge: summary.orderTotal,
+  })
+  const shiftBlocked = movesCash && !hasShift
 
   return (
     <div className="flex h-full flex-col">
@@ -1060,6 +1078,16 @@ function Step4Confirm({
               Revisa el resumen antes de confirmar.
             </p>
           </div>
+
+          {shiftBlocked && (
+            <ShiftRequiredNotice
+              message={
+                returnType === 'return'
+                  ? 'Abre un turno de caja para registrar el reembolso en efectivo.'
+                  : 'Abre un turno de caja para cobrar la diferencia del cambio.'
+              }
+            />
+          )}
 
           {/* Returned items */}
           <div className="overflow-hidden rounded-xl border border-[#ebe9e6]">
@@ -1185,8 +1213,8 @@ function Step4Confirm({
         </button>
         <button
           onClick={onConfirm}
-          disabled={isPending}
-          className="flex items-center gap-2 rounded-lg bg-violet-600 px-6 py-2.5 text-sm font-semibold text-white shadow-[0_4px_12px_rgba(139,92,246,0.4)] disabled:cursor-wait disabled:opacity-70 hover:bg-violet-700"
+          disabled={isPending || shiftBlocked}
+          className="flex items-center gap-2 rounded-lg bg-violet-600 px-6 py-2.5 text-sm font-semibold text-white shadow-[0_4px_12px_rgba(139,92,246,0.4)] disabled:cursor-not-allowed disabled:opacity-60 hover:bg-violet-700"
         >
           {isPending ? (
             <><RefreshCw size={14} className="animate-spin" /> Procesando…</>
@@ -1523,6 +1551,7 @@ export default function ReturnsPage() {
   const preloadAttemptedRef = useRef<string | null>(null)
 
   const createReturn = useCreateReturn()
+  const { hasShift } = useRequireShift()
   const config = useResolvedConfig()
   const returnDaysLimit = config.return_days_limit
 
@@ -1750,6 +1779,7 @@ export default function ReturnsPage() {
               notes={notes}
               exchangeItems={exchangeItems}
               isPending={createReturn.isPending}
+              hasShift={hasShift}
               onBack={() => setStep(3)}
               onConfirm={handleConfirm}
             />

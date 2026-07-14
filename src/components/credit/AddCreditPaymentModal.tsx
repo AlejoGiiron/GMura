@@ -3,6 +3,8 @@ import { X, HandCoins, Wallet, Split } from 'lucide-react'
 import { fmtCOP } from '@/lib/formatters'
 import { useAddCreditPayment } from '@/hooks/useCreditMutations'
 import { useResolvedConfig } from '@/hooks/useConfig'
+import { useRequireShift } from '@/hooks/useRequireShift'
+import { ShiftRequiredNotice } from '@/components/cash/ShiftRequiredNotice'
 import {
   PAYMENT_METHODS,
   PAYMENT_METHOD_KEYS,
@@ -43,6 +45,10 @@ export function AddCreditPaymentModal({ order, onClose, onDone }: Props) {
   const addPayment = useAddCreditPayment()
   const parsed = parseCOP(amount)
 
+  // El abono de cartera ENTRA a la caja → exige turno abierto (los abonos de
+  // fiado por la app nunca son históricos, así que aplica sin excepción).
+  const { hasShift } = useRequireShift()
+
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && !addPayment.isPending) onClose()
@@ -57,7 +63,7 @@ export function AddCreditPaymentModal({ order, onClose, onDone }: Props) {
   const splitAmountsOk =
     !splitMode || (lines.length > 0 && lines.every((l) => (parseFloat(l.amount) || 0) > 0))
   const canSubmit =
-    abonoTotal > 0 && !overBalance && splitAmountsOk && !addPayment.isPending
+    abonoTotal > 0 && !overBalance && splitAmountsOk && !addPayment.isPending && hasShift
 
   const enterSplit = () => {
     setLines([{ method, amount: amount || '' }])
@@ -114,6 +120,9 @@ export function AddCreditPaymentModal({ order, onClose, onDone }: Props) {
 
         {/* Body */}
         <div className="flex flex-col gap-4 px-6 py-5">
+          {!hasShift && (
+            <ShiftRequiredNotice message="Abre un turno de caja para registrar este abono." />
+          )}
           {/* Resumen del saldo */}
           <div className="rounded-xl border border-[#ebe9e6] bg-[#fafaf9] px-4 py-3 text-sm">
             <div className="flex justify-between text-[#525252]">
