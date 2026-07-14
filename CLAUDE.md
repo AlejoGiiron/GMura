@@ -41,6 +41,23 @@ códigos de barras, devoluciones y CRM de clientes.
 - Canales Realtime con nombre único:
   supabase.channel("nombre-${Math.random().toString(36).slice(2)}")
 
+## RBAC / permisos por rol (multi-org)
+- Fuente única de verdad de los permisos de los roles base:
+  `canonical_role_permissions(name)` en la migración 035. Los roles de una org
+  NUEVA se crean con `seed_org_roles(org_id)` (la usa create-lab-org.sql y el
+  futuro flujo de "crear org desde la app").
+- Para AGREGAR un permiso nuevo a un rol base:
+  1. Editar el array del rol en `canonical_role_permissions()` (035).
+  2. Nueva migración con reconciliación ADITIVA **sin filtro de organización**
+     (patrón de la 034): `WHERE name IN ('Administrador','Vendedor') AND NOT
+     permissions ? '*' AND NOT (permissions @> canonical_role_permissions(name))`.
+  3. Actualizar `src/lib/permissionsCatalog.ts` (catálogo de la UI) si el
+     permiso es nuevo en el sistema.
+- NUNCA asignar permisos filtrando por `organizations.name = '...'`. Las
+  migraciones 023/027/029 lo hicieron (hardcode a 'La Bodega del Jeans') y por
+  eso una org futura nacía sin esos permisos. Ese patrón está PROHIBIDO; el
+  molde correcto es la 034/035.
+
 ## Design system
 - Sidebar: slate-900 (#0f172a)
 - Acento primario: violeta #8b5cf6
