@@ -534,7 +534,7 @@ function ItemsStep({
         )}
       </div>
 
-      <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 sm:grid-cols-[1.1fr_1fr]">
+      <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 sm:grid-cols-[1fr_1.3fr]">
         {/* Resultados */}
         <div className="min-h-0 overflow-y-auto rounded-xl border border-[#ebe9e6] bg-[#fafaf9] p-2">
           {isLoading ? (
@@ -628,7 +628,7 @@ function ItemsStep({
                       key={it.variant_id}
                       className="overflow-hidden rounded-xl border border-[#ebe9e6] bg-white"
                     >
-                      <div className="px-3 py-3">
+                      <div className="px-2.5 py-3">
                         {/* Row 1: identidad + quitar (alineados arriba) */}
                         <div className="flex items-start gap-2.5">
                           <div
