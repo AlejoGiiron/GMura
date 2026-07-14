@@ -148,6 +148,11 @@ function ReprintReceiptModal({
                   storeName={closing.storeName}
                   userName={closing.userName}
                   printedAt={printedAtRef.current}
+                  layawayPayments={closing.layawayPayments}
+                  layawayPaymentsTotal={closing.layawayPaymentsTotal}
+                  creditPayments={closing.creditPayments}
+                  creditPaymentsTotal={closing.creditPaymentsTotal}
+                  regularSalesTotal={closing.regularSalesTotal}
                   returnsIncome={closing.returnsIncome}
                   returnsExpense={closing.returnsExpense}
                 />
@@ -190,6 +195,11 @@ function ReprintReceiptModal({
           storeName={closing.storeName}
           userName={closing.userName}
           printedAt={printedAtRef.current}
+          layawayPayments={closing.layawayPayments}
+          layawayPaymentsTotal={closing.layawayPaymentsTotal}
+          creditPayments={closing.creditPayments}
+          creditPaymentsTotal={closing.creditPaymentsTotal}
+          regularSalesTotal={closing.regularSalesTotal}
           returnsIncome={closing.returnsIncome}
           returnsExpense={closing.returnsExpense}
         />

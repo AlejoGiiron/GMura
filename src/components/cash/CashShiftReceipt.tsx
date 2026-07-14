@@ -16,11 +16,21 @@ export interface SalesByMethodRow {
   total: number
   regularTotal?: number
   layawayTotal?: number
+  // Abonos de FIADO cobrados en este método (029). Parte del efectivo.
+  creditTotal?: number
 }
 
 export interface LayawayPaymentReceiptRow {
   id: string
   layaway_number: number
+  amount: number
+  payment_method: PaymentMethod
+  created_at: string
+}
+
+export interface CreditPaymentReceiptRow {
+  id: string
+  order_number: number
   amount: number
   payment_method: PaymentMethod
   created_at: string
@@ -43,6 +53,9 @@ export interface CashShiftReceiptProps {
   printedAt: Date
   layawayPayments?: LayawayPaymentReceiptRow[]
   layawayPaymentsTotal?: number
+  // Abonos de FIADO del turno (detalle + total). Espejo de los de separado.
+  creditPayments?: CreditPaymentReceiptRow[]
+  creditPaymentsTotal?: number
   regularSalesTotal?: number
   // Devoluciones (presentación aparte; no afectan el cuadre).
   returnsIncome?: number
@@ -113,6 +126,11 @@ export function CashShiftReceipt(props: CashShiftReceiptProps) {
   } = props
   const lpTotal = layawayPaymentsTotal ?? 0
   const lpRows = layawayPayments ?? []
+  // Abonos de FIADO: mismo tratamiento que los de separado (línea resumen +
+  // sección de detalle). El dinero ya está en cashSales/totalSales; esto solo
+  // lo desglosa para que no quede escondido dentro de "Ventas directas".
+  const cpTotal = props.creditPaymentsTotal ?? 0
+  const cpRows = props.creditPayments ?? []
   const overdraft = props.overdraft ?? 0
 
   // Devoluciones: ingresos (órdenes con return_id) y reembolsos (cash_expenses
@@ -212,16 +230,26 @@ export function CashShiftReceipt(props: CashShiftReceiptProps) {
           ))
         )}
         <div style={monoLight}>{SUBDIV}</div>
-        {lpTotal > 0 && (
+        {(lpTotal > 0 || cpTotal > 0) && (
           <>
             <Line>
               <span style={monoLight}>Ventas directas:</span>
-              <span>{fmtCOP(totalSales - lpTotal)}</span>
+              {/* Excluye separados Y fiados → atribución correcta (antes los
+                  fiados quedaban escondidos acá). */}
+              <span>{fmtCOP(totalSales - lpTotal - cpTotal)}</span>
             </Line>
-            <Line>
-              <span style={monoLight}>Abonos de separados:</span>
-              <span>{fmtCOP(lpTotal)}</span>
-            </Line>
+            {lpTotal > 0 && (
+              <Line>
+                <span style={monoLight}>Abonos de separados:</span>
+                <span>{fmtCOP(lpTotal)}</span>
+              </Line>
+            )}
+            {cpTotal > 0 && (
+              <Line>
+                <span style={monoLight}>Abonos de fiados:</span>
+                <span>{fmtCOP(cpTotal)}</span>
+              </Line>
+            )}
           </>
         )}
         <Line>
@@ -230,7 +258,7 @@ export function CashShiftReceipt(props: CashShiftReceiptProps) {
         </Line>
         <Line>
           <span style={monoLight}>Transacciones:</span>
-          <span>{orderCount + lpRows.length}</span>
+          <span>{orderCount + lpRows.length + cpRows.length}</span>
         </Line>
       </div>
 
@@ -255,6 +283,34 @@ export function CashShiftReceipt(props: CashShiftReceiptProps) {
             <Line>
               <span style={{ fontWeight: 700 }}>Total abonos:</span>
               <span style={{ fontWeight: 700 }}>{fmtCOP(lpTotal)}</span>
+            </Line>
+          </div>
+        </>
+      )}
+
+      {/* Abonos de fiados (detalle por abono) — espejo de los de separado.
+          Un abono mixto son N filas (una por método) con el mismo #, así que
+          aparece como varias líneas con su método, igual que en separados. */}
+      {cpRows.length > 0 && (
+        <>
+          <div style={monoLight}>{DIVIDER}</div>
+          <div style={sectionStyle}>
+            <div style={{ fontWeight: 700, marginBottom: 2 }}>
+              ABONOS DE FIADOS
+            </div>
+            {cpRows.map((p) => (
+              <Line key={p.id}>
+                <span style={monoLight}>
+                  [{fmtHHmm(p.created_at)}] #{p.order_number}{' '}
+                  {PAYMENT_METHODS[p.payment_method].label}:
+                </span>
+                <span>{fmtCOP(Number(p.amount))}</span>
+              </Line>
+            ))}
+            <div style={monoLight}>{SUBDIV}</div>
+            <Line>
+              <span style={{ fontWeight: 700 }}>Total abonos:</span>
+              <span style={{ fontWeight: 700 }}>{fmtCOP(cpTotal)}</span>
             </Line>
           </div>
         </>
