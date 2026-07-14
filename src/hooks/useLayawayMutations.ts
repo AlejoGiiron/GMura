@@ -7,6 +7,7 @@ import { useCurrentShift } from './useCashShift'
 import { useResolvedConfig } from './useConfig'
 import { fmtCOP } from '@/lib/formatters'
 import { resolveLayawayPaymentImputation } from '@/lib/layawayCalc'
+import { assertShiftForPayment } from '@/lib/shiftGuard'
 import {
   assertValidAbono,
   assertValidSplitLines,
@@ -179,6 +180,13 @@ export function useCreateLayaway() {
         if (sumPaymentLines(input.initial_payment.payments) > total + 0.5) {
           throw new Error('El abono inicial no puede superar el total')
         }
+        // Guard de turno: un abono inicial que ENTRA ahora exige turno abierto
+        // (si no, quedaría con shift_id NULL, fuera del cuadre). El abono
+        // HISTÓRICO (#3C) se salta el guard por diseño: va con shift_id NULL a
+        // propósito. Un separado sin abono no mueve caja → no exige turno.
+        assertShiftForPayment(currentShift?.id, {
+          isHistorical: input.initial_payment.is_historical === true,
+        })
       }
 
       // INSERT layaways
@@ -289,6 +297,8 @@ export function useAddLayawayPayment() {
       if (!storeId || !userId) {
         throw new Error('Sesión inválida. Vuelve a iniciar sesión.')
       }
+      // Guard de turno: el abono ENTRA a la caja ahora → exige turno abierto.
+      assertShiftForPayment(currentShift?.id)
 
       // Validar saldo
       const { data: laRaw, error: laErr } = await supabase
@@ -415,6 +425,14 @@ export function useCompleteLayaway() {
       const storeId = getActiveStoreId(profile)
       const userId = profile?.id
       if (!storeId || !userId) throw new Error('Sesión inválida')
+
+      // Guard de turno: si el completado trae un pago final (dinero que ENTRA
+      // ahora), exige turno abierto — este es el hueco del incidente (finalizar
+      // sin turno → el pago final quedaba con shift_id NULL, fuera del cuadre).
+      // Un separado YA saldado se puede convertir sin pago final: no mueve caja.
+      if (input.final_payment) {
+        assertShiftForPayment(currentShift?.id)
+      }
 
       // 1. Cargar separado + items + pagos
       const { data: laRaw, error: laErr } = await supabase

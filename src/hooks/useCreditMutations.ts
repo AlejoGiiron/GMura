@@ -20,6 +20,7 @@ import {
   sumPaymentLines,
   type PaymentLine,
 } from '@/lib/orderPayments'
+import { assertShiftForPayment } from '@/lib/shiftGuard'
 import type { Order } from '@/types/database.types'
 
 // ── Inputs ────────────────────────────────────────────────────────────────────
@@ -255,6 +256,11 @@ export function useAddCreditPayment() {
       if (!storeId || !userId) {
         throw new Error('Sesión inválida. Vuelve a iniciar sesión.')
       }
+      // Guard de turno: el abono de cartera ENTRA a la caja ahora → exige turno.
+      // Los abonos de fiado creados por la app son siempre efectivo real de ahora
+      // (resolveCreditPaymentImputation nunca marca is_historical), así que el
+      // guard aplica sin excepción por esta vía.
+      assertShiftForPayment(currentShift?.id)
 
       // Cargar el fiado y validar estado + saldo.
       const { data: oRaw, error: oErr } = await supabase

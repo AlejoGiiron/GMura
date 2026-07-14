@@ -2,12 +2,14 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from './useAuth'
 import { getActiveStoreId } from './useActiveStoreId'
+import { useCurrentShift } from './useCashShift'
 import toast from 'react-hot-toast'
 import {
   calculateExchangeAmounts,
   isReturnablePayment,
   ADDI_RETURN_BLOCK_MSG,
 } from '@/lib/returnCalc'
+import { assertShiftForPayment, returnMovesCash } from '@/lib/shiftGuard'
 import type { PaymentMethod, ReturnType, Return } from '@/types/database.types'
 
 // ── Input types ───────────────────────────────────────────────────────────────
@@ -56,6 +58,7 @@ function aggregateQtyByVariant(items: { variant_id: string; qty: number }[]) {
 export function useCreateReturn() {
   const { profile } = useAuth()
   const queryClient = useQueryClient()
+  const { data: currentShift } = useCurrentShift()
 
   return useMutation({
     mutationFn: async (input: CreateReturnInput): Promise<Return> => {
@@ -78,6 +81,35 @@ export function useCreateReturn() {
       }
       if (input.type === 'exchange' && input.exchangeItems.some((e) => e.qty <= 0)) {
         throw new Error('La cantidad de cambio debe ser mayor a 0')
+      }
+
+      // Netea el cambio UNA vez: lo usan el guard de turno, la orden del cambio
+      // (Paso 4) y el reembolso de la diferencia (Paso 5).
+      const exchange =
+        input.type === 'exchange'
+          ? calculateExchangeAmounts(input.returnItems, input.exchangeItems)
+          : null
+
+      // Valor devuelto en una devolución pura (Σ pagado de los ítems devueltos).
+      const returnedValue = input.returnItems.reduce(
+        (sum, ri) => sum + ri.qty * ri.unit_price,
+        0,
+      )
+
+      // Guard de turno: si la devolución/cambio MUEVE efectivo (reembolso en
+      // efectivo o cobro de diferencia), exige turno abierto. Sin turno, el
+      // egreso del reembolso se omitía en silencio (faltante fantasma) y la
+      // orden del cambio quedaba con shift_id NULL (diferencia fuera del cuadre).
+      if (
+        returnMovesCash({
+          type: input.type,
+          refundMethod: input.refundMethod,
+          returnedValue,
+          exchangeRefundDue: exchange?.refundDue ?? 0,
+          exchangeCharge: exchange?.orderTotal ?? 0,
+        })
+      ) {
+        assertShiftForPayment(currentShift?.id)
       }
 
       // Bloqueo de Addi (defensa en profundidad; la UI ya bloquea antes).
@@ -184,11 +216,6 @@ export function useCreateReturn() {
       // los ítems devueltos: subtotal = valor nuevos, descuento = min(devueltos,
       // nuevos), total = max(0, diferencia). Así reportes no se inflan y caja
       // refleja solo el movimiento real.
-      const exchange =
-        input.type === 'exchange'
-          ? calculateExchangeAmounts(input.returnItems, input.exchangeItems)
-          : null
-
       if (input.type === 'exchange' && exchange) {
         const { data: newOrder, error: orderErr } = await supabase
           .from('orders')
@@ -205,6 +232,10 @@ export function useCreateReturn() {
             // Marca la orden como ingreso por devolución (diferencia de cambio),
             // para mostrarla en la sección Devoluciones del cuadre, no en Ventas.
             return_id: ret.id,
+            // Imputa la diferencia cobrada al turno abierto (026). Antes se
+            // insertaba SIN shift_id → la diferencia quedaba fuera del cuadre
+            // aunque hubiera turno. El guard garantiza turno si orderTotal > 0.
+            shift_id: currentShift?.id ?? null,
           } as never)
           .select()
           .single()
@@ -253,23 +284,14 @@ export function useCreateReturn() {
       //    entró como venta en la orden del Paso 4 (sin egreso).
       if (input.refundMethod === 'cash') {
         const refundTotal =
-          input.type === 'exchange'
-            ? (exchange?.refundDue ?? 0)
-            : input.returnItems.reduce(
-                (sum, ri) => sum + ri.qty * ri.unit_price,
-                0,
-              )
+          input.type === 'exchange' ? (exchange?.refundDue ?? 0) : returnedValue
         if (refundTotal > 0) {
-          const { data: openShift, error: shiftErr } = await supabase
-            .from('cash_shifts')
-            .select('id')
-            .eq('store_id' as never, storeId)
-            .eq('opened_by' as never, userId)
-            .is('closed_at' as never, null)
-            .maybeSingle()
-
-          if (!shiftErr && openShift) {
-            const shiftId = (openShift as { id: string }).id
+          // El guard de turno ya garantizó turno abierto para un reembolso en
+          // efectivo, así que currentShift está presente. Se imputa al turno de
+          // la TIENDA (026); antes se buscaba por opened_by = userId, que fallaba
+          // si otro cajero de la tienda había abierto el turno.
+          const shiftId = currentShift?.id ?? null
+          if (shiftId) {
             const reason =
               input.type === 'exchange'
                 ? `Devolución por cambio #${input.original_order_number}`
