@@ -534,7 +534,7 @@ function ItemsStep({
         )}
       </div>
 
-      <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 sm:grid-cols-[1.1fr_1fr]">
+      <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 sm:grid-cols-[1fr_1.3fr]">
         {/* Resultados */}
         <div className="min-h-0 overflow-y-auto rounded-xl border border-[#ebe9e6] bg-[#fafaf9] p-2">
           {isLoading ? (
@@ -617,70 +617,110 @@ function ItemsStep({
                 </p>
               </div>
             ) : (
-              <div className="divide-y divide-[#f5f4f1]">
-                {items.map((it) => (
-                  <div key={it.variant_id} className="flex items-center gap-2 px-3 py-2.5">
+              <div className="space-y-2 p-2">
+                {items.map((it) => {
+                  const discounted = it.unit_price < it.list_price
+                  // Mismo criterio que el CartLine del POS: el bloque se muestra
+                  // si hay algo que editar (tope > 0) o que informar (ya rebajado).
+                  const showPriceField = maxItemDiscount > 0 || discounted
+                  return (
                     <div
-                      className="h-4 w-4 shrink-0 rounded-full"
-                      style={{
-                        background: it.color ? getColorHex(it.color) : '#e2e8f0',
-                        boxShadow: '0 0 0 1.5px rgba(0,0,0,0.12)',
-                      }}
-                    />
-                    <div className="min-w-0 flex-1">
-                      {it.brand && (
-                        <p className="truncate text-[10px] font-semibold uppercase tracking-wider text-[#a8a29e]">
-                          {it.brand}
-                        </p>
-                      )}
-                      <p className="truncate text-[12.5px] font-medium text-[#1a1a1a]">
-                        {it.name}
-                      </p>
-                      {(it.size || it.color) && (
-                        <p className="text-[11px] text-[#737373]">
-                          {[it.size ? `T.${it.size}` : null, it.color]
-                            .filter(Boolean)
-                            .join(' · ')}
-                        </p>
-                      )}
-                      <ItemPriceField
-                        listPrice={it.list_price}
-                        unitPrice={it.unit_price}
-                        maxItemDiscount={maxItemDiscount}
-                        onCommit={(finalPrice) =>
-                          onSetPrice(it.variant_id, finalPrice)
-                        }
-                      />
-                    </div>
-                    <div className="flex h-7 items-center overflow-hidden rounded-lg border border-[#ebe9e6]">
-                      <button
-                        onClick={() => onSetQty(it.variant_id, it.qty - 1)}
-                        className="flex h-full w-6 items-center justify-center text-[#737373] hover:bg-[#fafaf9]"
-                      >
-                        <Minus size={11} />
-                      </button>
-                      <span className="w-6 text-center text-xs font-semibold tabular-nums">
-                        {it.qty}
-                      </span>
-                      <button
-                        onClick={() => onSetQty(it.variant_id, it.qty + 1)}
-                        disabled={it.qty >= it.available}
-                        className="flex h-full w-6 items-center justify-center text-[#737373] hover:bg-[#fafaf9] disabled:opacity-30"
-                      >
-                        <Plus size={11} />
-                      </button>
-                    </div>
-                    <span className="w-20 shrink-0 text-right font-mono text-[12.5px] font-semibold text-[#1a1a1a]">
-                      {fmtCOP(it.unit_price * it.qty)}
-                    </span>
-                    <button
-                      onClick={() => onRemove(it.variant_id)}
-                      className="text-[#a8a29e] hover:text-[#1a1a1a]"
+                      key={it.variant_id}
+                      className="overflow-hidden rounded-xl border border-[#ebe9e6] bg-white"
                     >
-                      <X size={13} />
-                    </button>
-                  </div>
-                ))}
+                      <div className="px-2.5 py-3">
+                        {/* Row 1: identidad + quitar (alineados arriba) */}
+                        <div className="flex items-start gap-2.5">
+                          <div
+                            className="mt-1 h-3.5 w-3.5 shrink-0 rounded-full"
+                            style={{
+                              background: it.color
+                                ? getColorHex(it.color)
+                                : '#e2e8f0',
+                              boxShadow: '0 0 0 1.5px rgba(0,0,0,0.12)',
+                            }}
+                          />
+                          <div className="min-w-0 flex-1">
+                            {it.brand && (
+                              <p className="truncate text-[10px] font-semibold uppercase tracking-wider text-[#a8a29e]">
+                                {it.brand}
+                              </p>
+                            )}
+                            <p className="truncate text-[13.5px] font-semibold text-[#1a1a1a]">
+                              {it.name}
+                            </p>
+                            {(it.size || it.color) && (
+                              <p className="truncate text-[11.5px] text-[#737373]">
+                                {[it.size ? `T.${it.size}` : null, it.color]
+                                  .filter(Boolean)
+                                  .join(' · ')}
+                              </p>
+                            )}
+                          </div>
+                          <button
+                            onClick={() => onRemove(it.variant_id)}
+                            className="shrink-0 text-[#a8a29e] hover:text-[#1a1a1a]"
+                            aria-label="Quitar ítem"
+                          >
+                            <X size={15} />
+                          </button>
+                        </div>
+
+                        {/* Row 2: cantidad ↔ total (catálogo tachado si hay descuento) */}
+                        <div className="mt-3 flex items-center justify-between gap-3">
+                          <div className="flex h-8 items-center overflow-hidden rounded-lg border border-[#ebe9e6]">
+                            <button
+                              onClick={() => onSetQty(it.variant_id, it.qty - 1)}
+                              className="flex h-full w-7 items-center justify-center text-[#737373] hover:bg-[#fafaf9]"
+                              aria-label="Menos"
+                            >
+                              <Minus size={13} />
+                            </button>
+                            <span className="w-7 text-center font-mono text-sm font-semibold tabular-nums">
+                              {it.qty}
+                            </span>
+                            <button
+                              onClick={() => onSetQty(it.variant_id, it.qty + 1)}
+                              disabled={it.qty >= it.available}
+                              className="flex h-full w-7 items-center justify-center text-[#737373] hover:bg-[#fafaf9] disabled:opacity-30"
+                              aria-label="Más"
+                            >
+                              <Plus size={13} />
+                            </button>
+                          </div>
+                          {discounted ? (
+                            <div className="text-right leading-tight">
+                              <div className="font-mono text-[11px] text-slate-400 line-through">
+                                {fmtCOP(it.list_price * it.qty)}
+                              </div>
+                              <div className="font-mono text-[15.5px] font-bold tabular-nums text-[#1a1a1a]">
+                                {fmtCOP(it.unit_price * it.qty)}
+                              </div>
+                            </div>
+                          ) : (
+                            <span className="font-mono text-[15.5px] font-bold tabular-nums text-[#1a1a1a]">
+                              {fmtCOP(it.unit_price * it.qty)}
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Row 3: precio con descuento en su propia fila full-width */}
+                        {showPriceField && (
+                          <div className="mt-3">
+                            <ItemPriceField
+                              listPrice={it.list_price}
+                              unitPrice={it.unit_price}
+                              maxItemDiscount={maxItemDiscount}
+                              onCommit={(finalPrice) =>
+                                onSetPrice(it.variant_id, finalPrice)
+                              }
+                            />
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
               </div>
             )}
           </div>
