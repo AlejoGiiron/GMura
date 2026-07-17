@@ -3,6 +3,12 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from './useAuth'
 import { getActiveStoreId } from './useActiveStoreId'
 import { bogotaDayStartToUtc, bogotaDayEndToUtc } from '@/lib/dates'
+import { bogotaDayOf } from '@/lib/dateRange'
+import {
+  resolveSaleCash,
+  type SaleKind,
+  type SalePaymentInput,
+} from '@/lib/salesHistoryCash'
 import { useDebounce } from './useDebounce'
 import type {
   OrderStatus,
@@ -40,6 +46,16 @@ export type SalesHistoryRow = {
   customer_name: string | null
   customer_phone: string | null
   items_count: number
+  // ── Claridad para el cuadre (ver lib/salesHistoryCash) ──────────────────────
+  // Tipo de venta y dinero REAL que entró a la caja el día de la venta. En un
+  // separado o un fiado el total NO es lo que entró al cajón; sin esto el
+  // cajero no entiende por qué el cuadre no coincide con el total de ventas.
+  kind: SaleKind
+  entered_today: number
+  // Solo se muestra la línea cuando entered_today difiere del total.
+  show_entered_line: boolean
+  // #N del separado que originó la orden (null si no viene de uno).
+  layaway_number: number | null
 }
 
 export type SalesHistoryResult = {
@@ -151,6 +167,36 @@ type RawReturnRow = {
   return_items: { qty: number; unit_price: number }[]
 }
 
+type RawLayawayLink = {
+  id: string
+  layaway_number: number
+  converted_order_id: string
+}
+
+type RawDatedPayment = {
+  amount: number | string
+  created_at: string
+  is_historical: boolean
+}
+
+type RawLayawayPaymentRow = RawDatedPayment & { layaway_id: string }
+type RawCreditPaymentRow = RawDatedPayment & { order_id: string }
+
+// Ventana UTC que cubre los días Bogotá de las órdenes de la página. Acota el
+// fetch de abonos: solo pueden contar los del mismo día que su venta, así que
+// traer los de un separado de hace meses sería desperdicio.
+function pageDayBounds(createdAts: string[]): { from: string; to: string } | null {
+  if (createdAts.length === 0) return null
+  let minDay = bogotaDayOf(new Date(createdAts[0]))
+  let maxDay = minDay
+  for (const iso of createdAts) {
+    const day = bogotaDayOf(new Date(iso))
+    if (day < minDay) minDay = day
+    if (day > maxDay) maxDay = day
+  }
+  return { from: bogotaDayStartToUtc(minDay), to: bogotaDayEndToUtc(maxDay) }
+}
+
 // ── useSalesHistory ───────────────────────────────────────────────────────────
 
 export function useSalesHistory(filters: SalesHistoryFilters) {
@@ -221,8 +267,98 @@ export function useSalesHistory(filters: SalesHistoryFilters) {
       const { data, error, count } = await q
       if (error) throw error
 
-      const rows: SalesHistoryRow[] = (data ?? []).map((row) => {
-        const r = row as unknown as RawOrderRow
+      const raw = (data ?? []) as unknown as RawOrderRow[]
+
+      // ── Enriquecimiento para el cuadre: tipo + dinero que entró ese día ──────
+      // Tres queries acotadas a las órdenes VISIBLES (nunca por fila → sin N+1).
+      const orderIds = raw.map((r) => r.id)
+      const bounds = pageDayBounds(raw.map((r) => r.created_at))
+
+      // 1. ¿Qué órdenes de esta página nacieron de un separado? El vínculo solo
+      //    existe en layaways.converted_order_id (no hay orders.layaway_id), de
+      //    ahí el cruce inverso.
+      const layawayByOrder = new Map<string, RawLayawayLink>()
+      if (orderIds.length > 0) {
+        const { data: laRaw, error: laErr } = await supabase
+          .from('layaways')
+          .select('id, layaway_number, converted_order_id')
+          .eq('store_id' as never, storeId)
+          .in('converted_order_id' as never, orderIds)
+        if (laErr) throw laErr
+        for (const l of (laRaw ?? []) as unknown as RawLayawayLink[]) {
+          layawayByOrder.set(l.converted_order_id, l)
+        }
+      }
+
+      // 2. Abonos de esos separados dentro de los días de la página. is_historical
+      //    se filtra en el servidor y otra vez en la lógica pura (defensa en
+      //    profundidad): ese dinero entró antes de existir el registro.
+      const paymentsByLayaway = new Map<string, SalePaymentInput[]>()
+      const layawayIds = Array.from(layawayByOrder.values()).map((l) => l.id)
+      if (layawayIds.length > 0 && bounds) {
+        const { data: lpRaw, error: lpErr } = await supabase
+          .from('layaway_payments')
+          .select('layaway_id, amount, created_at, is_historical')
+          .eq('store_id' as never, storeId)
+          .in('layaway_id' as never, layawayIds)
+          .eq('is_historical' as never, false)
+          .gte('created_at' as never, bounds.from)
+          .lte('created_at' as never, bounds.to)
+        if (lpErr) throw lpErr
+        for (const p of (lpRaw ?? []) as unknown as RawLayawayPaymentRow[]) {
+          const list = paymentsByLayaway.get(p.layaway_id) ?? []
+          list.push({
+            amount: Number(p.amount),
+            created_at: p.created_at,
+            is_historical: p.is_historical,
+          })
+          paymentsByLayaway.set(p.layaway_id, list)
+        }
+      }
+
+      // 3. Abonos de los fiados de la página (el inicial, si lo hubo).
+      const paymentsByCreditOrder = new Map<string, SalePaymentInput[]>()
+      const creditOrderIds = raw.filter((r) => r.is_credit).map((r) => r.id)
+      if (creditOrderIds.length > 0 && bounds) {
+        const { data: cpRaw, error: cpErr } = await supabase
+          .from('credit_payments')
+          .select('order_id, amount, created_at, is_historical')
+          .eq('store_id' as never, storeId)
+          .in('order_id' as never, creditOrderIds)
+          .eq('is_historical' as never, false)
+          .gte('created_at' as never, bounds.from)
+          .lte('created_at' as never, bounds.to)
+        if (cpErr) throw cpErr
+        for (const p of (cpRaw ?? []) as unknown as RawCreditPaymentRow[]) {
+          const list = paymentsByCreditOrder.get(p.order_id) ?? []
+          list.push({
+            amount: Number(p.amount),
+            created_at: p.created_at,
+            is_historical: p.is_historical,
+          })
+          paymentsByCreditOrder.set(p.order_id, list)
+        }
+      }
+
+      const rows: SalesHistoryRow[] = raw.map((r) => {
+        const layaway = layawayByOrder.get(r.id) ?? null
+        const isCredit = r.is_credit ?? false
+        const payments = layaway
+          ? (paymentsByLayaway.get(layaway.id) ?? [])
+          : isCredit
+            ? (paymentsByCreditOrder.get(r.id) ?? [])
+            : []
+
+        // El dinero SIEMPRE sale de los pagos fechados, nunca de paid_amount
+        // (acumulado histórico: incluiría abonos de otros días y otros turnos).
+        const cash = resolveSaleCash({
+          created_at: r.created_at,
+          total: r.total,
+          is_credit: isCredit,
+          from_layaway: !!layaway,
+          payments,
+        })
+
         return {
           id: r.id,
           order_number: r.order_number,
@@ -233,12 +369,16 @@ export function useSalesHistory(filters: SalesHistoryFilters) {
           payment_method: r.payment_method as PaymentMethod,
           status: r.status as OrderStatus,
           cash_received: r.cash_received,
-          is_credit: r.is_credit ?? false,
+          is_credit: isCredit,
           paid_amount: Number(r.paid_amount) || 0,
           customer_id: r.customer_id,
           customer_name: r.customers?.full_name ?? null,
           customer_phone: r.customers?.phone ?? null,
           items_count: r.order_items.length,
+          kind: cash.kind,
+          entered_today: cash.enteredToday,
+          show_entered_line: cash.showEnteredLine,
+          layaway_number: layaway?.layaway_number ?? null,
         }
       })
 

@@ -20,6 +20,7 @@ import toast from 'react-hot-toast'
 import { fmtCOP } from '@/lib/formatters'
 import { getColorHex } from '@/lib/products'
 import { isCreditFullyPaid, creditBalance } from '@/lib/creditCalc'
+import type { SaleKind } from '@/lib/salesHistoryCash'
 import {
   useSalesHistory,
   useSalesSummary,
@@ -45,6 +46,12 @@ import {
 } from '@/components/sales/SaleReceipt'
 
 // ── Constantes ────────────────────────────────────────────────────────────────
+
+// Grilla de la tabla: #, Fecha, Cliente, Ítems, Total, Entró ese día, Pago,
+// Estado, chevron. Compartida por el encabezado y las filas para que no puedan
+// desincronizarse al agregar o mover una columna.
+const ROW_GRID =
+  'grid-cols-[100px_150px_minmax(0,1fr)_56px_120px_120px_120px_110px_24px]'
 
 const PAYMENT_METHOD_LABEL: Record<PaymentMethod, string> = {
   cash: 'Efectivo',
@@ -466,6 +473,41 @@ function SaleDetailLoader({ orderId }: { orderId: string }) {
 
 // ── Sales Row ─────────────────────────────────────────────────────────────────
 
+// Por qué el total de la fila no es el dinero que entró al cajón. Se muestra al
+// pasar el mouse sobre la línea; el badge de la columna Pago da el titular.
+const ENTERED_HINT: Record<SaleKind, string> = {
+  layaway:
+    'Viene de un separado: solo entró el pago de cierre. El resto se abonó otros días.',
+  credit:
+    'Venta fiada: el cliente quedó debiendo. Ese dinero no entró a la caja este día.',
+  direct: '',
+}
+
+// Dinero real que entró el día de la venta, en su propia columna al lado del
+// Total: leído en paralelo, "185.000 → 40.000" cuenta la historia solo. Se
+// muestra SOLO cuando difiere del total; en una venta directa entró el total y
+// un número repetido sería ruido, así que va un guion.
+function EnteredTodayCell({ row }: { row: SalesHistoryRow }) {
+  if (!row.show_entered_line) {
+    return (
+      <span
+        className="font-mono text-sm text-[#d6d3d1]"
+        title="Entró el total de la venta"
+      >
+        —
+      </span>
+    )
+  }
+  return (
+    <span
+      className="font-mono text-sm font-semibold tabular-nums text-[#1a1a1a]"
+      title={ENTERED_HINT[row.kind]}
+    >
+      {fmtCOP(row.entered_today)}
+    </span>
+  )
+}
+
 function SalesRow({
   row,
   isExpanded,
@@ -490,7 +532,7 @@ function SalesRow({
             onToggle()
           }
         }}
-        className="grid w-full cursor-pointer grid-cols-[100px_160px_minmax(0,1fr)_60px_140px_140px_140px_24px] items-center gap-3 border-b border-[#f5f4f1] px-6 py-3 text-left transition-colors hover:bg-[#f8f7f5]"
+        className={`grid w-full cursor-pointer ${ROW_GRID} items-center gap-3 border-b border-[#f5f4f1] px-6 py-3 text-left transition-colors hover:bg-[#f8f7f5]`}
       >
         <CopyableCell
           value={orderLabel}
@@ -529,8 +571,27 @@ function SalesRow({
         >
           {totalLabel}
         </CopyableCell>
-        <span className="flex flex-wrap items-center gap-1">
+        <EnteredTodayCell row={row} />
+        {/* Chips apilados: el método arriba y el tipo/saldo debajo. En línea se
+            pisaban entre sí y la columna quedaba ilegible. */}
+        <span className="flex flex-col items-start gap-1">
           <PaymentBadge method={row.payment_method} />
+          {/* Separado: el PaymentBadge muestra el método del pago de CIERRE, así
+              que sin este chip la fila parecería una venta directa. */}
+          {row.kind === 'layaway' && (
+            <span
+              className="inline-flex items-center rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-semibold text-violet-700"
+              title={
+                row.layaway_number != null
+                  ? `Separado #${row.layaway_number}`
+                  : 'Viene de un separado'
+              }
+            >
+              Separado
+            </span>
+          )}
+          {/* Fiado: el PaymentBadge ya dice "Fiado" (método 'credit'); este chip
+              agrega el saldo, que es lo que no se ve en el cajón. */}
           {row.is_credit &&
             (isCreditFullyPaid(row.total, row.paid_amount) ? (
               <span className="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
@@ -726,18 +787,28 @@ export default function SalesHistoryPage() {
 
       {/* Table */}
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-[#ebe9e6] bg-white">
-        <div className="grid grid-cols-[100px_160px_minmax(0,1fr)_60px_140px_140px_140px_24px] gap-3 border-b border-[#ebe9e6] bg-[#fafaf9] px-6 py-3 text-[11px] font-semibold uppercase tracking-[.05em] text-[#737373]">
-          <span>#</span>
-          <span>Fecha</span>
-          <span>Cliente</span>
-          <span>Ítems</span>
-          <span>Total</span>
-          <span>Pago</span>
-          <span>Estado</span>
-          <span />
-        </div>
-
         <div className="min-h-0 flex-1 overflow-y-auto">
+          {/* El encabezado va DENTRO del contenedor que scrollea, no fuera: si
+              queda fuera, la barra de scroll angosta solo a las filas y la
+              columna Cliente (1fr) se come la diferencia → de Ítems en adelante
+              los títulos dejan de caer sobre su columna. Compartiendo el mismo
+              ancho no pueden desalinearse. Sticky para que siga visible. */}
+          <div
+            className={`sticky top-0 z-10 grid ${ROW_GRID} gap-3 border-b border-[#ebe9e6] bg-[#fafaf9] px-6 py-3 text-[11px] font-semibold uppercase tracking-[.05em] text-[#737373]`}
+          >
+            <span>#</span>
+            <span>Fecha</span>
+            <span>Cliente</span>
+            <span>Ítems</span>
+            <span>Total</span>
+            <span title="Dinero que entró a la caja el día de esta venta">
+              Entró ese día
+            </span>
+            <span>Pago</span>
+            <span>Estado</span>
+            <span />
+          </div>
+
           {listLoading ? (
             <div className="flex flex-col gap-2 p-4">
               {Array.from({ length: 8 }).map((_, i) => (

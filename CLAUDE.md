@@ -335,12 +335,58 @@ Sidebar agrupado en secciones colapsables (feature/12-caja-completa) ✅
 - Configuración (tienda, usuarios, productos, caja, etiquetas)
 
 ## Estado actual del proyecto
-Última fase completada: tarjeta de producto con marca, rango de
-precios y descripción (diferenciar productos del mismo nombre)
-Previo: etiquetas — marca sobre el nombre + letra base afinable
-(FONT_SCALE en labelSizes.ts), tamaños de etiqueta parametrizables
+Última fase completada: claridad del historial de ventas para el cuadre
+(tipo de venta + dinero real entrado por día)
+Previo: tarjeta de producto con marca, rango de precios y descripción
+(diferenciar productos del mismo nombre)
 En progreso: feature - marca (autocompletar + en todos los documentos)
 Siguiente: Addi recargo, historial de gastos, descuento por ítem
+
+Claridad del historial de ventas (feature/sales-history-cash-clarity) ✅
+  - PROBLEMA: el cuadre diario dolía porque el historial mostraba el TOTAL de
+    cada venta, y en un separado o un fiado ese total NO es el dinero que entró
+    al cajón ese día (separado: solo el pago de cierre; fiado: solo el abono
+    inicial, o $0). El sistema ya calculaba bien — el cuadre excluye la orden de
+    conversión y cuenta cada abono en su día — pero el historial no lo COMUNICABA
+  - src/lib/salesHistoryCash.ts: lógica pura resolveSaleCash(input) →
+    { kind, enteredToday, showEnteredLine }, con resolveSaleKind y
+    sumPaymentsOnSaleDay. 19 tests (incl. separado con 2 abonos el mismo día,
+    separado saldado el mismo día → sin línea, fiado $0, is_historical, y
+    agrupación por día CIVIL de Bogotá: una venta 23:30 y su abono 23:00 son el
+    mismo día aunque en UTC ya sea el siguiente)
+  - NO usa orders.paid_amount (acumulado histórico de todos los abonos: incluiría
+    otros días y otros turnos). Por construcción: SaleCashInput ni siquiera tiene
+    el campo. paid_amount sigue solo donde corresponde: el badge Debe $X / Pagado
+  - Identificación del tipo: fiado = orders.is_credit; separado = cruce INVERSO
+    layaways.converted_order_id → orders.id (no existe orders.layaway_id);
+    directa = por descarte
+  - useSalesHistory: SalesHistoryRow += kind / entered_today / show_entered_line /
+    layaway_number. Tres queries por página acotadas a las órdenes VISIBLES (sin
+    N+1): layaways por converted_order_id IN (ids), sus layaway_payments y los
+    credit_payments de las fiadas. is_historical=false en el servidor y otra vez
+    en la lógica pura (defensa en profundidad). pageDayBounds() acota el fetch de
+    abonos a la ventana UTC de los días Bogotá de la página
+  - src/lib/dateRange.ts: bogotaDayOf(instant) extraído (día civil de Bogotá de
+    un timestamptz); todayInBogota delega en él. Sin duplicar el modelo de tz
+  - UI (SalesHistoryPage): columna propia "Entró ese día" entre Total y Pago —
+    empezó como línea de 10.5px bajo el total y en el lab no se leía; en columna
+    y con el mismo peso que el Total, "185.000 → 40.000" se cuenta solo. Solo se
+    muestra cuando difiere del total; en una directa va un guion (repetir el
+    total sería ruido). Chip violeta "Separado"; el fiado ya se marca con
+    [Fiado][Debe $X] via PaymentBadge (payment_method='credit') → no se duplica
+  - Columna Pago con chips APILADOS (método arriba, tipo/saldo abajo); en línea
+    se pisaban. ROW_GRID extraído a constante: el encabezado y las filas definían
+    la grilla por duplicado
+  - FIX de alineación (bug PREVIO, visible al agregar la 8ª columna): el
+    encabezado vivía FUERA del contenedor con overflow-y-auto → la barra de
+    scroll angostaba solo a las filas, la columna Cliente (1fr) absorbía la
+    diferencia y de Ítems en adelante los títulos no caían sobre su columna.
+    Ahora el encabezado va DENTRO del mismo contenedor y es sticky: comparten
+    ancho por construcción y quedan visibles al scrollear
+  - Alcance deliberado: el historial EXPLICA por fila; NO promete sumar el
+    efectivo del cuadre. Los abonos de separados activos y los de fiados de días
+    previos entran a la caja sin ser ventas → no tienen fila en el historial
+  - Sin migración. Validado en lab con separados y fiados reales
 
 P5 — Devoluciones aparte en el cuadre (feature/returns-in-cash-shift) ✅
   - Migración 017: cash_expenses.kind ('expense'|'return', text+CHECK — no ENUM,

@@ -23,14 +23,20 @@ export interface DateRange {
 
 // YYYY-MM-DD civil de Bogotá para el instante dado. Intl con timeZone fija el
 // cálculo en Bogotá independientemente de la tz del runtime; 'en-CA' formatea
-// en ISO (YYYY-MM-DD). `now` es inyectable para poder testear.
-export function todayInBogota(now: Date = new Date()): string {
+// en ISO (YYYY-MM-DD). Sirve para saber a qué DÍA pertenece un timestamptz
+// (created_at de una venta o de un abono), no solo el día de hoy.
+export function bogotaDayOf(instant: Date): string {
   return new Intl.DateTimeFormat('en-CA', {
     timeZone: 'America/Bogota',
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
-  }).format(now)
+  }).format(instant)
+}
+
+// Fecha civil de HOY en Bogotá. `now` es inyectable para poder testear.
+export function todayInBogota(now: Date = new Date()): string {
+  return bogotaDayOf(now)
 }
 
 // ── Aritmética sobre fechas civiles (YYYY-MM-DD) ─────────────────────────────
