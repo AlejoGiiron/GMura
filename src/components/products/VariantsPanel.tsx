@@ -50,9 +50,22 @@ function variantToForm(v: Variant): VariantFormData {
 interface VariantsPanelProps {
   product: Product
   onClose: () => void
+  /**
+   * 'catalog' (default): flujo de Productos, el stock inicial se respeta.
+   * 'purchase': flujo de la factura de compra, la variante nace en 0 porque
+   * el stock lo carga la compra al confirmarse (el trigger
+   * increase_stock_on_purchase suma la cantidad de la línea). Se oculta el
+   * input de stock inicial y se fuerza stock_qty: 0 en el INSERT.
+   */
+  context?: 'catalog' | 'purchase'
 }
 
-export default function VariantsPanel({ product, onClose }: VariantsPanelProps) {
+export default function VariantsPanel({
+  product,
+  onClose,
+  context = 'catalog',
+}: VariantsPanelProps) {
+  const isPurchase = context === 'purchase'
   const { data: variants = [], isLoading } = useVariants(product.id)
   const { create, update, toggleActive } = useVariantMutations(product.id)
   const sizeTypes = useResolvedConfig().size_types
@@ -115,7 +128,9 @@ export default function VariantsPanel({ product, onClose }: VariantsPanelProps) 
       const barcode = form.barcode.trim() || (editingId ? null : generateBarcode())
       const price = parseFloat(form.price) || 0
       const costPrice = form.cost_price.trim() !== '' ? parseFloat(form.cost_price) : null
-      const stockQty = parseInt(form.stock_qty) || 0
+      // En el flujo de compra la variante nace en 0: el stock lo carga la
+      // factura al confirmarse. Defensa en profundidad además de ocultar el input.
+      const stockQty = isPurchase ? 0 : parseInt(form.stock_qty) || 0
       const minStock = parseInt(form.min_stock) || 0
 
       if (editingId) {
@@ -327,18 +342,24 @@ export default function VariantsPanel({ product, onClose }: VariantsPanelProps) 
 
                   {/* Stock */}
                   <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-slate-400">
-                        Stock inicial
-                      </label>
-                      <input
-                        type="number"
-                        min="0"
-                        value={form.stock_qty}
-                        onChange={(e) => setField('stock_qty', e.target.value)}
-                        className="h-9 w-full rounded-lg border border-slate-200 px-2.5 font-mono text-sm outline-none focus:border-violet-400"
-                      />
-                    </div>
+                    {isPurchase ? (
+                      <div className="flex items-center rounded-lg border border-violet-100 bg-violet-50 px-3 text-[12px] leading-snug text-violet-700">
+                        El stock lo carga esta compra al confirmar la factura.
+                      </div>
+                    ) : (
+                      <div>
+                        <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                          Stock inicial
+                        </label>
+                        <input
+                          type="number"
+                          min="0"
+                          value={form.stock_qty}
+                          onChange={(e) => setField('stock_qty', e.target.value)}
+                          className="h-9 w-full rounded-lg border border-slate-200 px-2.5 font-mono text-sm outline-none focus:border-violet-400"
+                        />
+                      </div>
+                    )}
                     <div>
                       <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-slate-400">
                         Stock mínimo

@@ -863,6 +863,7 @@ export default function NewInvoiceModal({
       {variantPanelProduct && (
         <VariantsPanel
           product={variantPanelProduct}
+          context="purchase"
           onClose={() => void handleVariantsPanelClose(variantPanelProduct)}
         />
       )}
