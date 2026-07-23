@@ -1,6 +1,11 @@
 import { useEffect, useState } from 'react'
-import { Users, Plus, X, Store, Check } from 'lucide-react'
+import { Users, Plus, X, Store, Check, KeyRound, RefreshCw, Copy } from 'lucide-react'
 import toast from 'react-hot-toast'
+import {
+  generateReadablePassword,
+  validatePasswordStrength,
+  MIN_PASSWORD_LENGTH,
+} from '@/lib/passwordPolicy'
 import { useStoreUsers } from '@/hooks/useConfig'
 import { useConfigMutations } from '@/hooks/useConfigMutations'
 import { useAuth } from '@/hooks/useAuth'
@@ -376,6 +381,177 @@ function CreateUserModal({ onClose, onCreated }: CreateUserModalProps) {
   )
 }
 
+// ─── Reset Password Modal (admin) ─────────────────────────────────────────────
+
+function ResetPasswordModal({ user, onClose }: { user: Profile; onClose: () => void }) {
+  const { resetUserPassword } = useConfigMutations()
+  const [password, setPassword] = useState('')
+  // El destino inactivo se reactiva por defecto (caso real: vuelve el empleado).
+  const [reactivate, setReactivate] = useState(!user.is_active)
+  // Clave asignada, se muestra UNA vez para que el admin la dicte.
+  const [assigned, setAssigned] = useState<string | null>(null)
+
+  function handleCopy() {
+    if (!assigned) return
+    void navigator.clipboard
+      .writeText(assigned)
+      .then(() => toast.success('Contraseña copiada'))
+      .catch(() => toast.error('No se pudo copiar'))
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    const check = validatePasswordStrength(password)
+    if (!check.ok) {
+      toast.error(check.error ?? 'Contraseña inválida')
+      return
+    }
+    try {
+      await resetUserPassword.mutateAsync({
+        user_id: user.id,
+        new_password: password,
+        reactivate,
+      })
+      setAssigned(password)
+      toast.success('Contraseña restablecida')
+    } catch {
+      // toast en la mutación
+    }
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 grid place-items-center"
+      style={{ background: 'rgba(15,23,42,0.5)', backdropFilter: 'blur(4px)' }}
+      onClick={onClose}
+    >
+      <div
+        className="w-[420px] rounded-[14px] bg-white shadow-[0_20px_60px_rgba(0,0,0,0.3)]"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-start justify-between border-b border-[#f5f4f1] px-6 py-5">
+          <div className="flex items-center gap-3">
+            <div className="grid h-9 w-9 place-items-center rounded-lg bg-violet-100 text-violet-600">
+              <KeyRound size={16} />
+            </div>
+            <div>
+              <h2 className="text-[19px] font-semibold leading-tight tracking-[-0.02em] text-[#1a1a1a]">
+                Restablecer contraseña
+              </h2>
+              <p className="mt-0.5 text-[13px] text-[#737373]">{user.full_name}</p>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="flex h-7 w-7 items-center justify-center rounded-[7px] bg-[#f5f4f1] hover:bg-[#ebe9e6]"
+          >
+            <X size={14} className="text-[#525252]" />
+          </button>
+        </div>
+
+        {assigned ? (
+          // ── Éxito: mostrar la clave UNA vez ──────────────────────────────────
+          <div className="space-y-4 px-6 py-5">
+            <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3">
+              <p className="text-[13px] font-medium text-emerald-800">
+                Contraseña asignada
+                {reactivate && !user.is_active ? ' · usuario reactivado' : ''}
+              </p>
+              <p className="mt-1 text-[12px] text-emerald-700">
+                Dictásela ahora al colaborador. No se volverá a mostrar.
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <code className="flex-1 rounded-lg border border-[#ebe9e6] bg-[#fafaf9] px-3 py-2.5 font-mono text-[15px] tracking-wide text-[#1a1a1a]">
+                {assigned}
+              </code>
+              <button
+                onClick={handleCopy}
+                className="flex h-11 w-11 items-center justify-center rounded-lg border border-[#ebe9e6] bg-white text-[#525252] hover:bg-[#f8f7f5]"
+                title="Copiar"
+              >
+                <Copy size={16} />
+              </button>
+            </div>
+            <button
+              onClick={onClose}
+              className="h-10 w-full rounded-lg bg-[#8b5cf6] text-sm font-semibold text-white shadow-[0_4px_12px_#8b5cf640] hover:brightness-95"
+            >
+              Listo
+            </button>
+          </div>
+        ) : (
+          // ── Formulario ───────────────────────────────────────────────────────
+          <form onSubmit={(e) => void handleSubmit(e)} className="space-y-4 px-6 py-5">
+            <div>
+              <label className="mb-1.5 block text-xs font-medium text-[#525252]">
+                Nueva contraseña
+              </label>
+              <div className="flex items-center gap-2">
+                <input
+                  autoFocus
+                  type="text"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder={`Mínimo ${MIN_PASSWORD_LENGTH} caracteres`}
+                  className="h-10 flex-1 rounded-lg border border-[#ebe9e6] px-3 font-mono text-sm outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100"
+                />
+                <button
+                  type="button"
+                  onClick={() => setPassword(generateReadablePassword(10))}
+                  className="flex h-10 items-center gap-1.5 rounded-lg border border-[#ebe9e6] bg-white px-3 text-xs font-medium text-[#525252] hover:bg-[#f8f7f5]"
+                  title="Generar contraseña"
+                >
+                  <RefreshCw size={13} />
+                  Generar
+                </button>
+              </div>
+              <p className="mt-1.5 text-[11px] text-[#a8a29e]">
+                La contraseña es visible para que puedas dictarla. Se guarda cifrada.
+              </p>
+            </div>
+
+            {!user.is_active && (
+              <button
+                type="button"
+                onClick={() => setReactivate((v) => !v)}
+                className="flex w-full items-center gap-3 rounded-lg border border-[#ebe9e6] bg-[#fafaf9] px-3 py-2.5 text-left text-sm hover:bg-[#f8f7f5]"
+              >
+                <span
+                  className={`flex h-5 w-5 items-center justify-center rounded-md border ${
+                    reactivate ? 'border-violet-500 bg-violet-500 text-white' : 'border-[#ebe9e6] bg-white'
+                  }`}
+                >
+                  {reactivate && <Check size={13} />}
+                </span>
+                <span className="text-[#1a1a1a]">Reactivar y asignar nueva clave</span>
+              </button>
+            )}
+
+            <div className="flex gap-3 pt-1">
+              <button
+                type="button"
+                onClick={onClose}
+                className="h-10 flex-1 rounded-lg border border-[#ebe9e6] bg-white text-sm font-medium text-[#525252] hover:bg-[#f8f7f5]"
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                disabled={resetUserPassword.isPending}
+                className="flex h-10 flex-1 items-center justify-center gap-2 rounded-lg bg-[#8b5cf6] text-sm font-semibold text-white shadow-[0_4px_12px_#8b5cf640] hover:brightness-95 disabled:opacity-60"
+              >
+                {resetUserPassword.isPending ? 'Guardando…' : 'Restablecer'}
+              </button>
+            </div>
+          </form>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ─── User Row ─────────────────────────────────────────────────────────────────
 
 function UserRow({ user }: { user: Profile }) {
@@ -385,6 +561,7 @@ function UserRow({ user }: { user: Profile }) {
   const { isOwner } = usePermissions()
   const isSelf = user.id === currentProfile?.id
   const [showStores, setShowStores] = useState(false)
+  const [showReset, setShowReset] = useState(false)
 
   // Rol RBAC del usuario (por role_id). Fallback al enum legacy si no se encuentra.
   const userRole = roles.find((r) => r.id === user.role_id) ?? null
@@ -426,6 +603,17 @@ function UserRow({ user }: { user: Profile }) {
           >
             <Store size={13} />
             Tiendas{storeAccess.length > 0 ? ` (${storeAccess.length})` : ''}
+          </button>
+        )}
+
+        {/* Resetear contraseña (mismo guard !isSelf que el resto de acciones) */}
+        {!isSelf && (
+          <button
+            onClick={() => setShowReset(true)}
+            title="Restablecer contraseña"
+            className="flex h-8 w-8 items-center justify-center rounded-lg border border-[#ebe9e6] bg-white text-[#525252] hover:bg-slate-50"
+          >
+            <KeyRound size={13} />
           </button>
         )}
 
@@ -472,6 +660,8 @@ function UserRow({ user }: { user: Profile }) {
       </div>
 
       {manager && showStores && <StoreAccessPanel user={user} />}
+
+      {showReset && <ResetPasswordModal user={user} onClose={() => setShowReset(false)} />}
     </div>
   )
 }

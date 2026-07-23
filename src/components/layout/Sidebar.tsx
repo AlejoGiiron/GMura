@@ -17,6 +17,7 @@ import {
   Settings,
   ChevronDown,
   LogOut,
+  KeyRound,
   Bookmark,
   Truck,
   Building2,
@@ -24,6 +25,7 @@ import {
 } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import { usePermissions } from '@/hooks/usePermissions'
+import { ChangePasswordModal } from './ChangePasswordModal'
 import { useActiveLayawaysCount } from '@/hooks/useLayaways'
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
@@ -258,6 +260,7 @@ export default function Sidebar() {
   const { can } = usePermissions()
   const location = useLocation()
   const userId = profile?.id ?? ''
+  const [showChangePassword, setShowChangePassword] = useState(false)
 
   const visibleGroups = useMemo(
     () => filterByPermission(NAV_GROUPS, can),
@@ -327,8 +330,15 @@ export default function Sidebar() {
         ))}
       </nav>
 
-      {/* Sign out */}
+      {/* Cuenta */}
       <div className="border-t border-slate-800 px-3 py-4">
+        <button
+          onClick={() => setShowChangePassword(true)}
+          className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-slate-400 transition-colors hover:bg-white/5 hover:text-slate-200"
+        >
+          <KeyRound size={17} />
+          Cambiar contraseña
+        </button>
         <button
           onClick={() => void signOut()}
           className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-slate-400 transition-colors hover:bg-white/5 hover:text-slate-200"
@@ -337,6 +347,10 @@ export default function Sidebar() {
           Cerrar sesión
         </button>
       </div>
+
+      {showChangePassword && (
+        <ChangePasswordModal onClose={() => setShowChangePassword(false)} />
+      )}
     </aside>
   )
 }

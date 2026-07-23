@@ -134,6 +134,43 @@ export function useConfigMutations() {
     onError: (err: Error) => toast.error(err.message),
   })
 
+  const resetUserPassword = useMutation({
+    mutationFn: async (input: {
+      user_id: string
+      new_password: string
+      reactivate?: boolean
+    }) => {
+      const { data, error } = await supabase.functions.invoke('reset-user-password', {
+        body: input,
+      })
+      if (error) {
+        // La Edge Function devuelve { error } con 4xx; supabase-js entrega un
+        // FunctionsHttpError genérico y el cuerpo en error.context. Lo leemos
+        // para mostrar el mensaje real (cross-org, Dueño, etc.).
+        let msg = error.message
+        try {
+          const ctx = (error as { context?: Response }).context
+          if (ctx) {
+            const parsed = (await ctx.json()) as { error?: string }
+            if (parsed?.error) msg = parsed.error
+          }
+        } catch {
+          // sin cuerpo legible → usar error.message
+        }
+        throw new Error(msg)
+      }
+      if ((data as { error?: string } | null)?.error) {
+        throw new Error((data as { error: string }).error)
+      }
+      return data as { success: boolean; reactivated?: boolean; warning?: string }
+    },
+    onSuccess: (data) => {
+      invalidateUsers()
+      if (data?.warning) toast.error(data.warning)
+    },
+    onError: (err: Error) => toast.error(err.message),
+  })
+
   const updateUserRole = useMutation({
     mutationFn: async ({ id, roleId }: { id: string; roleId: string }) => {
       // Deriva el enum legacy de los permisos del rol para no dejarlo stale.
@@ -177,6 +214,7 @@ export function useConfigMutations() {
     uploadLogo,
     uploadPaymentQR,
     createUser,
+    resetUserPassword,
     updateUserRole,
     toggleUserActive,
   }
