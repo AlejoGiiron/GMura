@@ -213,6 +213,10 @@ export interface CashShift {
 
 export type CashExpenseKind = 'expense' | 'return'
 
+// Cómo se pagó un egreso (037). Subconjunto de PaymentMethod: 'addi' y 'credit'
+// no aplican a un gasto. Solo 'cash' sale del cajón → afecta el cuadre.
+export type ExpensePaymentMethod = 'cash' | 'card' | 'transfer'
+
 export interface CashExpense {
   id: string
   shift_id: string
@@ -220,6 +224,7 @@ export interface CashExpense {
   amount: number
   reason: string
   kind: CashExpenseKind
+  payment_method: ExpensePaymentMethod
   return_id: string | null
   notes: string | null
   created_by: string
@@ -596,10 +601,15 @@ export interface Database {
       }
       cash_expenses: {
         Row: CashExpense
-        Insert: Omit<CashExpense, 'id' | 'created_at' | 'kind' | 'return_id'> & {
+        Insert: Omit<
+          CashExpense,
+          'id' | 'created_at' | 'kind' | 'payment_method' | 'return_id'
+        > & {
           id?: string
           created_at?: string
           kind?: CashExpenseKind
+          // Opcional: la BD lo deja en 'cash' por DEFAULT (037).
+          payment_method?: ExpensePaymentMethod
           return_id?: string | null
         }
         Update: Partial<Omit<CashExpense, 'id'>>

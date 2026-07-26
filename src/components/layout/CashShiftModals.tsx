@@ -9,7 +9,11 @@ import {
   CashShiftReceipt,
   CashShiftReceiptPrint,
 } from '@/components/cash/CashShiftReceipt'
-import type { CashShift } from '@/types/database.types'
+import {
+  PAYMENT_METHODS,
+  EXPENSE_PAYMENT_METHOD_KEYS,
+} from '@/lib/paymentMethods'
+import type { CashShift, ExpensePaymentMethod } from '@/types/database.types'
 
 function parseCOP(value: string): number {
   const digits = value.replace(/\D/g, '')
@@ -139,6 +143,8 @@ export function ExpenseModal({ onClose }: ExpenseModalProps) {
   const [amount, setAmount] = useState('')
   const [reason, setReason] = useState<string>(reasons[0] ?? '')
   const [notes, setNotes] = useState('')
+  // Default 'cash': es el caso más común y el comportamiento previo a la 037.
+  const [method, setMethod] = useState<ExpensePaymentMethod>('cash')
 
   useEffect(() => {
     if (!reason && reasons.length > 0) setReason(reasons[0])
@@ -158,11 +164,12 @@ export function ExpenseModal({ onClose }: ExpenseModalProps) {
   function handleSubmit() {
     if (!canSubmit) return
     registerExpense.mutate(
-      { amount: parsed, reason, notes },
+      { amount: parsed, reason, notes, payment_method: method },
       {
         onSuccess: () => {
           setAmount('')
           setNotes('')
+          setMethod('cash')
           onClose()
         },
       },
@@ -176,7 +183,7 @@ export function ExpenseModal({ onClose }: ExpenseModalProps) {
       onClick={() => !registerExpense.isPending && onClose()}
     >
       <div
-        className="w-full max-w-md rounded-[14px] bg-white p-7 shadow-[0_20px_60px_rgba(0,0,0,0.3)]"
+        className="max-h-[92vh] w-full max-w-md overflow-y-auto rounded-[14px] bg-white p-7 shadow-[0_20px_60px_rgba(0,0,0,0.3)]"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-5 flex items-start justify-between">
@@ -197,7 +204,7 @@ export function ExpenseModal({ onClose }: ExpenseModalProps) {
                 Registrar gasto
               </h2>
               <p className="mt-0.5 text-[13px] text-[#737373]">
-                Egreso de efectivo del turno actual.
+                Egreso del turno actual.
               </p>
             </div>
           </div>
@@ -231,6 +238,43 @@ export function ExpenseModal({ onClose }: ExpenseModalProps) {
           {parsed > 0 && (
             <p className="mt-1.5 text-xs text-[#737373]">{fmtCOP(parsed)}</p>
           )}
+        </div>
+
+        {/* Cómo se pagó (037) — define si el gasto afecta el cuadre */}
+        <div className="mb-4">
+          <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[.05em] text-[#737373]">
+            ¿Cómo se pagó?
+          </label>
+          <div className="grid grid-cols-3 gap-2">
+            {EXPENSE_PAYMENT_METHOD_KEYS.map((key) => {
+              const meta = PAYMENT_METHODS[key]
+              const Icon = meta.icon
+              const active = key === method
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setMethod(key)}
+                  className={`flex flex-col items-center gap-1 rounded-lg border px-2 py-2.5 text-xs font-medium transition-colors ${
+                    active
+                      ? 'border-violet-600 bg-violet-50 text-violet-800'
+                      : 'border-[#ebe9e6] bg-white text-[#525252] hover:border-violet-300 hover:bg-violet-50/40'
+                  }`}
+                >
+                  <Icon
+                    size={16}
+                    style={{ color: active ? meta.hex : '#a8a29e' }}
+                  />
+                  {meta.label}
+                </button>
+              )
+            })}
+          </div>
+          <p className="mt-1.5 text-[11px] text-[#737373]">
+            {method === 'cash'
+              ? 'Sale del cajón: se resta del efectivo esperado al cerrar el turno.'
+              : 'No sale del cajón: queda en el historial de gastos, pero NO afecta el cuadre de caja.'}
+          </p>
         </div>
 
         {/* Motivo (pills) */}
@@ -455,6 +499,7 @@ export function CloseShiftModal({ shift, onClose }: CloseShiftModalProps) {
                   totalSales={closing.totalSales}
                   cashSales={closing.cashSales}
                   totalExpenses={closing.totalExpenses}
+                  cashExpensesTotal={closing.cashExpensesTotal}
                   expectedCash={closing.expectedCash}
                   overdraft={closing.overdraft}
                   orderCount={closing.orderCount}
@@ -505,6 +550,7 @@ export function CloseShiftModal({ shift, onClose }: CloseShiftModalProps) {
           totalSales={closing.totalSales}
           cashSales={closing.cashSales}
           totalExpenses={closing.totalExpenses}
+          cashExpensesTotal={closing.cashExpensesTotal}
           expectedCash={closing.expectedCash}
           overdraft={closing.overdraft}
           orderCount={closing.orderCount}

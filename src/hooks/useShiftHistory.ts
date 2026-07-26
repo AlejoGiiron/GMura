@@ -20,6 +20,9 @@ export interface ShiftHistoryRow {
   cashierName: string
   cashSales: number
   totalExpenses: number
+  // Porción en efectivo de los egresos: la única que baja el esperado (037).
+  cashExpensesTotal: number
+  nonCashExpensesTotal: number
   expectedCash: number
   overdraft: number
   countedCash: number
@@ -100,20 +103,28 @@ export function useShiftHistory(filters: ShiftHistoryFilters) {
 
       const { data: expensesRaw, error: expErr } = await supabase
         .from('cash_expenses')
-        .select('shift_id, amount')
+        .select('shift_id, amount, payment_method')
         .in('shift_id' as never, shiftIds)
         .eq('store_id' as never, storeId)
       if (expErr) throw expErr
 
+      // Dos acumulados por turno: TODO el egreso (para mostrar) y solo el
+      // pagado en efectivo (el único que baja el esperado — 037).
       const expByShift = new Map<string, number>()
+      const cashExpByShift = new Map<string, number>()
       for (const e of (expensesRaw ?? []) as unknown as {
         shift_id: string
         amount: number | string
+        payment_method: string | null
       }[]) {
-        expByShift.set(
-          e.shift_id,
-          (expByShift.get(e.shift_id) ?? 0) + Number(e.amount),
-        )
+        const amount = Number(e.amount)
+        expByShift.set(e.shift_id, (expByShift.get(e.shift_id) ?? 0) + amount)
+        if ((e.payment_method ?? 'cash') === 'cash') {
+          cashExpByShift.set(
+            e.shift_id,
+            (cashExpByShift.get(e.shift_id) ?? 0) + amount,
+          )
+        }
       }
 
       // Imputación híbrida (026): las ventas/abonos NUEVOS se agrupan por
@@ -316,7 +327,8 @@ export function useShiftHistory(filters: ShiftHistoryFilters) {
         const openingAmount = Number(s.opening_amount)
         const cashSales = cashByShift.get(s.id) ?? 0
         const totalExpenses = expByShift.get(s.id) ?? 0
-        const rec = reconcileCash(openingAmount + cashSales, totalExpenses)
+        const cashExpensesTotal = cashExpByShift.get(s.id) ?? 0
+        const rec = reconcileCash(openingAmount + cashSales, cashExpensesTotal)
         const countedCash =
           s.closing_amount != null ? Number(s.closing_amount) : 0
         return {
@@ -334,6 +346,8 @@ export function useShiftHistory(filters: ShiftHistoryFilters) {
           cashierName: s.profiles?.full_name ?? 'Cajero',
           cashSales,
           totalExpenses,
+          cashExpensesTotal,
+          nonCashExpensesTotal: totalExpenses - cashExpensesTotal,
           expectedCash: rec.expectedCash,
           overdraft: rec.overdraft,
           countedCash,

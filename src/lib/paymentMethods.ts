@@ -62,6 +62,14 @@ export const PAYMENT_METHOD_KEYS = [
   'addi',
 ] as const
 
+// Métodos válidos para un EGRESO (037). Más chico que el de ventas: no se le
+// fía a un gasto ni se paga con Addi. Solo 'cash' afecta el cuadre de caja.
+export const EXPENSE_PAYMENT_METHOD_KEYS = [
+  'cash',
+  'card',
+  'transfer',
+] as const satisfies readonly PaymentMethod[]
+
 export function getPaymentLabel(method: PaymentMethod): string {
   return PAYMENT_METHODS[method].label
 }

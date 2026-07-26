@@ -3,7 +3,10 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from './useAuth'
 import { getActiveStoreId } from './useActiveStoreId'
 import { bogotaDayStartToUtc, bogotaDayEndToUtc } from '@/lib/dates'
-import type { CashExpense } from '@/types/database.types'
+import type {
+  CashExpense,
+  ExpensePaymentMethod,
+} from '@/types/database.types'
 
 // Egresos de un turno específico, ordenados del más reciente al más viejo.
 export function useShiftExpenses(shiftId: string | null) {
@@ -38,6 +41,8 @@ export interface ExpenseHistoryRow {
   reason: string
   notes: string | null
   amount: number
+  // Cómo se pagó (037). Solo 'cash' afectó el cuadre del turno.
+  payment_method: ExpensePaymentMethod
   shift_id: string
   created_by: string
   cashierName: string
@@ -49,6 +54,7 @@ type RawExpenseRow = {
   reason: string
   notes: string | null
   amount: number | string
+  payment_method: ExpensePaymentMethod | null
   shift_id: string
   created_by: string
   profiles: { full_name: string } | null
@@ -69,7 +75,7 @@ export function useExpenseHistory(filters: ExpenseHistoryFilters) {
       let q = supabase
         .from('cash_expenses')
         .select(
-          'id, created_at, reason, notes, amount, shift_id, created_by, profiles:created_by(full_name)',
+          'id, created_at, reason, notes, amount, payment_method, shift_id, created_by, profiles:created_by(full_name)',
         )
         .eq('store_id' as never, storeId)
         .eq('kind' as never, 'expense')
@@ -93,6 +99,9 @@ export function useExpenseHistory(filters: ExpenseHistoryFilters) {
         reason: e.reason,
         notes: e.notes,
         amount: Number(e.amount),
+        // Las filas previas a la 037 quedaron en 'cash' por DEFAULT; el ?? es
+        // defensa por si la columna aún no existe en el entorno.
+        payment_method: e.payment_method ?? 'cash',
         shift_id: e.shift_id,
         created_by: e.created_by,
         cashierName: e.profiles?.full_name ?? 'Usuario',
