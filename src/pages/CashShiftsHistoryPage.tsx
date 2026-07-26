@@ -140,6 +140,7 @@ function ReprintReceiptModal({
                   totalSales={closing.totalSales}
                   cashSales={closing.cashSales}
                   totalExpenses={closing.totalExpenses}
+                  cashExpensesTotal={closing.cashExpensesTotal}
                   expectedCash={closing.expectedCash}
                   overdraft={closing.overdraft}
                   orderCount={closing.orderCount}
@@ -187,6 +188,7 @@ function ReprintReceiptModal({
           totalSales={closing.totalSales}
           cashSales={closing.cashSales}
           totalExpenses={closing.totalExpenses}
+          cashExpensesTotal={closing.cashExpensesTotal}
           expectedCash={closing.expectedCash}
           overdraft={closing.overdraft}
           orderCount={closing.orderCount}
@@ -231,9 +233,24 @@ function ShiftRow({ row, onReprint }: RowProps) {
       <span className="text-right font-mono tabular-nums text-[#525252]">
         {fmtCOP(row.cashSales)}
       </span>
-      <span className="text-right font-mono tabular-nums text-red-700">
-        {row.totalExpenses > 0 ? `-${fmtCOP(row.totalExpenses)}` : fmtCOP(0)}
-      </span>
+      {/* Egresos: se muestra la porción en EFECTIVO (la que baja el esperado);
+          si hubo gastos por otro medio se anotan aparte para que el total del
+          historial de gastos siga siendo explicable. */}
+      <div className="text-right">
+        <p className="font-mono tabular-nums text-red-700">
+          {row.cashExpensesTotal > 0
+            ? `-${fmtCOP(row.cashExpensesTotal)}`
+            : fmtCOP(0)}
+        </p>
+        {row.nonCashExpensesTotal > 0 && (
+          <p
+            className="font-mono text-[10.5px] tabular-nums text-[#a8a29e]"
+            title="Gastos pagados con tarjeta o transferencia: no salen del cajón, no afectan el cuadre"
+          >
+            +{fmtCOP(row.nonCashExpensesTotal)} no efec.
+          </p>
+        )}
+      </div>
       <span className="text-right font-mono tabular-nums font-semibold text-[#1a1a1a]">
         {fmtCOP(row.expectedCash)}
       </span>

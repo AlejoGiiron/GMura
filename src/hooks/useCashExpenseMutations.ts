@@ -5,12 +5,21 @@ import { useAuth } from './useAuth'
 import { getActiveStoreId } from './useActiveStoreId'
 import { useCurrentShift } from './useCashShift'
 import { fmtCOP } from '@/lib/formatters'
-import type { CashExpense } from '@/types/database.types'
+import {
+  PAYMENT_METHODS,
+  EXPENSE_PAYMENT_METHOD_KEYS,
+} from '@/lib/paymentMethods'
+import type {
+  CashExpense,
+  ExpensePaymentMethod,
+} from '@/types/database.types'
 
 export interface RegisterExpenseInput {
   amount: number
   reason: string
   notes: string
+  // Cómo se pagó el gasto (037). Solo 'cash' se resta del efectivo del cuadre.
+  payment_method: ExpensePaymentMethod
 }
 
 export function useRegisterExpense() {
@@ -36,6 +45,13 @@ export function useRegisterExpense() {
       if (!reason) {
         throw new Error('Selecciona un motivo')
       }
+      if (
+        !(EXPENSE_PAYMENT_METHOD_KEYS as readonly string[]).includes(
+          input.payment_method,
+        )
+      ) {
+        throw new Error('Selecciona cómo se pagó el gasto')
+      }
 
       const { data, error } = await supabase
         .from('cash_expenses')
@@ -44,6 +60,9 @@ export function useRegisterExpense() {
           store_id: storeId,
           amount: input.amount,
           reason,
+          // Solo 'cash' baja el efectivo esperado del turno; tarjeta y
+          // transferencia quedan en el historial sin tocar el cuadre (037).
+          payment_method: input.payment_method,
           notes: input.notes.trim() || null,
           created_by: userId,
         } as never)
@@ -61,8 +80,13 @@ export function useRegisterExpense() {
         queryKey: ['shift-expenses', expense.shift_id],
       })
       void queryClient.invalidateQueries({ queryKey: ['shift-expenses'] })
+      // El cuadre y el historial cambian con el gasto: si no se invalidan, el
+      // "Esperado" del turno abierto sigue mostrando el valor anterior.
+      void queryClient.invalidateQueries({ queryKey: ['shift-closing'] })
+      void queryClient.invalidateQueries({ queryKey: ['expense-history'] })
+      const method = PAYMENT_METHODS[expense.payment_method].label
       toast.success(
-        `Gasto registrado: ${fmtCOP(Number(expense.amount))} por ${expense.reason}`,
+        `Gasto registrado: ${fmtCOP(Number(expense.amount))} por ${expense.reason} (${method})`,
       )
     },
 

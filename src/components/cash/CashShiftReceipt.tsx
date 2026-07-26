@@ -43,6 +43,10 @@ export interface CashShiftReceiptProps {
   totalSales: number
   cashSales: number
   totalExpenses: number
+  // Egresos pagados en EFECTIVO: los únicos que se restan del cuadre (037).
+  // Opcional por compatibilidad: si no viene, se asume que todo fue efectivo
+  // (comportamiento previo a la 037).
+  cashExpensesTotal?: number
   expectedCash: number
   overdraft?: number
   orderCount: number
@@ -105,6 +109,18 @@ function Line({ children }: { children: React.ReactNode }) {
   return <div style={{ display: 'flex', justifyContent: 'space-between' }}>{children}</div>
 }
 
+// Un egreso sin payment_method es de antes de la 037 → se contaba como efectivo.
+function isCashExpense(e: CashExpense): boolean {
+  return (e.payment_method ?? 'cash') === 'cash'
+}
+
+// Etiqueta corta del método para el ticket de 80mm; solo se imprime cuando el
+// egreso NO fue en efectivo (el caso normal no necesita aclaración).
+const SHORT_METHOD: Record<string, string> = {
+  card: 'Tarj',
+  transfer: 'Transf',
+}
+
 // ── Componente principal ──────────────────────────────────────────────────────
 
 export function CashShiftReceipt(props: CashShiftReceiptProps) {
@@ -144,6 +160,15 @@ export function CashShiftReceipt(props: CashShiftReceiptProps) {
     (sum, e) => sum + Number(e.amount),
     0,
   )
+  // Egresos que NO salieron del cajón (tarjeta/transferencia — 037). Se listan
+  // igual (son gasto del negocio) pero se separan del total en efectivo para que
+  // el cuadre se lea sin ambigüedad.
+  const regularNonCashTotal = regularExpenses.reduce(
+    (sum, e) => (isCashExpense(e) ? sum : sum + Number(e.amount)),
+    0,
+  )
+  // Lo que el cuadre resta. Fallback a totalExpenses para call sites viejos.
+  const cashExpenses = props.cashExpensesTotal ?? totalExpenses
 
   const closedAt = shift.closed_at ? new Date(shift.closed_at) : printedAt
   const duration = fmtDuration(shift.opened_at, closedAt)
@@ -352,7 +377,11 @@ export function CashShiftReceipt(props: CashShiftReceiptProps) {
             {regularExpenses.map((e) => (
               <Line key={e.id}>
                 <span style={monoLight}>
-                  [{fmtHHmm(e.created_at)}] {e.reason}:
+                  [{fmtHHmm(e.created_at)}] {e.reason}
+                  {isCashExpense(e)
+                    ? ''
+                    : ` (${SHORT_METHOD[e.payment_method] ?? e.payment_method})`}
+                  :
                 </span>
                 <span>{fmtCOP(Number(e.amount))}</span>
               </Line>
@@ -364,6 +393,22 @@ export function CashShiftReceipt(props: CashShiftReceiptProps) {
                 {fmtCOP(regularExpensesTotal)}
               </span>
             </Line>
+            {/* Desglose solo cuando hay gastos que no salieron del cajón: sin
+                esto el "Total egresos" no cuadra con lo que resta el efectivo. */}
+            {regularNonCashTotal > 0 && (
+              <>
+                <Line>
+                  <span style={monoLight}>· En efectivo:</span>
+                  <span>
+                    {fmtCOP(regularExpensesTotal - regularNonCashTotal)}
+                  </span>
+                </Line>
+                <Line>
+                  <span style={monoLight}>· No afectan caja:</span>
+                  <span>{fmtCOP(regularNonCashTotal)}</span>
+                </Line>
+              </>
+            )}
           </div>
         </>
       )}
@@ -381,10 +426,12 @@ export function CashShiftReceipt(props: CashShiftReceiptProps) {
           <span style={monoLight}>+ Ventas efec:</span>
           <span>{fmtCOP(props.cashSales)}</span>
         </Line>
-        {totalExpenses > 0 && (
+        {/* Solo los egresos EN EFECTIVO bajan el esperado (037): un gasto por
+            transferencia no sale del cajón. */}
+        {cashExpenses > 0 && (
           <Line>
-            <span style={monoLight}>- Egresos:</span>
-            <span>-{fmtCOP(totalExpenses)}</span>
+            <span style={monoLight}>- Egresos efec:</span>
+            <span>-{fmtCOP(cashExpenses)}</span>
           </Line>
         )}
         <div style={monoLight}>{SUBDIV}</div>

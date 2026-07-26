@@ -9,6 +9,8 @@ import {
   type ExpenseHistoryRow,
 } from '@/hooks/useCashExpenses'
 import { useMyStores } from '@/hooks/useStores'
+import { PAYMENT_METHODS } from '@/lib/paymentMethods'
+import type { ExpensePaymentMethod } from '@/types/database.types'
 
 const DEFAULT_FROM = format(subDays(new Date(), 30), 'yyyy-MM-dd')
 const DEFAULT_TO = format(new Date(), 'yyyy-MM-dd')
@@ -27,6 +29,36 @@ function fmtDateTime(iso: string): string {
   }).format(new Date(iso))
 }
 
+// El encabezado y las filas comparten la grilla por construcción (evita que se
+// desalineen al agregar columnas).
+const ROW_GRID =
+  'grid-cols-[150px_minmax(0,1fr)_minmax(0,1.1fr)_130px_130px_160px]'
+
+// Chip del medio de pago. El efectivo es el caso normal (gris); tarjeta y
+// transferencia se destacan porque NO afectan el cuadre de caja.
+function MethodChip({ method }: { method: ExpensePaymentMethod }) {
+  const meta = PAYMENT_METHODS[method]
+  const Icon = meta.icon
+  const isCash = method === 'cash'
+  return (
+    <span
+      title={
+        isCash
+          ? 'Salió del cajón: se resta del efectivo esperado del turno'
+          : 'No salió del cajón: no afecta el cuadre de caja'
+      }
+      className={`inline-flex w-fit items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-medium ${
+        isCash
+          ? 'bg-[#f5f4f1] text-[#525252]'
+          : 'bg-blue-50 text-blue-800 ring-1 ring-blue-100'
+      }`}
+    >
+      <Icon size={11} style={{ color: meta.hex }} />
+      {meta.label}
+    </span>
+  )
+}
+
 interface ReasonBreakdown {
   reason: string
   total: number
@@ -35,19 +67,25 @@ interface ReasonBreakdown {
 
 function buildSummary(rows: ExpenseHistoryRow[]): {
   total: number
+  // Porción pagada en efectivo: la única que salió del cajón y afectó el
+  // cuadre del turno (037). El resto es gasto del negocio, no de la caja.
+  cashTotal: number
+  nonCashTotal: number
   byReason: ReasonBreakdown[]
 } {
   let total = 0
+  let cashTotal = 0
   const map = new Map<string, { total: number; count: number }>()
   for (const r of rows) {
     total += r.amount
+    if (r.payment_method === 'cash') cashTotal += r.amount
     const prev = map.get(r.reason) ?? { total: 0, count: 0 }
     map.set(r.reason, { total: prev.total + r.amount, count: prev.count + 1 })
   }
   const byReason = Array.from(map.entries())
     .map(([reason, v]) => ({ reason, ...v }))
     .sort((a, b) => b.total - a.total)
-  return { total, byReason }
+  return { total, cashTotal, nonCashTotal: total - cashTotal, byReason }
 }
 
 // ── Page ──────────────────────────────────────────────────────────────────────
@@ -75,7 +113,7 @@ export default function ExpenseHistoryPage() {
     [rows, reason],
   )
 
-  const { total, byReason } = useMemo(
+  const { total, cashTotal, nonCashTotal, byReason } = useMemo(
     () => buildSummary(displayedRows),
     [displayedRows],
   )
@@ -105,6 +143,7 @@ export default function ExpenseHistoryPage() {
         { header: 'Fecha', key: 'fecha', width: 18 },
         { header: 'Motivo', key: 'motivo', width: 24 },
         { header: 'Notas', key: 'notas', width: 32 },
+        { header: 'Pagado con', key: 'metodo', width: 16 },
         { header: 'Monto', key: 'monto', width: 16 },
         { header: 'Registrado por', key: 'cajero', width: 22 },
       ]
@@ -118,6 +157,7 @@ export default function ExpenseHistoryPage() {
           fecha: fmtDateTime(r.created_at),
           motivo: r.reason,
           notas: r.notes ?? '',
+          metodo: PAYMENT_METHODS[r.payment_method].label,
           monto: r.amount,
           cajero: r.cashierName,
         })
@@ -126,10 +166,24 @@ export default function ExpenseHistoryPage() {
         fecha: 'TOTAL',
         motivo: '',
         notas: '',
+        metodo: '',
         monto: total,
         cajero: '',
       })
       totalRow.font = BOLD
+      // Desglose por medio: solo el efectivo afectó el cuadre de caja.
+      if (nonCashTotal > 0) {
+        const cashRow = ws.addRow({
+          fecha: 'En efectivo (afecta caja)',
+          monto: cashTotal,
+        })
+        cashRow.font = BOLD
+        const nonCashRow = ws.addRow({
+          fecha: 'Tarjeta / transferencia',
+          monto: nonCashTotal,
+        })
+        nonCashRow.font = BOLD
+      }
       ws.getColumn('monto').numFmt = MONEY_FMT
 
       // Hoja 2 — Desglose por motivo
@@ -249,6 +303,27 @@ export default function ExpenseHistoryPage() {
           <p className="mt-1 text-xs text-[#737373]">
             {displayedRows.length} gasto{displayedRows.length !== 1 ? 's' : ''}
           </p>
+          {/* Desglose por medio de pago: solo el efectivo afectó el cuadre de
+              los turnos; lo demás es gasto del negocio que no salió del cajón. */}
+          {nonCashTotal > 0 && (
+            <div className="mt-3 flex flex-col gap-1 border-t border-[#ebe9e6] pt-3 text-xs">
+              <div className="flex items-center justify-between">
+                <span className="text-[#737373]">En efectivo</span>
+                <span className="font-mono font-semibold tabular-nums text-[#1a1a1a]">
+                  {fmtCOP(cashTotal)}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-[#737373]">Tarjeta / transferencia</span>
+                <span className="font-mono font-semibold tabular-nums text-[#1a1a1a]">
+                  {fmtCOP(nonCashTotal)}
+                </span>
+              </div>
+              <p className="mt-1 text-[10.5px] leading-tight text-[#a8a29e]">
+                Solo los gastos en efectivo se restan del cuadre de caja.
+              </p>
+            </div>
+          )}
         </div>
 
         <div className="rounded-2xl border border-[#ebe9e6] bg-white p-5">
@@ -282,10 +357,11 @@ export default function ExpenseHistoryPage() {
 
       {/* Tabla */}
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-[#ebe9e6] bg-white">
-        <div className="grid grid-cols-[150px_minmax(0,1fr)_minmax(0,1.2fr)_130px_160px] gap-3 border-b border-[#ebe9e6] bg-[#fafaf9] px-6 py-3 text-[11px] font-semibold uppercase tracking-[.05em] text-[#737373]">
+        <div className={`grid ${ROW_GRID} gap-3 border-b border-[#ebe9e6] bg-[#fafaf9] px-6 py-3 text-[11px] font-semibold uppercase tracking-[.05em] text-[#737373]`}>
           <span>Fecha</span>
           <span>Motivo</span>
           <span>Notas</span>
+          <span>Pagado con</span>
           <span className="text-right">Monto</span>
           <span>Registrado por</span>
         </div>
@@ -315,7 +391,7 @@ export default function ExpenseHistoryPage() {
             displayedRows.map((r) => (
               <div
                 key={r.id}
-                className="grid grid-cols-[150px_minmax(0,1fr)_minmax(0,1.2fr)_130px_160px] items-center gap-3 border-b border-[#f5f4f1] px-6 py-3 text-sm"
+                className={`grid ${ROW_GRID} items-center gap-3 border-b border-[#f5f4f1] px-6 py-3 text-sm`}
               >
                 <span className="text-xs text-[#525252]">{fmtDateTime(r.created_at)}</span>
                 <span className="min-w-0 truncate font-medium text-[#1a1a1a]">
@@ -324,6 +400,7 @@ export default function ExpenseHistoryPage() {
                 <span className="min-w-0 truncate text-[#737373]">
                   {r.notes ?? <span className="text-[#d6d3d1]">—</span>}
                 </span>
+                <MethodChip method={r.payment_method} />
                 <span className="text-right font-mono tabular-nums font-semibold text-red-700">
                   -{fmtCOP(r.amount)}
                 </span>

@@ -335,12 +335,60 @@ Sidebar agrupado en secciones colapsables (feature/12-caja-completa) ✅
 - Configuración (tienda, usuarios, productos, caja, etiquetas)
 
 ## Estado actual del proyecto
-Última fase completada: claridad del historial de ventas para el cuadre
-(tipo de venta + dinero real entrado por día)
-Previo: tarjeta de producto con marca, rango de precios y descripción
-(diferenciar productos del mismo nombre)
+Última fase completada: método de pago del gasto (el gasto por transferencia
+ya no descuadra la caja)
+Previo: claridad del historial de ventas para el cuadre (tipo de venta +
+dinero real entrado por día)
 En progreso: feature - marca (autocompletar + en todos los documentos)
-Siguiente: Addi recargo, historial de gastos, descuento por ítem
+Siguiente: Addi recargo, descuento por ítem
+
+Método de pago del gasto (fix/expense-payment-method) ✅
+  - BUG (reportado en Armenia): cash_expenses no guardaba CÓMO se pagó el gasto,
+    así que el cuadre restaba TODO egreso del efectivo esperado. Un gasto pagado
+    por transferencia ($200.000, motivo FACTURAS) no salió del cajón pero bajó el
+    esperado → el cierre daba FALTANTE por ese monto exacto y la caja de Armenia
+    no cuadraba
+  - Migración 037_expense_payment_method: cash_expenses.payment_method text NOT
+    NULL DEFAULT 'cash' + CHECK IN ('cash','card','transfer') e índice
+    (shift_id, payment_method). text+CHECK y no el ENUM payment_method: mismo
+    criterio que `kind` en la 017, y el set de un EGRESO es más chico ('addi' y
+    'credit' no aplican). El DEFAULT deja el histórico contado igual que antes →
+    ningún cierre ya impreso cambia de resultado
+  - No se tocó el trigger register_supplier_payment_as_expense (011) ni el
+    reembolso de devoluciones: ambos solo crean cash_expense cuando el pago es en
+    efectivo, así que 'cash' por DEFAULT ya es correcto
+  - shiftCalc.calculateShiftSummary: ShiftExpenseInput += payment_method
+    (default 'cash' → los call sites y tests previos dan el mismo número).
+    expectedCash pasa a restar SOLO cashExpensesTotal; se agregan
+    cashExpensesTotal / nonCashExpensesTotal / regularCashExpensesTotal.
+    totalExpenses sigue siendo TODO el gasto (para mostrar, no para el cuadre).
+    reconcileCash documentado: su 2º argumento son los egresos EN EFECTIVO
+  - useShiftClosing pasa el método a la función pura y expone los nuevos totales;
+    useShiftHistory acumula dos mapas por turno (todo vs efectivo) y reconcilia
+    con el de efectivo, para que la columna "Esperado" coincida con el recibo
+  - ExpenseModal: selector "¿Cómo se pagó?" (Efectivo / Tarjeta / Transferencia,
+    default Efectivo) con ícono y color por método y una línea que explica el
+    efecto ("sale del cajón / no afecta el cuadre"). Modal con max-h-[92vh] +
+    overflow porque creció de alto
+  - CashShiftReceipt: los egresos que no son efectivo se imprimen con su método
+    abreviado (Tarj/Transf) y, si hay alguno, el total se desglosa en
+    "· En efectivo" / "· No afectan caja". La línea del cuadre pasó a
+    "- Egresos efec:" y usa cashExpensesTotal (prop opcional con fallback a
+    totalExpenses para call sites viejos)
+  - ExpenseHistoryPage: columna "Pagado con" con MethodChip (efectivo gris,
+    tarjeta/transferencia azul con tooltip), card de total desglosado en
+    efectivo vs tarjeta/transferencia y Excel con la columna + las dos líneas
+    de desglose. ROW_GRID extraído (encabezado y filas compartían la grilla
+    duplicada). CashShiftsHistoryPage muestra el egreso en efectivo y anota
+    "+$X no efec." cuando hay gastos por otro medio
+  - scripts/fix-expense-payment-method.sql: corrección administrativa del gasto
+    histórico mal clasificado (cash_expenses no tiene política de UPDATE a
+    propósito; se corre en el SQL editor). OJO: si el turno ya cerró, cambia su
+    "Esperado" y deja de coincidir con el ticket impreso ese día
+  - 6 tests nuevos en shiftCalc.test.ts (39 en el archivo, 281 en total):
+    transferencia no baja el esperado, mezcla de métodos, caso Armenia,
+    no-sobregiro por gasto no-efectivo, no-regresión sin payment_method y
+    separación de reembolsos
 
 Claridad del historial de ventas (feature/sales-history-cash-clarity) ✅
   - PROBLEMA: el cuadre diario dolía porque el historial mostraba el TOTAL de

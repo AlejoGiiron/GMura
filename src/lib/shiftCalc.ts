@@ -51,6 +51,11 @@ export interface ShiftExpenseInput {
   amount: number
   // 'return' = reembolso de una devolución; 'expense' (default) = gasto normal.
   kind?: 'expense' | 'return'
+  // Cómo se pagó el egreso (037). Solo 'cash' sale del cajón y afecta el
+  // efectivo esperado; 'card'/'transfer' son gasto del negocio pero no de la
+  // caja. Default 'cash': así se contaba TODO antes de la 037, así que los
+  // call sites y tests previos dan el mismo resultado.
+  payment_method?: 'cash' | 'card' | 'transfer'
 }
 
 export interface ShiftSummaryInput {
@@ -75,10 +80,18 @@ export interface ShiftSummary {
   creditPaymentsTotal: number
   totalSales: number
   cashSales: number
+  // TODOS los egresos del turno (cualquier método). Es el gasto del negocio;
+  // sirve para mostrar, NO para el cuadre.
   totalExpenses: number
-  // Efectivo esperado en caja (tope en 0, Lógica B). Si los egresos superan lo
-  // disponible, el faltante se reporta en `overdraft` en vez de un esperado
-  // negativo.
+  // Egresos pagados en EFECTIVO: los únicos que salen del cajón y por lo tanto
+  // los únicos que se restan del efectivo esperado (037).
+  cashExpensesTotal: number
+  // Egresos por otro medio (tarjeta/transferencia): se registran y se muestran,
+  // pero no tocan la caja. totalExpenses = cashExpensesTotal + nonCashExpensesTotal.
+  nonCashExpensesTotal: number
+  // Efectivo esperado en caja (tope en 0, Lógica B). Si los egresos EN EFECTIVO
+  // superan lo disponible, el faltante se reporta en `overdraft` en vez de un
+  // esperado negativo.
   expectedCash: number
   overdraft: number
   orderCount: number
@@ -91,6 +104,8 @@ export interface ShiftSummary {
   returnsNet: number
   // Egresos "regulares" para mostrar (totalExpenses menos los reembolsos).
   regularExpensesTotal: number
+  // Idem pero solo los pagados en efectivo (los que el cuadre resta).
+  regularCashExpensesTotal: number
 }
 
 export interface CashReconciliation {
@@ -102,14 +117,17 @@ export interface CashReconciliation {
  * Lógica B del cuadre: el efectivo esperado nunca baja de 0. Cuando los egresos
  * superan el efectivo disponible (apertura + ventas/abonos en efectivo) el
  * exceso se reporta como `overdraft` (sobregiro), no como un esperado negativo.
+ *
+ * `cashExpenses` son SOLO los egresos pagados en efectivo (037): un gasto por
+ * transferencia no sale del cajón, así que no puede bajar el esperado.
  */
 export function reconcileCash(
   availableCash: number,
-  totalExpenses: number,
+  cashExpenses: number,
 ): CashReconciliation {
   return {
-    expectedCash: Math.max(0, availableCash - totalExpenses),
-    overdraft: Math.max(0, totalExpenses - availableCash),
+    expectedCash: Math.max(0, availableCash - cashExpenses),
+    overdraft: Math.max(0, cashExpenses - availableCash),
   }
 }
 
@@ -143,8 +161,9 @@ const emptyAgg = (): AggRow => ({
 
 /**
  * Calcula el resumen del cuadre de un turno a partir de las ventas, los abonos
- * de separados y los egresos. Solo el efectivo afecta `expectedCash`:
- *   expectedCash = apertura + ventas efectivo + abonos efectivo - egresos
+ * de separados y los egresos. Solo el efectivo afecta `expectedCash`, en ambos
+ * lados de la resta:
+ *   expectedCash = apertura + ventas efectivo + abonos efectivo - egresos efectivo
  */
 export function calculateShiftSummary(input: ShiftSummaryInput): ShiftSummary {
   const excluded = new Set(input.excludedOrderIds ?? [])
@@ -227,19 +246,31 @@ export function calculateShiftSummary(input: ShiftSummaryInput): ShiftSummary {
 
   const totalSales = regularSalesTotal + layawayPaymentsTotal + creditPaymentsTotal
 
-  // Egresos: el total (para el cuadre) es TODO; los reembolsos se separan solo
-  // para la presentación. totalExpenses NO cambia → expectedCash idéntico.
+  // Egresos: `totalExpenses` es TODO el gasto del turno (para mostrar), pero el
+  // CUADRE solo puede restar lo que salió del cajón → cashExpensesTotal (037).
+  // Un gasto por transferencia queda registrado y visible, sin generar un
+  // faltante falso. Los reembolsos de devolución se separan aparte para la
+  // presentación (siempre son en efectivo: solo se registran en ese caso).
   let totalExpenses = 0
+  let cashExpensesTotal = 0
   let returnsExpense = 0
+  let regularCashExpensesTotal = 0
   for (const e of input.expenses) {
+    const isCash = (e.payment_method ?? 'cash') === 'cash'
     totalExpenses += e.amount
-    if (e.kind === 'return') returnsExpense += e.amount
+    if (isCash) cashExpensesTotal += e.amount
+    if (e.kind === 'return') {
+      returnsExpense += e.amount
+    } else if (isCash) {
+      regularCashExpensesTotal += e.amount
+    }
   }
   const regularExpensesTotal = totalExpenses - returnsExpense
+  const nonCashExpensesTotal = totalExpenses - cashExpensesTotal
 
   const { expectedCash, overdraft } = reconcileCash(
     input.openingAmount + cashSales,
-    totalExpenses,
+    cashExpensesTotal,
   )
 
   return {
@@ -250,6 +281,8 @@ export function calculateShiftSummary(input: ShiftSummaryInput): ShiftSummary {
     totalSales,
     cashSales,
     totalExpenses,
+    cashExpensesTotal,
+    nonCashExpensesTotal,
     expectedCash,
     overdraft,
     orderCount: regularOrderCount,
@@ -257,5 +290,6 @@ export function calculateShiftSummary(input: ShiftSummaryInput): ShiftSummary {
     returnsExpense,
     returnsNet: returnsIncome - returnsExpense,
     regularExpensesTotal,
+    regularCashExpensesTotal,
   }
 }

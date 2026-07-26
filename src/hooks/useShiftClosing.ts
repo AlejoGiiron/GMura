@@ -40,6 +40,9 @@ export interface ShiftClosingData {
   totalSales: number
   cashSales: number
   totalExpenses: number
+  // Solo los egresos en efectivo bajan el esperado (037).
+  cashExpensesTotal: number
+  nonCashExpensesTotal: number
   expectedCash: number
   overdraft: number
   orderCount: number
@@ -341,7 +344,11 @@ export function useShiftClosing(shiftId: string | null) {
           amount: p.amount,
           payment_method: p.payment_method,
         })),
-        expenses: expenses.map((e) => ({ amount: Number(e.amount), kind: e.kind })),
+        expenses: expenses.map((e) => ({
+          amount: Number(e.amount),
+          kind: e.kind,
+          payment_method: e.payment_method,
+        })),
       })
 
       return {
@@ -351,6 +358,8 @@ export function useShiftClosing(shiftId: string | null) {
         totalSales: summary.totalSales,
         cashSales: summary.cashSales,
         totalExpenses: summary.totalExpenses,
+        cashExpensesTotal: summary.cashExpensesTotal,
+        nonCashExpensesTotal: summary.nonCashExpensesTotal,
         expectedCash: summary.expectedCash,
         overdraft: summary.overdraft,
         orderCount: summary.orderCount,

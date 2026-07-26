@@ -599,3 +599,101 @@ describe('calculateShiftSummary — pagos MIXTOS (032, Fase 2)', () => {
     expect(r.salesByMethod.find((s) => s.method === 'card')?.total).toBe(30_000)
   })
 })
+
+// ── Método de pago del egreso (037) ───────────────────────────────────────────
+// BUG que arregla: TODO gasto se restaba del efectivo esperado, así que un gasto
+// pagado por transferencia dejaba la caja con un FALTANTE falso por ese monto.
+
+describe('calculateShiftSummary — egresos por método de pago', () => {
+  it('un gasto por transferencia NO baja el efectivo esperado', () => {
+    const r = calculateShiftSummary({
+      openingAmount: 100_000,
+      orders: [order('o1', 50_000, 'cash')],
+      layawayPayments: [],
+      expenses: [{ amount: 200_000, payment_method: 'transfer' }],
+    })
+    // El dinero nunca salió del cajón → esperado = apertura + ventas efectivo.
+    expect(r.expectedCash).toBe(150_000)
+    expect(r.overdraft).toBe(0)
+    // Sigue siendo gasto del negocio y se muestra como tal.
+    expect(r.totalExpenses).toBe(200_000)
+    expect(r.cashExpensesTotal).toBe(0)
+    expect(r.nonCashExpensesTotal).toBe(200_000)
+  })
+
+  it('mezcla efectivo + transferencia: solo el efectivo se resta', () => {
+    const r = calculateShiftSummary({
+      openingAmount: 100_000,
+      orders: [order('o1', 100_000, 'cash')],
+      layawayPayments: [],
+      expenses: [
+        { amount: 30_000, payment_method: 'cash' },
+        { amount: 200_000, payment_method: 'transfer' },
+        { amount: 15_000, payment_method: 'card' },
+      ],
+    })
+    expect(r.totalExpenses).toBe(245_000)
+    expect(r.cashExpensesTotal).toBe(30_000)
+    expect(r.nonCashExpensesTotal).toBe(215_000)
+    expect(r.expectedCash).toBe(170_000) // 100.000 + 100.000 - 30.000
+    expect(r.overdraft).toBe(0)
+  })
+
+  it('caso Armenia: gasto de $200.000 por transferencia no genera faltante', () => {
+    // Turno real que motivó el fix: el cajero registró un gasto de $200.000 que
+    // se pagó por transferencia; el cuadre lo restaba del efectivo y el cierre
+    // salía FALTANTE por ese monto exacto.
+    const rec = reconcileCash(
+      500_000, // apertura + ventas en efectivo
+      0, // egresos EN EFECTIVO del turno
+    )
+    expect(rec.expectedCash).toBe(500_000)
+    expect(shiftDifference(500_000, rec)).toBe(0)
+    expect(label(shiftDifference(500_000, rec))).toBe('CUADRADO')
+  })
+
+  it('un gasto no-efectivo mayor al disponible no genera sobregiro', () => {
+    const r = calculateShiftSummary({
+      openingAmount: 50_000,
+      orders: [],
+      layawayPayments: [],
+      expenses: [{ amount: 300_000, payment_method: 'transfer' }],
+    })
+    expect(r.expectedCash).toBe(50_000)
+    expect(r.overdraft).toBe(0)
+  })
+
+  it('sin payment_method se cuenta como efectivo (filas previas a la 037)', () => {
+    const sinMetodo: ShiftSummaryInput = {
+      openingAmount: 100_000,
+      orders: [order('o1', 50_000, 'cash')],
+      layawayPayments: [],
+      expenses: [{ amount: 20_000 }, { amount: 5_000 }],
+    }
+    const r = calculateShiftSummary(sinMetodo)
+    // Idéntico al comportamiento anterior a la 037 (no-regresión de cierres ya
+    // impresos): 100.000 + 50.000 - 25.000
+    expect(r.expectedCash).toBe(125_000)
+    expect(r.cashExpensesTotal).toBe(25_000)
+    expect(r.nonCashExpensesTotal).toBe(0)
+  })
+
+  it('regularCashExpensesTotal excluye reembolsos y egresos no-efectivo', () => {
+    const r = calculateShiftSummary({
+      openingAmount: 200_000,
+      orders: [],
+      layawayPayments: [],
+      expenses: [
+        { amount: 30_000, payment_method: 'cash' }, // gasto normal en efectivo
+        { amount: 40_000, payment_method: 'transfer' }, // gasto no-efectivo
+        { amount: 50_000, kind: 'return', payment_method: 'cash' }, // reembolso
+      ],
+    })
+    expect(r.totalExpenses).toBe(120_000)
+    expect(r.cashExpensesTotal).toBe(80_000) // 30k + 50k reembolso
+    expect(r.returnsExpense).toBe(50_000)
+    expect(r.regularExpensesTotal).toBe(70_000) // 30k + 40k (todos los no-return)
+    expect(r.regularCashExpensesTotal).toBe(30_000) // solo el efectivo no-return
+    expect(r.expectedCash).toBe(120_000) // 200.000 - 80.000
+  })
+})
