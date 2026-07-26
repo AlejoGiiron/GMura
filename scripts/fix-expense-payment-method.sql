@@ -38,13 +38,20 @@ SELECT e.id,
  ORDER BY e.created_at DESC;
 
 
--- ── 2. Corregir (reemplaza el UUID por el id que devolvió la consulta 1) ──────
--- Descomentar y ejecutar UNA fila a la vez; el RETURNING confirma el cambio.
+-- ── 2. Corregir ───────────────────────────────────────────────────────────────
+-- Caso ya identificado en prod (2026-07-25): LA BODEGA DEL JEANS - ARMENIA,
+-- gasto de $200.000 registrado por natalia rojo a las 19:02 (Bogotá), motivo
+-- FACTURAS, nota "ABONO DON JUAN CARLOS". Se pagó por TRANSFERENCIA, no en
+-- efectivo. Su turno seguía ABIERTO al momento de la corrección → no altera
+-- ningún cuadre ya impreso.
 --
--- UPDATE cash_expenses
---    SET payment_method = 'transfer'
---  WHERE id = '00000000-0000-0000-0000-000000000000'
--- RETURNING id, reason, amount, payment_method;
+-- El AND payment_method = 'cash' hace la corrección idempotente: si ya se
+-- corrió, devuelve 0 filas en vez de volver a escribir.
+UPDATE cash_expenses
+   SET payment_method = 'transfer'
+ WHERE id = '96dc69ab-96cd-45a9-8cd5-51b125edb816'
+   AND payment_method = 'cash'
+RETURNING id, reason, notes, amount, payment_method;
 
 
 -- ── 3. Verificar el impacto en el cuadre del turno ────────────────────────────
