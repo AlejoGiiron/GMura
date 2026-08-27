@@ -678,6 +678,29 @@ describe('calculateShiftSummary — egresos por método de pago', () => {
     expect(r.nonCashExpensesTotal).toBe(0)
   })
 
+  // ── Venta SIN CARGO (total $0, todo regalo) ───────────────────────────────
+  // Va sin filas en order_payments (no entró plata). Debe aparecer en el turno
+  // como una transacción más, sin mover un peso del efectivo esperado. Es como
+  // ya se comportan las ventas de $0 históricas.
+  it('venta sin cargo (total $0, sin pagos): cuenta como venta pero no aporta efectivo', () => {
+    const r = calculateShiftSummary({
+      openingAmount: 100_000,
+      orders: [
+        order('o1', 80_000, 'cash'),
+        { id: 'o2', total: 0, payments: [], return_id: null },
+      ],
+      layawayPayments: [],
+      expenses: [],
+    })
+    expect(r.orderCount).toBe(2)
+    expect(r.regularSalesTotal).toBe(80_000)
+    expect(r.cashSales).toBe(80_000)
+    // El efectivo esperado es el mismo que sin la venta de regalo.
+    expect(r.expectedCash).toBe(180_000)
+    // No inventa una fila de método para la venta de $0.
+    expect(r.salesByMethod.map((m) => m.method)).toEqual(['cash'])
+  })
+
   it('regularCashExpensesTotal excluye reembolsos y egresos no-efectivo', () => {
     const r = calculateShiftSummary({
       openingAmount: 200_000,

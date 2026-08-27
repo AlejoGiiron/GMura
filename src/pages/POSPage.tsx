@@ -19,6 +19,7 @@ import {
   Bookmark,
   HandCoins,
   Split,
+  Gift,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useCartStore, cartTotals } from '@/stores/cartStore'
@@ -39,6 +40,7 @@ import { sumSplitLines, type SplitLine } from '@/lib/paymentSplit'
 import {
   sumPaymentLines,
   primaryPaymentMethod,
+  isNoChargeSale,
   type PaymentLine,
 } from '@/lib/orderPayments'
 import { useCreateCreditOrder } from '@/hooks/useCreditMutations'
@@ -304,6 +306,12 @@ function PaymentModal({
 }: PaymentModalProps) {
   const visibleMethods = PAYMENT_METHOD_KEYS.filter((m) => enabledMethods.includes(m))
 
+  // VENTA SIN CARGO: el total es $0 porque todos los ítems van como regalo. No
+  // hay nada que cobrar, así que el modal no pide método ni "¿con cuánto paga?":
+  // solo confirma. La venta se crea con CERO líneas de pago (order_payments).
+  // Tampoco tiene sentido separarla ni fiarla (ambas mutaciones exigen total > 0).
+  const noCharge = isNoChargeSale(total)
+
   // Modo DIVIDIR (mixto). Por defecto OFF → el caso común (un método) queda
   // exactamente igual de rápido que antes.
   const [splitMode, setSplitMode] = useState(false)
@@ -387,10 +395,10 @@ function PaymentModal({
         <div className="mb-5 flex items-start justify-between">
           <div>
             <p className="text-xs font-semibold uppercase tracking-widest text-slate-400">
-              Cobrar venta
+              {noCharge ? 'Venta sin cargo' : 'Cobrar venta'}
             </p>
             <p className="mt-0.5 font-mono text-2xl font-bold text-slate-900">
-              {fmtCOP(headerTotal)}
+              {fmtCOP(noCharge ? 0 : headerTotal)}
             </p>
           </div>
           <button
@@ -401,7 +409,53 @@ function PaymentModal({
           </button>
         </div>
 
-        {!splitMode ? (
+        {noCharge ? (
+          /* ══ SIN CARGO (total $0: todo regalo) ═════════════════════════════ */
+          <>
+            <div className="mb-5 rounded-xl border border-violet-200 bg-violet-50 px-4 py-4 text-center">
+              <div className="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-full bg-violet-100">
+                <Gift size={20} className="text-violet-600" />
+              </div>
+              <p className="text-sm font-semibold text-slate-900">
+                Venta sin cargo — no requiere pago
+              </p>
+              <p className="mt-1 text-xs text-slate-600">
+                El total quedó en $0, así que no entra dinero a la caja. Se
+                registra la venta y se descuenta el inventario igual.
+              </p>
+            </div>
+
+            {/* Desglose: deja ver que el descuento cubre el subtotal completo */}
+            <div className="mb-5 space-y-1.5 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm">
+              <div className="flex justify-between text-slate-600">
+                <span>Subtotal</span>
+                <span className="font-mono">{fmtCOP(subtotal)}</span>
+              </div>
+              <div className="flex justify-between text-slate-600">
+                <span>Regalo / descuento</span>
+                <span className="font-mono">-{fmtCOP(discount)}</span>
+              </div>
+              <div className="flex justify-between border-t border-slate-200 pt-1.5 font-semibold text-slate-900">
+                <span>Total</span>
+                <span className="font-mono">{fmtCOP(0)}</span>
+              </div>
+            </div>
+
+            <button
+              disabled={isPending}
+              onClick={() => onConfirm([], undefined, 0)}
+              className="flex w-full items-center justify-center gap-2 rounded-xl bg-violet-600 py-3.5 text-sm font-semibold text-white transition-opacity disabled:cursor-not-allowed disabled:opacity-40 hover:bg-violet-700"
+            >
+              {isPending ? (
+                'Procesando…'
+              ) : (
+                <>
+                  <CheckCircle size={16} /> Confirmar venta sin cargo
+                </>
+              )}
+            </button>
+          </>
+        ) : !splitMode ? (
           /* ══ MODO SIMPLE (un método) ═══════════════════════════════════════ */
           <>
             <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-500">

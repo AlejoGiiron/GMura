@@ -335,12 +335,53 @@ Sidebar agrupado en secciones colapsables (feature/12-caja-completa) ✅
 - Configuración (tienda, usuarios, productos, caja, etiquetas)
 
 ## Estado actual del proyecto
-Última fase completada: método de pago del gasto (el gasto por transferencia
-ya no descuadra la caja)
-Previo: claridad del historial de ventas para el cuadre (tipo de venta +
-dinero real entrado por día)
+Última fase completada: venta sin cargo (total $0, 100% regalo) desbloqueada
+Previo: método de pago del gasto (el gasto por transferencia ya no descuadra
+la caja)
 En progreso: feature - marca (autocompletar + en todos los documentos)
 Siguiente: Addi recargo, descuento por ítem
+
+Venta sin cargo — total $0 (fix/zero-total-and-exchange-payments) ✅
+  - BUG DE PRODUCCIÓN (bloqueaba ventas): una venta 100% regalo (todos los ítems
+    marcados como regalo → total $0) no se podía cobrar. Al confirmar salía
+    "Cada pago debe ser mayor a $0" y la venta quedaba trabada
+  - REGRESIÓN de pagos mixtos (032 + fase 4 del POS, en prod desde el
+    2026-07-11): antes la orden llevaba solo orders.payment_method (un texto,
+    sin monto) y el total $0 pasaba sin problema — las 2 ventas de regalo de $0
+    del histórico (órdenes #6 y #8, 2026-07-10) son PREVIAS a ese despliegue.
+    Con pagos mixtos el modal arma siempre una línea con el total y
+    assertValidPayments la rechaza por amount > 0. El modo "dividir" tenía el
+    mismo bug con otra cara: canConfirmSplit exige todas las líneas > 0, así que
+    con target $0 el botón quedaba deshabilitado sin explicación
+  - El MODELO ya contemplaba el caso: la propia 032 excluyó del backfill las
+    órdenes de total 0 ("queda con cero filas y la paridad se cumple, 0 = 0") y
+    order_payments tiene CHECK (amount > 0) → la línea se OMITE, no se manda en
+    $0 (verificado contra la BD: un pago de $0 devuelve 400)
+  - orderPayments.ts: isNoChargeSale(total) (|total| < 0.5, la misma tolerancia
+    de la paridad) + paymentLinesForTotal(lines, total) que descarta las líneas
+    cuando el total es $0. assertValidPayments acepta SOLO el caso sin líneas y
+    lanza "Una venta de $0 no lleva pago" si le pasan cualquier línea. La
+    excepción es por TOTAL, no por línea: un pago de $0 en una venta con total
+    > 0 sigue siendo inválido (no se afloja el caso normal)
+  - useCreateOrder: normaliza con paymentLinesForTotal ANTES de validar (así el
+    caso no depende de que la UI acierte), se salta el INSERT de order_payments
+    cuando no hay líneas y rellena orders.payment_method (NOT NULL) con 'cash',
+    igual que las 10 órdenes de $0 históricas. No mueve plata: el cuadre y los
+    reportes suman desde order_payments, que ahí tiene 0 filas
+  - POSPage PaymentModal: pantalla propia "Venta sin cargo" cuando total === 0
+    (ícono de regalo, desglose Subtotal / Regalo-descuento / Total $0 y un solo
+    botón "Confirmar venta sin cargo"). No pide método ni "¿con cuánto paga?" y
+    oculta "Crear separado" / "Fiar", que rechazan total 0 en la mutación
+  - SaleReceipt imprime "Pago: Sin cargo" y SalesHistoryPage muestra un chip
+    "Sin cargo" en la columna Pago: decir "Efectivo" en una venta de $0 hace
+    creer que entró plata en una columna que se lee para cuadrar
+  - 10 tests nuevos (290 en total): total 0 sin líneas → válido; total 0 con
+    línea (de $0 o > 0) → lanza; total > 0 con línea de $0 → sigue inválido;
+    Σ != total → sigue inválido; venta parcialmente regalo (total > 0) → flujo
+    normal; y en shiftCalc, que la venta de $0 cuente como transacción sin mover
+    el efectivo esperado ni inventar fila de método
+  - Sin migración. Validado en el lab por API REST con JWT real (RLS, CHECKs y
+    triggers): orden $0 + ítem regalo entra, stock descontado, 0 filas de pago
 
 Método de pago del gasto (fix/expense-payment-method) ✅
   - BUG (reportado en Armenia): cash_expenses no guardaba CÓMO se pagó el gasto,
