@@ -22,8 +22,10 @@ descoordinados, sin trazabilidad y sin ningún momento en que la mercancía est�
 (tsc + eslint + tests), migraciones a prod con backup previo, BD antes que
 frontend. `develop = producción`.
 
-**Estado:** rama `feature/store-transfers` creada desde develop. Gate de partida
-verde (tsc + eslint + 290 tests). Diseño cerrado; siguiente paso: migración 040.
+**Estado:** rama `feature/store-transfers`. **Migración 040 (enum de movimientos)
+APLICADA EN PRODUCCIÓN el 2026-08-27** (backup previo `pre-040-transfer-enum`;
+enum con 6 valores, histórico intacto en 868 movimientos, 0 filas de los tipos
+nuevos). Diseño de la 041 cerrado en §8; siguiente paso: escribir y probar la 041.
 
 ---
 
@@ -557,6 +559,25 @@ Cuatro razones, en orden de peso:
   (origen o destino), como toda la lectura operativa — así un vendedor **ve** que
   viene un traslado aunque no pueda confirmarlo. Criterio explícito de la 024.
 
+**Dónde se pide `productos.gestionar` (decidido).** Un traslado puede crear
+catálogo en la tienda destino, y ese permiso se pide **donde está la decisión, no
+donde está la ejecución**:
+
+- **Al ARMAR** (`save_transfer_draft`): si alguna línea lleva
+  `dest_action IN ('create_product','map_product')` — las dos que van a crear
+  catálogo, una un producto entero y la otra una talla/color nueva — se exige
+  `productos.gestionar` **además** de `traslados.gestionar`.
+- **Al RECIBIR** (`receive_transfer`): **NO** se re-exige. Quien confirma puede
+  ser otra persona (la encargada del destino), y pedirle a ella un permiso sobre
+  una decisión que tomó el que envió haría imposible la recepción en un clic —
+  que es el caso común, con catálogos casi disjuntos (§1.1).
+
+El modelo, en una línea: **el `productos.gestionar` del que envía autoriza la
+creación; el `traslados.gestionar` del que recibe la ejecuta.** Un rol
+personalizado con solo `traslados.gestionar` puede mover mercancía entre fichas
+que ya existen (`map_variant`), pero no inventar catálogo — y eso es una
+restricción útil, no un efecto colateral.
+
 **Cómo se agrega** (procedimiento de CLAUDE.md, sin atajos):
 1. Editar el array de `Administrador` en `canonical_role_permissions()` (035).
 2. Migración de reconciliación **aditiva, SIN filtro de organización** (molde 034).
@@ -641,3 +662,285 @@ venta atómica (escrita, sin aplicar) → este módulo arranca en **040**.
 - `create_product` cuyo gemelo exacto apareció mientras viajaba → mapea, no duplica
 - Variante destino **inactiva** → se reactiva y recibe
 - Normalización: `DOMINA` ↔ `domina` matchean; marca `NULL` ↔ `''` equivalentes
+
+---
+
+## 8. Fase 041 — el diseño detallado (cerrado)
+
+Todo lo que sigue es el contrato que implementa la migración 041. Se cierra
+ANTES de escribir el SQL a propósito: un hueco de seguridad o de lógica se ve
+mucho mejor en la descripción que en 700 líneas de PL/pgSQL.
+
+### 8.1 Los 5 chequeos que se reimplementan en CADA RPC de escritura
+
+`SECURITY DEFINER` apaga el RLS. Todo lo que hoy garantiza una política hay que
+volver a hacerlo adentro de la función:
+
+1. **Identidad** — `auth.uid()` no nulo.
+2. **Permiso** — `has_permission('traslados.gestionar')` (más
+   `productos.gestionar` en el caso de §5).
+3. **Vínculo con la tienda** — `get_my_store_id()`, o `get_my_stores()` en la
+   recepción.
+4. **Contención en la organización** — `is_store_in_my_org()` sobre **ambas**
+   tiendas.
+5. **Pertenencia de la fila** — el que más fácil se olvida: dentro de
+   `SECURITY DEFINER`, `SELECT * FROM transfers WHERE id = p_id` encuentra
+   **cualquier** traslado de la base, incluido el de otra organización. Sin este
+   chequeo, pasar un UUID ajeno bastaría para operarlo.
+
+El #5 es lo primero que debe buscar la revisión en cada función.
+
+### 8.2 Decisión: el COSTO en la recepción
+
+**Si se MAPEA a una variante que ya existe en el destino, `cost_price` NO se
+toca.** Si se CREA la variante, se usa `unit_cost` del snapshot (es el único dato
+disponible).
+
+El razonamiento, para que nadie lo "corrija" después creyendo que es un bug:
+
+- **Un traslado mueve mercancía, no la compra.** No hay una transacción de
+  compra: no cambió el costo de reposición del negocio, solo cambió de bodega.
+- **El destino conserva su propio costo y calcula su margen con su criterio.**
+  Pisar el `cost_price` del destino con el del origen reescribiría, en silencio,
+  el margen histórico de las unidades que el destino **ya tenía** en esa
+  variante. Llegan 5 unidades y de golpe las 12 que ya estaban valen otra cosa.
+- **Al crear no hay conflicto:** la variante nace sin costo propio, y el del
+  origen es la mejor estimación disponible.
+
+**Contraste deliberado con `increase_stock_on_purchase` (011)**, que **sí**
+actualiza `cost_price` cuando el ítem viene con `update_cost = true`. Eso es
+correcto ahí y equivocado acá por la misma razón: una factura de compra **es**
+una compra — hay un proveedor, un precio nuevo y un costo de reposición real que
+actualizar. Un traslado no. Que las dos rutas hagan cosas distintas con el costo
+no es una inconsistencia: es la diferencia entre comprar y mover.
+
+### 8.3 Decisión: dónde se pide `productos.gestionar`
+
+Ver §5. Resumen: se exige **al armar** cuando alguna línea lleva
+`create_product` o `map_product`; **no** se re-exige al recibir.
+
+**El caso borde analizado — `auto_matched` que termina creando una variante.**
+Hay un camino en el que se crea catálogo sin que `productos.gestionar` se haya
+pedido nunca: se eligió `map_variant` (que no lo exige, porque no crea nada) y al
+recibir la variante destino ya no está donde debía, así que la resolución cae al
+re-match y podría terminar creando.
+
+Lectura: **queda cubierto, y no merece tratamiento aparte**, por tres razones.
+
+1. **Es inalcanzable desde la app.** `transfer_items.to_variant_id` referencia
+   `variants` con `ON DELETE RESTRICT`, así que la variante elegida **no se puede
+   borrar** una vez referenciada. Lo único que la sacaría de su tienda sería un
+   `UPDATE variants SET store_id = …`, y no existe ninguna pantalla ni hook que
+   haga eso. El camino solo se alcanza con SQL manual o corrupción.
+2. **Si se alcanzara, crear es el resultado correcto.** La mercancía llegó
+   físicamente. Fallar dejaría el traslado clavado en `in_transit` sin forma de
+   arreglarlo en esta fase (no hay RPC de re-mapeo), y la única salida sería que
+   el origen revirtiera un despacho de mercancía que ya no tiene.
+3. **Queda registrado.** Cualquier desvío de lo elegido se graba como
+   `dest_resolution = 'auto_matched'`, así que el caso es auditable y no
+   silencioso — que era la condición para aceptarlo.
+
+Los otros dos caminos de `auto_matched` **reducen** la creación en vez de
+ampliarla (mapean a un gemelo en vez de duplicar), así que están cubiertos por la
+aprobación general con margen de sobra.
+
+### 8.4 Las 6 RPC
+
+Todas: `SECURITY DEFINER SET search_path = public`, `REVOKE EXECUTE FROM public,
+anon`, `GRANT EXECUTE TO authenticated`. Mensajes de error **en español**, porque
+llegan tal cual al toast.
+
+Son 6 y no 5: falta descartar un borrador, y `save_transfer_draft` no borra.
+`cancel_transfer_draft` va **separada** de `revert_transfer_dispatch` a propósito
+— una mueve stock y la otra no, y una sola puerta invitaría al accidente de creer
+que se descarta un borrador y terminar revirtiendo un despacho.
+
+#### 1 · `save_transfer_draft(p_to_store_id, p_items, p_transfer_id DEFAULT NULL, p_carrier, p_tracking_ref, p_notes) → jsonb`
+
+Crea o edita el borrador (`p_transfer_id` NULL = crear). La edición **reemplaza
+el conjunto de líneas entero**, lo que de paso resuelve cambiar la tienda destino:
+los mapeos viejos se van con las líneas viejas.
+
+`p_items` = `[{from_variant_id, qty, dest_action, to_product_id?, to_variant_id?}]`.
+**El cliente manda solo ids y cantidades; el snapshot lo copia el servidor** desde
+`variants` + `products` del origen. Así el cliente no puede escribir un snapshot
+engañoso.
+
+**Quién:** permiso + el origen es siempre `get_my_store_id()`. No existe "armar un
+traslado entre otras dos tiendas".
+
+**Valida, en orden:** identidad · `traslados.gestionar` · `productos.gestionar` si
+alguna línea crea catálogo (§8.3) · tienda activa · destino ≠ origen ·
+`is_store_in_my_org` de ambas · destino activo · si edita: existe, es mío, está en
+`draft` · array no vacío · por línea: `qty > 0`, la variante es de mi tienda y
+está activa, sin `from_variant_id` repetidos, y el destino elegido pertenece a la
+tienda destino.
+
+**NO valida el stock.** Un borrador no comprueba ni reserva nada; eso es del
+despacho. Queda escrito para que nadie espere lo contrario.
+
+Una sutileza: si se eligió `map_product` pero esa talla/color **ya existe** en ese
+producto, se guarda directamente como `map_variant`. No es magia silenciosa — el
+borrador queda mostrando a qué variante va.
+
+**Escribe:** header + líneas, en una transacción. **Sin rollback compensatorio.**
+**Devuelve:** el traslado con sus líneas.
+
+**Bordes:** llamarla dos veces crea dos borradores, y está bien (no mueve stock);
+la idempotencia por estado protege a las otras tres, que son las peligrosas.
+
+#### 2 · `dispatch_transfer(p_transfer_id) → jsonb`
+
+**Quién:** permiso + `from_store_id = get_my_store_id()`. **Solo el origen**, sin
+excepción de admin — despachar es meter la mercancía en una caja, y eso lo hace
+quien la tiene. (La recepción sí admite excepción porque en el destino puede no
+haber nadie con permiso; en el origen siempre hay alguien: es quien manda.)
+
+**Valida:** identidad · permiso · header `FOR UPDATE` (*El traslado no existe*) ·
+**#5** `from_store_id` = mi tienda · org · `status = 'draft'` · tiene líneas · por
+línea: variante `FOR UPDATE`, sigue siendo del origen y activa,
+`qty_sent <= stock_qty - reserved_qty`, y el destino elegido sigue siendo del
+destino.
+
+La regla de stock es la **misma que la 038** le va a imponer a las ventas: lo
+reservado por un separado es intocable.
+
+**Escribe:** por línea `stock_qty -= qty_sent` + `stock_movements`
+(`transfer_out`, negativo, tienda origen); después el header a `in_transit`
+guardado por `WHERE status = 'draft'` + `IF NOT FOUND`.
+
+**Bordes:** doble despacho → la 2ª bloquea en el `FOR UPDATE` del header y falla
+al ver `in_transit`. Dos traslados peleando la última unidad → lockean headers
+distintos y chocan en la variante; uno gana. **Por eso no alcanza el lock del
+header: hace falta el de la variante.** El recorrido va `ORDER BY from_variant_id`
+para que dos despachos con variantes en común no se deadlockeen.
+
+#### 3 · `revert_transfer_dispatch(p_transfer_id, p_reason) → jsonb`
+
+**Quién:** permiso + origen (el stock vuelve ahí).
+**Valida:** identidad · permiso · header `FOR UPDATE` · **#5** origen · org ·
+`status = 'in_transit'` · motivo de ≥5 caracteres (mismo criterio que
+`useCancelLayaway`).
+**Escribe:** `stock_qty += qty_sent` sobre la variante de **origen** +
+`stock_movements` `transfer_in` positivo en la **tienda origen** (el `store_id`
+del movimiento es lo que lo distingue de una recepción); header a `cancelled`.
+Si la variante de origen se hubiera desactivado, **se reactiva**.
+
+**La carrera importante del módulo:** el origen revierte mientras el destino
+confirma. Las dos funciones toman `FOR UPDATE` sobre **la misma fila** de
+`transfers` antes de tocar nada → se serializan; la que commitea primero gana y la
+otra ve el estado cambiado y falla. Nunca se mueve el stock dos veces ni en dos
+direcciones.
+
+#### 4 · `receive_transfer(p_transfer_id, p_counts jsonb DEFAULT NULL) → jsonb`
+
+`p_counts` existe **desde el día 1** con su forma final
+(`[{transfer_item_id, qty_received}]`) para que la fase de conteo no cambie la
+firma. Hoy, si viene con algo, **rechaza**: *El conteo por línea todavía no está
+disponible*. Rechazar es mejor que ignorar — reserva el parámetro sin fingir que
+lo honra.
+
+**Quién:** `traslados.gestionar` **y** (tienda activa ∈ {origen, destino} **o**
+destino ∈ `get_my_stores()`) **y** ambas tiendas en mi org. Reusa `get_my_stores()`
+(013): un dueño con el destino entre sus tiendas confirma **sin cambiar con el
+switcher**. Sin vínculo con ninguna de las dos no se puede confirmar aunque se
+tenga el permiso: el permiso habilita, el vínculo acota.
+
+**Resolución del destino, por línea** (normalizando el snapshot con
+`normalize_catalog_text`):
+
+- **`map_variant`** → se usa la elegida (`FOR UPDATE`) si sigue siendo del
+  destino → `as_chosen`. Si no, cae al re-match (§8.3).
+- **`map_product`** → **primero re-chequea** si esa talla/color ya existe en ese
+  producto. Sí → se usa, `auto_matched`. No → se crea la variante adentro,
+  `as_chosen`.
+  **Este re-chequeo es obligatorio, no una gentileza:** si alguien creó esa
+  talla/color mientras la mercancía viajaba, insertar a ciegas choca contra
+  `variants_combo_unique (product_id, size, color)` y **la recepción revienta con
+  un 23505 en el mostrador**.
+- **`create_product`** → busca el gemelo aparecido en tránsito, en tres niveles:
+  **exactamente una** variante con nombre+marca+talla+color normalizados → se usa
+  (`auto_matched`); si no, **exactamente un** producto con nombre+marca y sin esa
+  talla/color → se crea la variante **adentro de ese producto** (`auto_matched`,
+  evita duplicar la ficha entera solo porque cambió la talla); si hay
+  **ambigüedad**, **no se adivina**: se crea el producto nuevo como se eligió
+  (`as_chosen`). Nunca inventar un mapeo dudoso y nunca bloquear la recepción.
+
+Al crear un producto se copian nombre, marca, descripción y **`size_type`** del
+snapshot, `category_id` NULL. Al crear una variante: talla, color, precio y costo
+(§8.2), `stock_qty` 0 y **barcode nuevo** generado en bucle contra el UNIQUE
+global. Si la variante destino existía pero estaba inactiva, **se reactiva**.
+
+**Escribe:** `stock_qty += qty_sent` en el destino + `stock_movements`
+(`transfer_in`, positivo, tienda destino) + `transfer_items.to_product_id /
+to_variant_id / dest_resolution`. **`qty_received` queda en NULL**: nadie contó, y
+el sistema no va a afirmar que sí. Después el header a `received` con
+`received_by`, `received_at` y **`received_by_store_id = get_my_store_id()`**.
+
+**Devuelve** el traslado con las líneas resueltas, `dest_resolution` y **los
+barcodes de las variantes destino** — que es lo que alimenta "Imprimir etiquetas
+de lo recibido" (§1.2, no es opcional) y el resumen "3 mapeados · 1 creado ·
+1 auto-vinculado".
+
+#### 5 · `cancel_transfer_draft(p_transfer_id, p_reason DEFAULT NULL) → jsonb`
+
+Permiso + origen + `status = 'draft'` → pasa a `cancelled`. No toca stock (no hay
+nada que devolver). Se **anula**, no se borra: se conserva la fila y el número,
+como el resto de la casa.
+
+#### 6 · `search_transfer_targets(p_to_store_id, p_from_variant_id DEFAULT NULL, p_query DEFAULT NULL, p_limit DEFAULT 20) → TABLE`
+
+`SECURITY DEFINER` pero **`STABLE` y sin una sola escritura**. Dos modos: por
+`p_from_variant_id` devuelve los candidatos **para esa línea**, rankeados; por
+`p_query` hace búsqueda libre en el catálogo del destino.
+
+`match_kind` ordena y decide la preselección de la UI:
+**`exact_variant`** (nombre+marca+talla+color) → se preselecciona como
+`map_variant` · **`same_product`** (nombre+marca, falta la talla/color) → se
+ofrece como `map_product` · **`name_similar`** (nombre igual, marca distinta) →
+se lista sin preseleccionar.
+
+Cada fila viaja con **marca y descripción**: con 199 productos para 103 nombres,
+el nombre solo no alcanza para elegir con criterio.
+
+> **La única relajación deliberada del aislamiento en todo el módulo, dicha en voz
+> alta:** cualquier usuario con `traslados.gestionar` puede leer el catálogo de
+> cualquier tienda **de su propia organización**. Está acotado a la org, exige el
+> permiso, es de solo lectura, devuelve un set fijo de columnas y va con `LIMIT`.
+> Pero es una ventana que hoy no existe: es el primer lugar donde debería mirar
+> una revisión de seguridad.
+
+### 8.5 Transversales
+
+- **Una transacción por RPC.** En todo el módulo **no hay un solo rollback
+  compensatorio** — ni un `DELETE` de huérfanos como los de `useCreateOrder` y
+  `useReturnMutations`.
+- **Disciplina de locks, dos reglas:** el header de `transfers` se lockea
+  **siempre primero** (serializa las transiciones); las variantes **siempre en
+  orden determinista** por id (evita deadlocks).
+- **La idempotencia es el estado, no una clave.** `create_sale` necesita clave
+  porque no hay documento previo; acá sí lo hay, así que
+  `UPDATE … WHERE status = 'X'` + `IF NOT FOUND` alcanza.
+- **`assign_transfer_number` tiene que ser `SECURITY DEFINER`**, y esto no
+  aplicaba en `orders`: el RLS de `transfers` solo deja ver las filas donde mi
+  tienda es origen o destino, así que un `MAX()` con los permisos del usuario no
+  vería un traslado entre otras dos tiendas de la misma org → daría bajo →
+  violación del índice único. En `orders` no se nota porque la numeración y el RLS
+  usan la misma llave.
+- **`enforce_transfer_org`**: trigger `BEFORE INSERT/UPDATE` que valida que las dos
+  tiendas pertenezcan a `organization_id`. Redundante mientras las RPC sean el
+  único escritor — mismo criterio de defensa en profundidad que
+  `enforce_profile_store_org` (022/025).
+- **`IS NOT DISTINCT FROM`, no `=`,** en toda comparación de campo nullable
+  (marca, talla, color). `NULL = NULL` es NULL, no true: con `=`, los 20 productos
+  sin marca nunca matchearían con su gemelo sin marca. Es el error silencioso más
+  probable de la migración.
+- **Privilegios además del RLS:** `REVOKE ALL` sobre las dos tablas y `GRANT
+  SELECT` solo a `authenticated`. Aunque alguien agregara una política de escritura
+  por error, sin el GRANT no se puede escribir.
+- **El módulo no toca caja:** ni turno, ni orden, ni pago, ni `cash_expense`. No
+  entra en `shiftCalc`.
+- **La 041 sí puede ir envuelta en `BEGIN/COMMIT`** aunque sus funciones usen los
+  literales `'transfer_out'`/`'transfer_in'`: la restricción de PostgreSQL es solo
+  dentro de la misma transacción que hace el `ADD VALUE`, y esa ya commiteó en la
+  040. Era exactamente el punto de partirlas.
