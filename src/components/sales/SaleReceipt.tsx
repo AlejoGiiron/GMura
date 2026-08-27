@@ -1,5 +1,6 @@
 import { fmtCOP } from '@/lib/formatters'
 import { PAYMENT_METHODS } from '@/lib/paymentMethods'
+import { isNoChargeSale } from '@/lib/orderPayments'
 import { useReceiptPrintStyle } from '@/lib/receiptPrint'
 import type { PaymentMethod } from '@/types/database.types'
 
@@ -94,6 +95,10 @@ export function SaleReceipt({ sale, storeName, printedAt }: SaleReceiptProps) {
   // Venta mixta = más de una línea de pago. El vuelto se calcula sobre la
   // PORCIÓN efectivo (en simple, esa porción es el total).
   const isMixed = (sale.payments?.length ?? 0) > 1
+  // Venta sin cargo (total $0, todo regalo): no hay líneas de pago porque no
+  // entró plata. Imprimir "Pago: Efectivo" (el relleno de orders.payment_method)
+  // sería mentir en el ticket del cliente.
+  const noCharge = isNoChargeSale(sale.total) && (sale.payments?.length ?? 0) === 0
   const cashPortion =
     sale.payments?.find((p) => p.method === 'cash')?.amount ?? sale.total
   const change =
@@ -220,7 +225,12 @@ export function SaleReceipt({ sale, storeName, printedAt }: SaleReceiptProps) {
         </Line>
         {!sale.credit && (
           <>
-            {isMixed ? (
+            {noCharge ? (
+              <Line>
+                <span style={monoLight}>Pago:</span>
+                <span>Sin cargo</span>
+              </Line>
+            ) : isMixed ? (
               <>
                 <div style={{ ...monoLight, marginTop: 2 }}>Pago (mixto):</div>
                 {sale.payments!.map((p) => (

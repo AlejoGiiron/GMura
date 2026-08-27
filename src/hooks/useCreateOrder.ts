@@ -7,7 +7,11 @@ import { useResolvedConfig } from './useConfig'
 import toast from 'react-hot-toast'
 import { fmtCOP } from '@/lib/formatters'
 import type { Order, PaymentMethod } from '@/types/database.types'
-import { assertValidPayments, primaryPaymentMethod } from '@/lib/orderPayments'
+import {
+  assertValidPayments,
+  paymentLinesForTotal,
+  primaryPaymentMethod,
+} from '@/lib/orderPayments'
 import { orderTotals, minFinalPrice } from '@/stores/cartStore'
 import type { CartItem } from '@/stores/cartStore'
 import { isValidGiftReason } from '@/lib/giftReasons'
@@ -112,14 +116,23 @@ export function useCreateOrder() {
       // Validación de las líneas de pago (pagos mixtos, 032): ≥1 línea, método
       // válido (no 'credit'), monto > 0, sin método repetido y Σ montos == total
       // (tolerancia de centavos). Lógica pura testeada en lib/orderPayments.
-      const lines = input.payments
+      //
+      // VENTA SIN CARGO (total $0, todo regalo): va con CERO líneas. El modal
+      // ya no manda ninguna, pero paymentLinesForTotal descarta también la
+      // línea de $0 que armaría un call site viejo — así el caso no depende de
+      // que la UI acierte. Para total > 0 no cambia nada.
+      const lines = paymentLinesForTotal(input.payments, total)
       assertValidPayments(lines, total)
 
       // orders.payment_method = método PRIMARIO (el de mayor monto; desempate
       // estable). Denormalización legacy: el cuadre y los reportes ya leen
       // order_payments, no este campo. Para una venta de un solo método es ese
-      // método (idéntico a antes); evita agregar 'mixed' al enum.
-      const primaryMethod = primaryPaymentMethod(lines)
+      // método (idéntico a antes); evita agregar 'mixed' al enum. En una venta
+      // sin cargo no hay línea que lo determine y la columna es NOT NULL: se
+      // guarda 'cash' como relleno neutro (no mueve plata: el cuadre y los
+      // reportes suman desde order_payments, que ahí tiene 0 filas).
+      const primaryMethod: PaymentMethod =
+        lines.length > 0 ? primaryPaymentMethod(lines) : 'cash'
 
       console.info('[useCreateOrder] Creando orden…', {
         items: input.items.length,
@@ -173,25 +186,35 @@ export function useCreateOrder() {
 
       // Líneas de pago (order_payments, 032). Se insertan ANTES que los ítems:
       // si fallan, se borra la orden sin haber tocado stock (los ítems disparan
-      // la deducción). Una venta simple inserta una sola fila.
-      console.info(
-        `[useCreateOrder] Orden ${o.id} creada, insertando ${lines.length} pago(s)…`,
-      )
-      const { error: paymentsError } = await supabase.from('order_payments').insert(
-        lines.map((l) => ({
-          order_id: o.id,
-          store_id: storeId,
-          method: l.method,
-          amount: l.amount,
-        })) as never,
-      )
-      if (paymentsError) {
-        console.error(
-          '[useCreateOrder] Error insertando pagos, ejecutando rollback…',
-          paymentsError,
+      // la deducción). Una venta simple inserta una sola fila; una venta sin
+      // cargo (total $0) NINGUNA — se salta el insert en vez de mandar un array
+      // vacío, que el CHECK (amount > 0) tampoco aceptaría con una línea de $0.
+      if (lines.length > 0) {
+        console.info(
+          `[useCreateOrder] Orden ${o.id} creada, insertando ${lines.length} pago(s)…`,
         )
-        await rollbackOrder('order_payments')
-        throw new Error(`Error al guardar el pago: ${paymentsError.message}`)
+        const { error: paymentsError } = await supabase
+          .from('order_payments')
+          .insert(
+            lines.map((l) => ({
+              order_id: o.id,
+              store_id: storeId,
+              method: l.method,
+              amount: l.amount,
+            })) as never,
+          )
+        if (paymentsError) {
+          console.error(
+            '[useCreateOrder] Error insertando pagos, ejecutando rollback…',
+            paymentsError,
+          )
+          await rollbackOrder('order_payments')
+          throw new Error(`Error al guardar el pago: ${paymentsError.message}`)
+        }
+      } else {
+        console.info(
+          `[useCreateOrder] Orden ${o.id} sin cargo (total $0): sin líneas de pago.`,
+        )
       }
 
       console.info(

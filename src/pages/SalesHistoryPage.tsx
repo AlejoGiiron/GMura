@@ -18,6 +18,7 @@ import {
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { fmtCOP } from '@/lib/formatters'
+import { isNoChargeSale } from '@/lib/orderPayments'
 import { getColorHex } from '@/lib/products'
 import { isCreditFullyPaid, creditBalance } from '@/lib/creditCalc'
 import type { SaleKind } from '@/lib/salesHistoryCash'
@@ -575,7 +576,16 @@ function SalesRow({
         {/* Chips apilados: el método arriba y el tipo/saldo debajo. En línea se
             pisaban entre sí y la columna quedaba ilegible. */}
         <span className="flex flex-col items-start gap-1">
-          <PaymentBadge method={row.payment_method} />
+          {/* Venta sin cargo (total $0, todo regalo): no tiene líneas de pago,
+              solo el relleno de orders.payment_method. Mostrarlo como "Efectivo"
+              haría creer que entró plata en una columna que se lee para cuadrar. */}
+          {isNoChargeSale(row.total) ? (
+            <span className="inline-flex items-center rounded-full bg-violet-100 px-2.5 py-0.5 text-[11px] font-medium text-violet-700">
+              Sin cargo
+            </span>
+          ) : (
+            <PaymentBadge method={row.payment_method} />
+          )}
           {/* Separado: el PaymentBadge muestra el método del pago de CIERRE, así
               que sin este chip la fila parecería una venta directa. */}
           {row.kind === 'layaway' && (

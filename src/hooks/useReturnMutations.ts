@@ -252,6 +252,30 @@ export function useCreateReturn() {
 
         const order = newOrder as { id: string }
 
+        // Pago de la DIFERENCIA que cobra el cambio (order_payments, 032). Se
+        // inserta ANTES de los ítems: si falla, se borra la orden sin haber
+        // tocado stock. Sin esta fila la plata que el cliente pone de más queda
+        // invisible para el cuadre y los reportes, que desde la 032 suman por
+        // order_payments (antes leían orders.payment_method y sí la contaban).
+        // Diferencia $0 (cambio del mismo precio o más barato) → CERO filas,
+        // igual que una venta sin cargo: no entró plata por la orden.
+        if (exchange.orderTotal > 0) {
+          const { error: exchPayErr } = await supabase
+            .from('order_payments')
+            .insert({
+              order_id: order.id,
+              store_id: storeId,
+              method: input.refundMethod,
+              amount: exchange.orderTotal,
+            } as never)
+          if (exchPayErr) {
+            await supabase.from('orders').delete().eq('id' as never, order.id)
+            throw new Error(
+              `Devolución registrada pero falló registrar el pago de la diferencia: ${exchPayErr.message}. Crea la venta manualmente.`,
+            )
+          }
+        }
+
         const { error: exchItemsErr } = await supabase.from('order_items').insert(
           input.exchangeItems.map((i) => ({
             order_id: order.id,

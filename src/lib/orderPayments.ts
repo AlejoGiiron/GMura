@@ -54,9 +54,39 @@ export function assertValidSplitLines(lines: PaymentLine[]): void {
   }
 }
 
+// VENTA SIN CARGO (total $0): pasa cuando TODOS los ítems van marcados como
+// regalo. No entró plata, así que la venta NO lleva filas en order_payments —
+// es lo que documenta y garantiza la 032 (su backfill excluyó las órdenes de
+// total 0: "queda con cero filas y la paridad se cumple, 0 = 0") y es como
+// están las ventas de $0 históricas. Mismo umbral de 0.5 que la paridad, para
+// no depender de la representación binaria del cero.
+export function isNoChargeSale(total: number): boolean {
+  return Math.abs(total) < 0.5
+}
+
+// Normaliza lo que arma la UI antes de validar e insertar: en una venta sin
+// cargo se descartan las líneas (el modo simple del modal arma siempre una
+// línea con el total, que ahí vale $0). Con total > 0 devuelve las líneas tal
+// cual: el caso normal no se afloja en nada.
+export function paymentLinesForTotal(
+  lines: PaymentLine[],
+  total: number,
+): PaymentLine[] {
+  return isNoChargeSale(total) ? [] : lines
+}
+
 // VENTA: las líneas deben sumar EXACTAMENTE el total (tolerancia de 0.5 por
-// redondeo de centavos).
+// redondeo de centavos). Excepción ÚNICA: una venta sin cargo (total $0) va sin
+// líneas. Ojo: la excepción es por TOTAL, no por línea — un pago de $0 dentro de
+// una venta con total > 0 sigue siendo inválido.
 export function assertValidPayments(lines: PaymentLine[], total: number): void {
+  if (isNoChargeSale(total)) {
+    if (lines && lines.length > 0) {
+      // Plata inventada: la orden vale $0 pero se están registrando cobros.
+      throw new Error('Una venta de $0 no lleva pago')
+    }
+    return
+  }
   assertValidSplitLines(lines)
   const paid = sumPaymentLines(lines)
   if (Math.abs(paid - total) > 0.5) {
