@@ -335,11 +335,35 @@ Sidebar agrupado en secciones colapsables (feature/12-caja-completa) ✅
 - Configuración (tienda, usuarios, productos, caja, etiquetas)
 
 ## Estado actual del proyecto
-Última fase completada: venta sin cargo (total $0, 100% regalo) desbloqueada
-Previo: método de pago del gasto (el gasto por transferencia ya no descuadra
+Última fase completada: el pago de la diferencia de un cambio vuelve al cuadre
+Previo: venta sin cargo (total $0, 100% regalo) desbloqueada
+Antes: método de pago del gasto (el gasto por transferencia ya no descuadra
 la caja)
 En progreso: feature - marca (autocompletar + en todos los documentos)
 Siguiente: Addi recargo, descuento por ítem
+
+Pago de la diferencia de un CAMBIO (fix/zero-total-and-exchange-payments) ✅
+  - REGRESIÓN de pagos mixtos (032, en prod desde el 2026-07-11), hermana de la
+    venta sin cargo: useReturnMutations nunca insertó en order_payments. Antes
+    daba igual porque el cuadre leía orders.payment_method y contaba el total de
+    la orden del cambio; desde la 032 el cuadre y los reportes suman el efectivo
+    DESDE order_payments → la diferencia que paga el cliente en un cambio dejó
+    de contarse y el turno la esperaba de menos
+  - useReturnMutations: la orden del cambio inserta su fila de order_payments
+    cuando exchange.orderTotal > 0, con el método elegido en la devolución.
+    Va ANTES de los order_items (si falla, se borra la orden sin haber tocado
+    stock, mismo patrón que useCreateOrder). Diferencia $0 (cambio del mismo
+    precio o más barato) → CERO filas, igual que una venta sin cargo: por la
+    orden no entró plata. El reembolso en efectivo sigue saliendo por
+    cash_expenses (kind='return'), sin cambios
+  - ALCANCE EN PROD (consultado en solo lectura el 2026-08-26): una sola orden
+    afectada desde el despliegue de la 032 — #273, Tebaida, $89.000, turno de
+    katerine taborda del 2026-08-20 (ya cerrado). Ese turno cerró CUADRADO
+    (esperado $134.000 = contado $134.000), así que la cajera NO vio un sobrante
+    de $89.000: lo más probable es que esa diferencia no haya entrado como
+    efectivo. El fix es FORWARD-ONLY (no backfillea #273): ningún cierre ya
+    impreso cambia de resultado
+  - Sin migración
 
 Venta sin cargo — total $0 (fix/zero-total-and-exchange-payments) ✅
   - BUG DE PRODUCCIÓN (bloqueaba ventas): una venta 100% regalo (todos los ítems
