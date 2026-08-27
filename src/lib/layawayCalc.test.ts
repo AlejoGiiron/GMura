@@ -131,13 +131,24 @@ describe('isLayawayOverdue', () => {
 })
 
 describe('daysUntilExpiry', () => {
+  // ── Por qué las fechas de abajo llevan 1 hora de holgura ────────────────────
+  // daysUntilExpiry hace Math.floor((expires - Date.now()) / MS_PER_DAY), con un
+  // Date.now() DISTINTO al que usa el test para construir la fecha. Si se
+  // construye un múltiplo EXACTO de días, el valor cae justo en el borde del
+  // floor: basta que el reloj avance 1 ms entre las dos llamadas para que el
+  // resultado baje un entero (5 → 4, -3 → -4). Eso hacía fallar el gate al azar
+  // (~0,1% y ~0,2% de las corridas, medido sobre 20.000 intentos).
+  // La función NO tiene el defecto: floor es lo correcto para "días restantes".
+  // La holgura mete cada fecha dentro de su bucket, lejos del borde.
   it('fecha futura devuelve días positivos', () => {
-    const expires_at = new Date(Date.now() + 5 * 86_400_000).toISOString()
+    // Dentro de 5 días y 1 hora.
+    const expires_at = new Date(Date.now() + 5 * 86_400_000 + 60 * 60 * 1000).toISOString()
     expect(daysUntilExpiry({ expires_at })).toBe(5)
   })
 
   it('fecha pasada devuelve días negativos', () => {
-    const expires_at = new Date(Date.now() - 3 * 86_400_000).toISOString()
+    // Hace 2 días y 23 horas: dentro del bucket de -3, lejos del borde.
+    const expires_at = new Date(Date.now() - 3 * 86_400_000 + 60 * 60 * 1000).toISOString()
     expect(daysUntilExpiry({ expires_at })).toBe(-3)
   })
 
