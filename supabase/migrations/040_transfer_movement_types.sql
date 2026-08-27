@@ -1,0 +1,152 @@
+-- ============================================================
+-- 040 — Traslados entre tiendas (1/2): tipos de movimiento de stock
+--
+-- Agrega al enum movement_type los dos tipos que va a emitir el módulo de
+-- traslados:
+--
+--   · transfer_out → salida de la tienda ORIGEN al despachar    (qty negativa)
+--   · transfer_in  → entrada a la tienda DESTINO al recibir     (qty positiva)
+--                    También la entrada de vuelta al ORIGEN cuando se revierte
+--                    un despacho: el store_id del movimiento distingue el caso.
+--
+-- Diseño completo y justificación de por qué son DOS tipos y no uno:
+--   plan/gmura-plan-traslados.md §2.3
+--
+-- ------------------------------------------------------------
+-- ⚠️  POR QUÉ ESTA MIGRACIÓN VA SOLA
+-- ------------------------------------------------------------
+-- `ALTER TYPE ... ADD VALUE` no permite USAR el valor nuevo dentro de la misma
+-- transacción que lo agrega. Por eso esta migración SOLO agrega los valores y
+-- no los usa en ninguna parte: las tablas, funciones y RPC que los emiten van
+-- en la 041. Mismo molde que la 006 ('addi' en payment_method).
+--
+-- ------------------------------------------------------------
+-- IDEMPOTENTE
+-- ------------------------------------------------------------
+-- `ADD VALUE IF NOT EXISTS` (PostgreSQL 9.6+). Re-aplicar esta migración es un
+-- no-op: no falla ni duplica valores.
+--
+-- ------------------------------------------------------------
+-- RIESGO: CERO — verificado, no asumido
+-- ------------------------------------------------------------
+-- Un valor de enum que nadie produce ni consume es inerte. Lo que se revisó:
+--
+--  1. NINGUNA vista toca stock_movements. Las 9 vistas del proyecto
+--     (daily_sales_summary, product_performance, inventory_status,
+--     returns_summary, layaway_summary, layaway_expiring_soon,
+--     purchase_summary, supplier_balance, credit_balance) son sobre
+--     orders / products / variants / layaways / purchases / credit.
+--     → No hay ningún GROUP BY sobre tipo de movimiento que se altere.
+--
+--  2. movement_type lo usa UNA sola columna en todo el esquema:
+--     stock_movements.type (001:261). No hay DEFAULT sobre ella, ni funciones
+--     que reciban o devuelvan el tipo, ni índices sobre el valor.
+--     → Un futuro revert es un swap de una sola columna (ver abajo).
+--
+--  3. Nadie hace un CASE/switch exhaustivo sobre el enum en SQL. Los dos
+--     triggers que insertan movimientos (deduct_stock_on_sale en 001,
+--     increase_stock_on_purchase en 011) escriben literales fijos ('sale',
+--     'purchase'); no ramifican sobre el tipo.
+--
+--  4. Nada ordena por el enum. El historial de movimientos ordena por
+--     created_at DESC (useInventory) → la posición de los valores nuevos al
+--     final de la lista es indiferente. Por eso se agregan al final (default),
+--     sin BEFORE/AFTER.
+--
+--  5. El filtro de tipo de la UI (InventoryPage) tiene sus opciones escritas a
+--     mano y consulta con .eq('type', ...). Un valor nuevo no rompe el filtro;
+--     simplemente no aparece como opción hasta la 042.
+--
+-- ------------------------------------------------------------
+-- NOTA DE SECUENCIA — los tipos TypeScript
+-- ------------------------------------------------------------
+-- Esta migración es SOLO BD. `StockMovementType` en src/types/database.types.ts
+-- sigue con 4 valores hasta la 042, y eso NO deja nada inconsistente en el
+-- medio: no puede existir ni una fila con los tipos nuevos hasta que la 041
+-- cree las funciones que los emiten (y hasta que la fase 5 las llame desde la
+-- app). El desfase BD-TS en este intervalo es inobservable.
+--
+-- Cuando la 042 agregue los valores al tipo TS, `tsc` va a FALLAR hasta que se
+-- completen los dos Record exhaustivos de src/pages/InventoryPage.tsx
+-- (MOV_TYPE_LABELS y el mapa `styles` de MovTypeBadge). Eso es DESEADO: el
+-- compilador obliga a etiquetar los tipos nuevos en vez de dejarlos sin label
+-- ni color. Está anotado acá para que sea esperado y no una sorpresa.
+-- ============================================================
+
+
+ALTER TYPE movement_type ADD VALUE IF NOT EXISTS 'transfer_out';
+ALTER TYPE movement_type ADD VALUE IF NOT EXISTS 'transfer_in';
+
+
+COMMENT ON TYPE movement_type IS
+  'Origen de un movimiento de stock. sale: venta. return: devolución. '
+  'adjustment: ajuste manual. purchase: compra a proveedor. '
+  'transfer_out: salida por traslado a otra tienda (despacho). '
+  'transfer_in: entrada por traslado (recepción en destino, o reversa al origen).';
+
+
+-- ============================================================
+-- VERIFICACIÓN POST-MIGRACIÓN
+-- ============================================================
+-- 1. El enum quedó con los 6 valores, los nuevos al final:
+--
+--      SELECT e.enumlabel, e.enumsortorder
+--        FROM pg_enum e
+--        JOIN pg_type t ON t.oid = e.enumtypid
+--       WHERE t.typname = 'movement_type'
+--       ORDER BY e.enumsortorder;
+--
+--    Esperado: sale, return, adjustment, purchase, transfer_out, transfer_in
+--
+-- 2. Re-aplicar la migración no falla (idempotencia):
+--
+--      ./scripts/lab-apply-migration.sh 040_transfer_movement_types.sql   # 2ª vez
+--
+-- 3. Ninguna fila usa todavía los tipos nuevos (debe dar 0):
+--
+--      SELECT count(*) FROM public.stock_movements
+--       WHERE type IN ('transfer_out', 'transfer_in');
+--
+-- 4. El histórico sigue intacto y agrupa igual que antes:
+--
+--      SELECT type, count(*) FROM public.stock_movements GROUP BY type ORDER BY 1;
+--
+-- 5. Humo funcional en el lab (lo que de verdad importa):
+--    · POS: escanear, agregar al carrito y cobrar una venta → el stock baja.
+--    · Inventario → pestaña Movimientos: la lista carga, el filtro por tipo
+--      funciona en las 4 opciones y en "Todos los tipos".
+--    · Inventario: un ajuste manual sigue guardando y apareciendo.
+--    · Reportes: cargan sin error (no dependen de stock_movements, pero es el
+--      chequeo barato de que nada colateral se movió).
+--
+-- ============================================================
+-- REVERSIÓN — qué implica, y por qué NO conviene
+-- ============================================================
+-- PostgreSQL NO tiene `ALTER TYPE ... DROP VALUE`. No existe forma directa de
+-- quitar un valor de un enum. Revertir de verdad implica el mismo procedimiento
+-- que hizo la 006 para sacar 'nequi':
+--
+--   1. Verificar que NO haya filas con los valores nuevos:
+--        SELECT count(*) FROM stock_movements
+--         WHERE type IN ('transfer_out','transfer_in');       -- debe ser 0
+--      (Si hay filas, primero hay que decidir a qué tipo se reasignan — un
+--       traslado no es ni 'sale' ni 'adjustment' sin perder información.)
+--   2. CREATE TYPE movement_type_new AS ENUM
+--        ('sale','return','adjustment','purchase');
+--   3. ALTER TABLE stock_movements
+--        ALTER COLUMN type TYPE movement_type_new
+--        USING type::text::movement_type_new;
+--   4. DROP TYPE movement_type;
+--      ALTER TYPE movement_type_new RENAME TO movement_type;
+--
+-- Es un swap de UNA sola columna (punto 2 de la sección de riesgo), así que es
+-- mecánicamente simple. Pero toma un ACCESS EXCLUSIVE lock y reescribe la
+-- tabla de auditoría completa.
+--
+-- >>> RECOMENDACIÓN: la reversión correcta de esta migración es NO HACER NADA.
+--     Un valor de enum sin filas que lo usen es inerte: no lo produce ningún
+--     trigger, no lo consume ninguna vista, no aparece en ninguna UI. Revertir
+--     por prolijidad cosmética es estrictamente MÁS riesgoso que dejarlo.
+--     El procedimiento de arriba queda documentado por completitud, no como
+--     plan de rollback.
+-- ============================================================
