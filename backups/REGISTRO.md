@@ -26,3 +26,10 @@ fase que toque la base de datos (especialmente la migración a multi-tenancy).
 | 2026-07-11 10:13 | `pre-032-033-mixed-payments` | `gmura_20260711_1013_pre-032-033-mixed-payments.dump` | 538KB | `0df7626de4cc` |
 | 2026-07-13 19:26 | `pre-034-historial` | `gmura_20260713_1925_pre-034-historial.dump` | 567KB | `9d5250e5b88c` |
 | 2026-07-13 19:52 | `pre-035-org-seeding` | `gmura_20260713_1952_pre-035-org-seeding.dump` | 567KB | `0f4cf2fda1d9` |
+| 2026-07-14 13:12 | `pre-036-shift-check` | `gmura_20260714_1311_pre-036-shift-check.dump` | 571KB | `01dc03c589b7` |
+| 2026-07-22 17:29 | `pre-fix-stock-inicial-pretina` | `gmura_20260722_1728_pre-fix-stock-inicial-pretina.dump` | 613KB | `cb8bce3a71a1` |
+| 2026-07-25 22:32 | `pre-fix-orden-fantasma-173` | `gmura_20260725_2232_pre-fix-orden-fantasma-173.dump` | 634KB | `5d564dbd0af6` |
+| 2026-07-25 23:14 | `pre-037-expense-payment-method` | `gmura_20260725_2314_pre-037-expense-payment-method.dump` | 634KB | `4913fedbc25c` |
+| 2026-08-08 11:16 | `pre-039-anon-grants` | `gmura_20260808_1116_pre-039-anon-grants.dump` | 689KB | `a6f74d6c6a0d` |
+| 2026-08-27 09:03 | `pre-040-transfer-enum` | `gmura_20260827_0902_pre-040-transfer-enum.dump` | 743KB | `9e344a57fce3` |
+| 2026-08-27 17:56 | `pre-041-store-transfers` | `gmura_20260827_1756_pre-041-store-transfers.dump` | 748KB | `9f8ec5f6e8c8` |
