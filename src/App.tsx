@@ -16,6 +16,8 @@ import ExpenseHistoryPage from '@/pages/ExpenseHistoryPage'
 import LayawaysPage from '@/pages/LayawaysPage'
 import SuppliersPage from '@/pages/SuppliersPage'
 import CarteraPage from '@/pages/CarteraPage'
+import TransfersPage from '@/pages/TransfersPage'
+import TransferDetailPage from '@/pages/TransferDetailPage'
 
 export default function App() {
   return (
@@ -50,6 +52,12 @@ export default function App() {
             }
           />
           <Route path="inventario" element={<InventoryPage />} />
+          {/* Sin `permission`: la LECTURA de traslados no lleva permiso (criterio
+              de la 024 y del RLS de la 041 — un vendedor VE que viene mercancía
+              aunque no pueda confirmarla). Las ACCIONES sí exigen
+              traslados.gestionar y se gatean botón por botón. */}
+          <Route path="traslados" element={<TransfersPage />} />
+          <Route path="traslados/:id" element={<TransferDetailPage />} />
           <Route path="devoluciones" element={<ReturnsPage />} />
           <Route
             path="proveedores"

@@ -26,6 +26,7 @@ import {
 import { useAuth } from '@/hooks/useAuth'
 import { usePermissions } from '@/hooks/usePermissions'
 import { ChangePasswordModal } from './ChangePasswordModal'
+import { useIncomingTransfersCount } from '@/hooks/useTransfers'
 import { useActiveLayawaysCount } from '@/hooks/useLayaways'
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
@@ -46,6 +47,18 @@ function ActiveLayawaysBadge() {
   if (count <= 0) return null
   return (
     <span className="ml-auto inline-flex min-w-[18px] items-center justify-center rounded-full bg-violet-500 px-1.5 text-[10px] font-semibold text-white">
+      {count > 99 ? '99+' : count}
+    </span>
+  )
+}
+
+/** Traslados en tránsito hacia mi tienda. Ámbar, no violeta: comparte el color
+ *  de "en tránsito" (§2.2), que es lo que el número cuenta. */
+function IncomingTransfersBadge() {
+  const { data: count = 0 } = useIncomingTransfersCount()
+  if (count <= 0) return null
+  return (
+    <span className="ml-auto inline-flex min-w-[18px] items-center justify-center rounded-full bg-amber-500 px-1.5 font-mono text-[10px] font-semibold text-white">
       {count > 99 ? '99+' : count}
     </span>
   )
@@ -88,6 +101,10 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { label: 'Productos', path: '/productos', icon: Tag, permission: 'productos.gestionar' },
       { label: 'Inventario', path: '/inventario', icon: Layers, permission: 'inventario.ver' },
+      // SIN `permission`: la lectura de traslados es libre dentro de la tienda
+      // (mismo criterio que el RLS de la 041). Un vendedor tiene que VER que le
+      // viene mercancía aunque no pueda confirmarla.
+      { label: 'Traslados', path: '/traslados', icon: Truck, Badge: IncomingTransfersBadge },
     ],
   },
   {

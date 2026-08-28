@@ -285,6 +285,14 @@ export interface Transfer {
   cancelled_by: string | null
   cancelled_at: string | null
   cancel_reason: string | null
+  /**
+   * Última impresión de las etiquetas con los códigos del DESTINO. NULL = nunca.
+   * Vive en la tabla y no en el navegador porque quien imprime (mostrador) y
+   * quien revisa (oficina) suelen estar en máquinas distintas: con localStorage
+   * el aviso rojo reaparecía y entrenaba a ignorarlo.
+   */
+  labels_printed_at: string | null
+  labels_printed_by: string | null
 }
 
 /**

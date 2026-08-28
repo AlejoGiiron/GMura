@@ -35,8 +35,14 @@ export interface TransferListRow extends Transfer {
   to_store_name: string
   created_by_name: string | null
   received_by_name: string | null
+  /** Tienda desde la que se confirmó la recepción (columna de auditoría). */
+  received_by_store_name: string | null
   item_count: number
   total_qty: number
+  /** sum(qty_sent × unit_price) — valor a precio de venta (handoff §0.4). */
+  total_value: number
+  /** count(dest_action = 'create_product') — se oculta en la UI si es 0. */
+  new_products_count: number
   /** true si la tienda activa es el origen (para decidir qué acciones ofrecer). */
   is_outgoing: boolean
 }
@@ -86,6 +92,7 @@ async function resolveNames(rows: Transfer[]) {
   for (const t of rows) {
     storeIds.add(t.from_store_id)
     storeIds.add(t.to_store_id)
+    if (t.received_by_store_id) storeIds.add(t.received_by_store_id)
     if (t.created_by) userIds.add(t.created_by)
     if (t.dispatched_by) userIds.add(t.dispatched_by)
     if (t.received_by) userIds.add(t.received_by)
@@ -145,17 +152,23 @@ export function useTransferList(filters: TransferListFilters) {
 
       const { stores, people } = await resolveNames(rows)
 
-      // Conteo de líneas por traslado: una sola query para toda la página.
+      // Agregados por traslado: una sola query para toda la página, sin N+1.
       const { data: itemsData, error: itemsErr } = await supabase
         .from('transfer_items')
-        .select('transfer_id, qty_sent')
+        .select('transfer_id, qty_sent, unit_price, dest_action')
         .in('transfer_id' as never, rows.map((r) => r.id))
       if (itemsErr) throw itemsErr
 
-      const agg = new Map<string, { n: number; qty: number }>()
-      for (const i of (itemsData ?? []) as { transfer_id: string; qty_sent: number }[]) {
-        const prev = agg.get(i.transfer_id) ?? { n: 0, qty: 0 }
-        agg.set(i.transfer_id, { n: prev.n + 1, qty: prev.qty + i.qty_sent })
+      type ItemAgg = { transfer_id: string; qty_sent: number; unit_price: number; dest_action: string }
+      const agg = new Map<string, { n: number; qty: number; value: number; nuevas: number }>()
+      for (const i of (itemsData ?? []) as ItemAgg[]) {
+        const prev = agg.get(i.transfer_id) ?? { n: 0, qty: 0, value: 0, nuevas: 0 }
+        agg.set(i.transfer_id, {
+          n: prev.n + 1,
+          qty: prev.qty + i.qty_sent,
+          value: prev.value + i.qty_sent * Number(i.unit_price),
+          nuevas: prev.nuevas + (i.dest_action === 'create_product' ? 1 : 0),
+        })
       }
 
       return {
@@ -165,8 +178,13 @@ export function useTransferList(filters: TransferListFilters) {
           to_store_name: stores.get(t.to_store_id) ?? '—',
           created_by_name: t.created_by ? (people.get(t.created_by) ?? null) : null,
           received_by_name: t.received_by ? (people.get(t.received_by) ?? null) : null,
+          received_by_store_name: t.received_by_store_id
+            ? (stores.get(t.received_by_store_id) ?? null)
+            : null,
           item_count: agg.get(t.id)?.n ?? 0,
           total_qty: agg.get(t.id)?.qty ?? 0,
+          total_value: agg.get(t.id)?.value ?? 0,
+          new_products_count: agg.get(t.id)?.nuevas ?? 0,
           is_outgoing: t.from_store_id === storeId,
         })),
         total: count ?? 0,
@@ -198,6 +216,47 @@ export function useIncomingTransfersCount() {
   })
 }
 
+// ── useTransferStatusCounts ───────────────────────────────────────────────────
+// Conteos de los chips de filtro. Un head:true por estado: son 4 consultas sin
+// payload, más barato que traer todas las filas para contarlas en el cliente.
+
+export type TransferStatusCounts = Record<TransferStatus | 'all', number>
+
+export function useTransferStatusCounts(direction: TransferDirection) {
+  const { profile } = useAuth()
+  const storeId = getActiveStoreId(profile)
+
+  return useQuery({
+    queryKey: ['transfer-status-counts', storeId, direction],
+    queryFn: async (): Promise<TransferStatusCounts> => {
+      const statuses: TransferStatus[] = ['draft', 'in_transit', 'received', 'cancelled']
+
+      const countFor = async (status?: TransferStatus) => {
+        let q = supabase.from('transfers').select('id', { count: 'exact', head: true })
+        if (direction === 'outgoing') q = q.eq('from_store_id' as never, storeId)
+        else if (direction === 'incoming') q = q.eq('to_store_id' as never, storeId)
+        if (status) q = q.eq('status' as never, status)
+        const { count, error } = await q
+        if (error) throw error
+        return count ?? 0
+      }
+
+      const [all, ...rest] = await Promise.all([
+        countFor(),
+        ...statuses.map((s) => countFor(s)),
+      ])
+      return {
+        all,
+        draft: rest[0],
+        in_transit: rest[1],
+        received: rest[2],
+        cancelled: rest[3],
+      }
+    },
+    enabled: !!storeId,
+  })
+}
+
 // ── useTransferDetail ─────────────────────────────────────────────────────────
 
 export function useTransferDetail(transferId: string | null) {
@@ -217,6 +276,14 @@ export function useTransferDetail(transferId: string | null) {
       const t = data as unknown as Transfer
       const { stores, people } = await resolveNames([t])
 
+      // `to_barcode` sale de un join embebido sobre `variants`, que respeta el
+      // RLS de esa tabla (store_id = tienda activa). Consecuencia BUSCADA:
+      //   · parado en el DESTINO  → los códigos resuelven (es quien imprime)
+      //   · parado en el ORIGEN   → llegan en NULL
+      // Está bien así: el origen no imprime las etiquetas del destino, y el
+      // bloque de reimpresión se oculta solo porque `labelsReady` es false.
+      // NO se arregla debilitando el RLS de variants ni snapshotéando el
+      // barcode: el código del destino puede cambiar y el snapshot mentiría.
       const { data: itemsData, error: itemsErr } = await supabase
         .from('transfer_items')
         .select('*, variants!transfer_items_to_variant_id_fkey(barcode)')
