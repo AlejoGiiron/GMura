@@ -45,7 +45,10 @@ export interface SaveTransferDraftInput {
 function invalidateTransferQueries(queryClient: ReturnType<typeof useQueryClient>) {
   for (const key of [
     'transfers',
+    // El badge del sidebar es lo primero que la gente mira: si no se invalida,
+    // alguien confirma una recepción y sigue viendo "3" media hora (§4.5).
     'transfers-incoming-count',
+    'transfer-status-counts',
     'transfer-detail',
     'transfer-targets',
     'inventory',
@@ -171,6 +174,68 @@ export function useRevertTransferDispatch() {
     onSuccess: (transfer) => {
       invalidateTransferQueries(queryClient)
       toast.success(`Despacho del #${transfer.transfer_number} revertido — el stock volvió al origen`)
+    },
+    onError: (err: Error) => toast.error(err.message),
+  })
+}
+
+// ── useUpdateTransferShipping ─────────────────────────────────────────────────
+// Edita SOLO transportadora, guía y notas (RPC de la 043). El caso real: la guía
+// se consigue después de despachar. Solo la tienda de ORIGEN, y solo mientras el
+// traslado esté en borrador o en tránsito.
+
+export interface UpdateShippingInput {
+  transferId: string
+  carrier: string | null
+  trackingRef: string | null
+  notes: string | null
+}
+
+export function useUpdateTransferShipping() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async (input: UpdateShippingInput): Promise<Transfer> => {
+      const { data, error } = await supabase.rpc('update_transfer_shipping' as never, {
+        p_transfer_id: input.transferId,
+        p_carrier: input.carrier,
+        p_tracking_ref: input.trackingRef,
+        p_notes: input.notes,
+      } as never)
+      if (error) throw error
+      return data as unknown as Transfer
+    },
+    onSuccess: () => {
+      // No mueve stock: alcanza con refrescar el módulo.
+      void queryClient.invalidateQueries({ queryKey: ['transfers'] })
+      void queryClient.invalidateQueries({ queryKey: ['transfer-detail'] })
+      toast.success('Datos del envío actualizados')
+    },
+    onError: (err: Error) => toast.error(err.message),
+  })
+}
+
+// ── useMarkLabelsPrinted ──────────────────────────────────────────────────────
+// Persiste que las etiquetas del destino se imprimieron (RPC de la 043b). Solo
+// la tienda DESTINO. Idempotente: volver a imprimir pisa el timestamp.
+//
+// Sin toast: la confirmación visible es que el bloque de la pantalla pasa de
+// rojo a verde. Un toast encima sería ruido sobre algo que ya se ve.
+
+export function useMarkLabelsPrinted() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async (transferId: string): Promise<Transfer> => {
+      const { data, error } = await supabase.rpc('mark_transfer_labels_printed' as never, {
+        p_transfer_id: transferId,
+      } as never)
+      if (error) throw error
+      return data as unknown as Transfer
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['transfer-detail'] })
+      void queryClient.invalidateQueries({ queryKey: ['transfers'] })
     },
     onError: (err: Error) => toast.error(err.message),
   })
