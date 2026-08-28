@@ -34,3 +34,4 @@ fase que toque la base de datos (especialmente la migración a multi-tenancy).
 | 2026-08-27 09:03 | `pre-040-transfer-enum` | `gmura_20260827_0902_pre-040-transfer-enum.dump` | 743KB | `9e344a57fce3` |
 | 2026-08-27 17:56 | `pre-041-store-transfers` | `gmura_20260827_1756_pre-041-store-transfers.dump` | 748KB | `9f8ec5f6e8c8` |
 | 2026-08-27 22:37 | `pre-042-transfers-permission` | `gmura_20260827_2237_pre-042-transfers-permission.dump` | 806KB | `dbc0ec6be7b1` |
+| 2026-08-28 13:49 | `pre-043-transfer-shipping` | `gmura_20260828_1348_pre-043-transfer-shipping.dump` | 807KB | `2db9ee07ea70` |
