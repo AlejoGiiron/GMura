@@ -61,7 +61,7 @@ BEGIN;
 --
 --    · Dueño         → ["*"] (comodín: todos los permisos).
 --    · Administrador → todos los permisos del catálogo MENOS roles.gestionar
---      (gestionar roles es atribución exclusiva del Dueño; ver 021). Son 19,
+--      (gestionar roles es atribución exclusiva del Dueño; ver 021). Son 20,
 --      en el mismo orden que ALL_PERMISSIONS de src/lib/permissionsCatalog.ts.
 --    · Vendedor      → solo operación de tienda (6).
 --    · Otro nombre   → NULL (no es un rol base; seed/reconciliación no lo usan).
@@ -90,6 +90,7 @@ AS $$
         "clientes.eliminar",
         "inventario.ver",
         "inventario.gestionar",
+        "traslados.gestionar",
         "productos.gestionar",
         "compras.gestionar",
         "reportes.ver",

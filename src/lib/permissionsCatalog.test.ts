@@ -2,12 +2,12 @@ import { describe, it, expect } from 'vitest'
 import { ALL_PERMISSIONS, CATALOG_KEYS } from './permissionsCatalog'
 
 describe('permissionsCatalog', () => {
-  it('cubre EXACTAMENTE los 20 permisos canónicos (sin huérfanos ni sobrantes)', () => {
+  it('cubre EXACTAMENTE los 21 permisos canónicos (sin huérfanos ni sobrantes)', () => {
     expect([...CATALOG_KEYS].sort()).toEqual([...ALL_PERMISSIONS].sort())
   })
 
-  it('la lista canónica tiene 20 permisos', () => {
-    expect(ALL_PERMISSIONS.length).toBe(20)
+  it('la lista canónica tiene 21 permisos', () => {
+    expect(ALL_PERMISSIONS.length).toBe(21)
   })
 
   it('incluye ventas.regalo (permiso de la 027)', () => {
@@ -23,6 +23,11 @@ describe('permissionsCatalog', () => {
   it('incluye historial.ver (permiso de la 034)', () => {
     expect(ALL_PERMISSIONS as readonly string[]).toContain('historial.ver')
     expect(CATALOG_KEYS).toContain('historial.ver')
+  })
+
+  it('incluye traslados.gestionar (permiso de la 042)', () => {
+    expect(ALL_PERMISSIONS as readonly string[]).toContain('traslados.gestionar')
+    expect(CATALOG_KEYS).toContain('traslados.gestionar')
   })
 
   it('no hay permisos duplicados en el catálogo', () => {

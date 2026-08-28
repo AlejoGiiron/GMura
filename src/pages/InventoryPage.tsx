@@ -70,15 +70,22 @@ const MOV_TYPE_LABELS: Record<StockMovementType, string> = {
   return: 'Devolución',
   adjustment: 'Ajuste',
   purchase: 'Compra',
+  transfer_out: 'Salida por traslado',
+  transfer_in: 'Entrada por traslado',
 }
 
 function MovTypeBadge({ type }: { type: StockMovementType }) {
   const label = MOV_TYPE_LABELS[type]
+  // Los dos de traslado usan ámbar (salida) y teal (entrada): se leen como
+  // opuestos entre sí y no se confunden con venta (rojo), devolución (esmeralda),
+  // ajuste (azul) ni compra (violeta).
   const styles: Record<StockMovementType, string> = {
-    sale:       'bg-red-50 text-red-600 border border-red-200',
-    return:     'bg-emerald-50 text-emerald-600 border border-emerald-200',
-    adjustment: 'bg-blue-50 text-blue-600 border border-blue-200',
-    purchase:   'bg-violet-50 text-violet-600 border border-violet-200',
+    sale:         'bg-red-50 text-red-600 border border-red-200',
+    return:       'bg-emerald-50 text-emerald-600 border border-emerald-200',
+    adjustment:   'bg-blue-50 text-blue-600 border border-blue-200',
+    purchase:     'bg-violet-50 text-violet-600 border border-violet-200',
+    transfer_out: 'bg-amber-50 text-amber-700 border border-amber-200',
+    transfer_in:  'bg-teal-50 text-teal-700 border border-teal-200',
   }
   return (
     <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${styles[type]}`}>
@@ -941,6 +948,8 @@ export default function InventoryPage() {
                 <option value="return">Devolución</option>
                 <option value="adjustment">Ajuste</option>
                 <option value="purchase">Compra</option>
+                <option value="transfer_out">Salida por traslado</option>
+                <option value="transfer_in">Entrada por traslado</option>
               </select>
 
               <div className="flex items-center gap-2">
