@@ -55,6 +55,7 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
     permissions: [
       { key: 'inventario.ver', label: 'Ver inventario' },
       { key: 'inventario.gestionar', label: 'Ajustar stock manualmente' },
+      { key: 'traslados.gestionar', label: 'Trasladar mercancía entre tiendas' },
     ],
   },
   {
@@ -106,6 +107,7 @@ export const ALL_PERMISSIONS = [
   'clientes.eliminar',
   'inventario.ver',
   'inventario.gestionar',
+  'traslados.gestionar',
   'productos.gestionar',
   'compras.gestionar',
   'reportes.ver',

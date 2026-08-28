@@ -1,12 +1,39 @@
 export type UserRole = 'admin' | 'seller'
 export type OrderStatus = 'completed' | 'cancelled' | 'returned'
 export type PaymentMethod = 'cash' | 'card' | 'transfer' | 'addi' | 'credit'
-export type StockMovementType = 'sale' | 'return' | 'adjustment' | 'purchase'
+export type StockMovementType =
+  | 'sale'
+  | 'return'
+  | 'adjustment'
+  | 'purchase'
+  | 'transfer_out'
+  | 'transfer_in'
 export type ReturnType = 'return' | 'exchange'
 export type ReturnStatus = 'pending' | 'completed'
 export type ReturnAction = 'refund' | 'exchange'
 export type LayawayStatus = 'active' | 'completed' | 'cancelled' | 'expired'
 export type InvoiceStatus = 'pending' | 'partial' | 'paid' | 'cancelled'
+
+/** Estados de un traslado entre tiendas (041). text + CHECK en la BD, no enum. */
+export type TransferStatus = 'draft' | 'in_transit' | 'received' | 'cancelled'
+
+/**
+ * Qué eligió quien ENVÍA para cada línea:
+ * - map_variant   → la variante ya existe en el destino
+ * - map_product   → existe el producto, falta esa talla/color (se crea al recibir)
+ * - create_product→ no hay nada parecido (se crea ficha + variante al recibir)
+ */
+export type TransferDestAction = 'map_variant' | 'map_product' | 'create_product'
+
+/**
+ * Qué pasó al RECIBIR. `auto_matched` significa que apareció un gemelo en el
+ * destino mientras la mercancía viajaba y el servidor mapeó en vez de duplicar.
+ * NULL mientras el traslado no se recibe.
+ */
+export type TransferDestResolution = 'as_chosen' | 'auto_matched'
+
+/** Ranking de candidatos que devuelve search_transfer_targets. */
+export type TransferMatchKind = 'exact_variant' | 'same_product' | 'name_similar'
 
 export interface Organization {
   id: string
@@ -228,6 +255,63 @@ export interface CashExpense {
   return_id: string | null
   notes: string | null
   created_by: string
+  created_at: string
+}
+
+/** Cabecera de un traslado de mercancía entre dos tiendas de la misma org (041). */
+export interface Transfer {
+  id: string
+  /** Secuencial por ORGANIZACIÓN (no por tienda: el documento cruza dos). */
+  transfer_number: number
+  organization_id: string
+  from_store_id: string
+  to_store_id: string
+  status: TransferStatus
+  carrier: string | null
+  tracking_ref: string | null
+  notes: string | null
+  created_by: string
+  created_at: string
+  updated_at: string
+  dispatched_by: string | null
+  dispatched_at: string | null
+  received_by: string | null
+  received_at: string | null
+  /**
+   * Tienda ACTIVA de quien confirmó la recepción. Dato crudo: la UI deriva
+   * "confirmado por el destino / por el ORIGEN / por administración".
+   */
+  received_by_store_id: string | null
+  cancelled_by: string | null
+  cancelled_at: string | null
+  cancel_reason: string | null
+}
+
+/**
+ * Línea de un traslado. El snapshot (product_name…unit_price) lo copia el
+ * SERVIDOR desde la variante de origen: sin él el destino no puede ni listar lo
+ * que le mandaron, porque el RLS le tapa el catálogo del origen.
+ */
+export interface TransferItem {
+  id: string
+  transfer_id: string
+  from_variant_id: string
+  dest_action: TransferDestAction
+  to_product_id: string | null
+  to_variant_id: string | null
+  dest_resolution: TransferDestResolution | null
+  qty_sent: number
+  /** NULL = recibido SIN contar. El conteo por línea es una fase futura. */
+  qty_received: number | null
+  product_name: string
+  brand: string | null
+  description: string | null
+  size_type: string | null
+  size: string | null
+  color: string | null
+  /** Costo del ORIGEN. Solo se usa si la recepción CREA la variante destino. */
+  unit_cost: number | null
+  unit_price: number
   created_at: string
 }
 
@@ -729,6 +813,19 @@ export interface Database {
           created_at?: string
         }
         Update: Partial<Omit<SupplierPayment, 'id'>>
+      }
+      // Traslados (041): SOLO lectura desde el cliente. No hay política de
+      // INSERT/UPDATE/DELETE ni GRANT de escritura — todo pasa por las RPC
+      // SECURITY DEFINER. Por eso Insert/Update se declaran como never.
+      transfers: {
+        Row: Transfer
+        Insert: never
+        Update: never
+      }
+      transfer_items: {
+        Row: TransferItem
+        Insert: never
+        Update: never
       }
     }
     Views: {

@@ -46,13 +46,39 @@ códigos de barras, devoluciones y CRM de clientes.
   `canonical_role_permissions(name)` en la migración 035. Los roles de una org
   NUEVA se crean con `seed_org_roles(org_id)` (la usa create-lab-org.sql y el
   futuro flujo de "crear org desde la app").
-- Para AGREGAR un permiso nuevo a un rol base:
-  1. Editar el array del rol en `canonical_role_permissions()` (035).
-  2. Nueva migración con reconciliación ADITIVA **sin filtro de organización**
-     (patrón de la 034): `WHERE name IN ('Administrador','Vendedor') AND NOT
-     permissions ? '*' AND NOT (permissions @> canonical_role_permissions(name))`.
-  3. Actualizar `src/lib/permissionsCatalog.ts` (catálogo de la UI) si el
-     permiso es nuevo en el sistema.
+- Para AGREGAR un permiso nuevo a un rol base son **TRES** pasos. El 1 y el 2
+  parecen redundantes y NO lo son: cubren poblaciones distintas de bases de
+  datos. Saltarse el 2 es el error que hizo fallar la 042 en su primer intento.
+  1. **Editar el array del rol en el ARCHIVO de la 035**
+     (`canonical_role_permissions()`). Esto solo afecta a **instalaciones
+     NUEVAS**, las que ejecutan la 035 desde cero.
+  2. **REDEFINIR la función con `CREATE OR REPLACE` DENTRO de la migración de
+     reconciliación.** En una base donde la 035 **ya corrió** (producción y el
+     lab), la función quedó creada con el array viejo y **editar el archivo no
+     la toca**. Sin este paso el canónico VIVO queda desactualizado,
+     `seed_org_roles()` sigue sembrando sin el permiso y **una organización
+     nueva nace coja** — exactamente el problema de las 023/027/029, por otra
+     puerta.
+  3. **Reconciliación ADITIVA sin filtro de organización** (patrón de la 034):
+     `WHERE name IN ('Administrador','Vendedor') AND NOT permissions ? '*' AND
+     NOT (permissions @> canonical_role_permissions(name))`. Debe ser un append
+     (`permissions || '[...]'`), NUNCA un re-set: hay roles personalizados desde
+     la UI (el Vendedor de La Bodega tiene 8 permisos, no los 6 canónicos) y un
+     re-set se los borraría. Más `src/lib/permissionsCatalog.ts` (catálogo de la
+     UI) y su test de paridad si el permiso es nuevo en el sistema.
+- **Por qué la 034 no necesitó el paso 2** (no es precedente para saltárselo):
+  la 034 es ANTERIOR a la 035, así que cuando la 035 creó la función, el array
+  ya nació con `historial.ver` adentro. La 042 fue el primer permiso agregado
+  DESPUÉS de que la 035 existe, y por eso el hueco recién apareció ahí. Todo
+  permiso nuevo de acá en adelante está en esa misma situación.
+- **La autoverificación es parte del molde**, no un extra de la 042. Toda
+  migración de permiso debe terminar con un bloque `DO $$ ... $$` que aborte
+  (`RAISE EXCEPTION`, dentro de la transacción, para que revierta todo) si:
+  · algún rol base quedó sin el permiso;
+  · algún Dueño perdió el comodín `'*'`;
+  · **`canonical_role_permissions(<rol>)` no incluye el permiso** ← este es el
+    que atrapó el paso 2 faltante en la 042. Es barato y es el único chequeo que
+    detecta la desincronización entre el archivo y la función viva.
 - NUNCA asignar permisos filtrando por `organizations.name = '...'`. Las
   migraciones 023/027/029 lo hicieron (hardcode a 'La Bodega del Jeans') y por
   eso una org futura nacía sin esos permisos. Ese patrón está PROHIBIDO; el
