@@ -13,23 +13,6 @@ import type {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * ⚠️ SE BORRA EN LA FASE 5b.
- *
- * La pantalla de armar el envío (/traslados/nuevo) todavía no existe: llega en
- * la 5b. Hasta entonces todo camino hacia ella queda oculto, porque un botón que
- * lleva a una página rota en un POS de producción no es un detalle cosmético.
- *
- * La 5a igual entrega el flujo que urgía: RECIBIR. Las tablas y las RPC ya están
- * en producción desde la 041, y hasta ahora no había forma de confirmar un
- * traslado desde la app.
- *
- * Al implementar la 5b: borrar esta constante y sus tres usos en TransfersPage
- * (botón del header, botón del estado vacío, y la acción "Seguir editando" de
- * las filas en borrador).
- */
-export const TRANSFER_BUILDER_ENABLED = false
-
-/**
  * Formato de display del número de traslado: TR-0001.
  * Sin prefijos con significado (nada de codificar tienda o año) — handoff §0.5.
  */

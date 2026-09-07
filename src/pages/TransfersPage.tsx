@@ -24,7 +24,6 @@ import {
   RevertDispatchModal,
 } from '@/components/transfers/TransferActionModals'
 import {
-  TRANSFER_BUILDER_ENABLED,
   confirmedBy,
   formatTransferMoney,
   formatTransferNumber,
@@ -117,7 +116,7 @@ export default function TransfersPage() {
             Tienda {activeStoreName} · mercancía que entra y sale
           </p>
         </div>
-        {TRANSFER_BUILDER_ENABLED && canManage && (
+        {canManage && (
           <button
             onClick={() => navigate('/traslados/nuevo')}
             disabled={myStores.length < 2}
@@ -257,6 +256,7 @@ export default function TransfersPage() {
                   menuOpen={menuFor === r.id}
                   onToggleMenu={() => setMenuFor(menuFor === r.id ? null : r.id)}
                   onOpen={() => navigate(`/traslados/${r.id}`)}
+                  onEdit={() => navigate(`/traslados/${r.id}/editar`)}
                   onCancel={() => {
                     setCancelling(r)
                     setMenuFor(null)
@@ -301,6 +301,7 @@ function Row({
   menuOpen,
   onToggleMenu,
   onOpen,
+  onEdit,
   onCancel,
   onRevert,
 }: {
@@ -310,6 +311,7 @@ function Row({
   menuOpen: boolean
   onToggleMenu: () => void
   onOpen: () => void
+  onEdit: () => void
   onCancel: () => void
   onRevert: () => void
 }) {
@@ -383,9 +385,9 @@ function Row({
           >
             Recibir
           </button>
-        ) : TRANSFER_BUILDER_ENABLED && row.status === 'draft' && row.is_outgoing && canManage ? (
+        ) : row.status === 'draft' && row.is_outgoing && canManage ? (
           <button
-            onClick={onOpen}
+            onClick={onEdit}
             className="rounded-lg border border-stone-300 bg-white px-3 py-1.5 text-[12.5px] font-semibold text-neutral-700 hover:bg-stone-50"
           >
             Seguir editando
@@ -490,7 +492,7 @@ function EmptyState({
           ? 'Cuando otra tienda te mande mercancía, aparece acá.'
           : 'Armá un envío para mover mercancía a otra tienda.'}
       </p>
-      {TRANSFER_BUILDER_ENABLED && !isIncoming && canManage && (
+      {!isIncoming && canManage && (
         <button
           onClick={onNew}
           className="mt-4 inline-flex items-center gap-1.5 rounded-lg bg-violet-600 px-4 py-2 text-[13px] font-semibold text-white shadow-sm hover:bg-violet-700"
