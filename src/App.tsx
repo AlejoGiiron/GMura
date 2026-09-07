@@ -18,6 +18,7 @@ import SuppliersPage from '@/pages/SuppliersPage'
 import CarteraPage from '@/pages/CarteraPage'
 import TransfersPage from '@/pages/TransfersPage'
 import TransferDetailPage from '@/pages/TransferDetailPage'
+import TransferBuilderPage from '@/pages/TransferBuilderPage'
 
 export default function App() {
   return (
@@ -57,6 +58,24 @@ export default function App() {
               aunque no pueda confirmarla). Las ACCIONES sí exigen
               traslados.gestionar y se gatean botón por botón. */}
           <Route path="traslados" element={<TransfersPage />} />
+          {/* Armar el envio SI exige el permiso: crea y despacha. El estatico
+              va antes que el dinamico para que /traslados/nuevo no caiga en :id. */}
+          <Route
+            path="traslados/nuevo"
+            element={
+              <ProtectedRoute permission="traslados.gestionar">
+                <TransferBuilderPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="traslados/:id/editar"
+            element={
+              <ProtectedRoute permission="traslados.gestionar">
+                <TransferBuilderPage />
+              </ProtectedRoute>
+            }
+          />
           <Route path="traslados/:id" element={<TransferDetailPage />} />
           <Route path="devoluciones" element={<ReturnsPage />} />
           <Route
