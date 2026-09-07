@@ -106,6 +106,18 @@ VITE_GMURA_SUPABASE_ANON_KEY=
 - Nunca commit directo a main
 - Commits en Conventional Commits
 - Un commit por funcionalidad completa
+- **PASO 0 DE TODO COMMIT: verificar la rama, en su PROPIO comando.**
+  `git branch --show-current` primero, leer la salida, y recién después
+  commitear. **Nunca encadenado** (`git branch --show-current && git add … &&
+  git commit …`): el `&&` corre igual porque `git branch` devuelve 0 siempre,
+  así que la verificación se imprime y se ignora. Pasó dos veces en el módulo
+  de traslados — el commit terminó en develop y hubo que rehacerlo con
+  `reset --mixed` + re-commit en la rama.
+  El trabajo de feature va SIEMPRE en su rama y llega a develop por
+  `merge --no-ff`. Directo en develop solo los `chore` de registro (por
+  ejemplo `backups/REGISTRO.md`) cuando ya se está parado ahí a propósito.
+  Hay un hook local (no versionado) en `.git/hooks/pre-commit` que lo bloquea;
+  el escape para los chore legítimos es `GMURA_ALLOW_DEVELOP=1 git commit …`.
 
 ## Estado actual del proyecto
 Última fase completada: 07 - Configuración ✅ + hotfix/qa-pre-deploy ✅
