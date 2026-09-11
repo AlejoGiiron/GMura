@@ -3,11 +3,12 @@ import JsBarcode from 'jsbarcode'
 import { X, Printer } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useResolvedConfig } from '@/hooks/useConfig'
-import { findLabelSize } from '@/lib/labelSizes'
+import { deriveLabelStyle, findLabelSize } from '@/lib/labelSizes'
+import LabelPrintSurface from '@/components/print/LabelPrintSurface'
+import { LABEL_PRINT_CLASS } from '@/lib/labelPrint'
 import { formatTransferMoney } from '@/lib/transfers'
 import type { LabelSize } from '@/types/config.types'
 
-const PRINT_STYLE_ID = 'gmura-transfer-labels-print-style'
 const PRINT_CONTAINER_ID = 'gmura-transfer-labels-print'
 
 export interface TransferLabelLine {
@@ -30,22 +31,30 @@ interface TransferLabelsModalProps {
   onClose: () => void
 }
 
-function BarcodeSvg({ code }: { code: string }) {
+function BarcodeSvg({
+  code,
+  height = 26,
+  width = 1.2,
+}: {
+  code: string
+  height?: number
+  width?: number
+}) {
   const ref = useRef<SVGSVGElement>(null)
   useEffect(() => {
     if (!ref.current) return
     try {
       JsBarcode(ref.current, code, {
         format: 'CODE128',
-        width: 1.2,
-        height: 26,
+        width,
+        height,
         displayValue: false,
         margin: 1,
       })
     } catch {
       // Un código inválido deja la etiqueta sin barras; el número sigue impreso.
     }
-  }, [code])
+  }, [code, height, width])
   return <svg ref={ref} style={{ width: '100%' }} />
 }
 
@@ -70,35 +79,15 @@ export default function TransferLabelsModal({
   const size: LabelSize =
     findLabelSize(config.label_sizes, config.label_default_size_id) ?? config.label_sizes[0]
 
+  // Mismo escalado que el modal de productos y que la preview de Config: si
+  // la tienda usa 50x30 o 58x40, la etiqueta escala en vez de quedar con la
+  // tipografia de 38x25.
+  const s = deriveLabelStyle(size)
+
   const printable = lines.filter((l) => !!l.barcode)
   const missing = lines.length - printable.length
   const totalLabels = printable.reduce((a, l) => a + l.qty, 0)
 
-  useEffect(() => {
-    if (document.getElementById(PRINT_STYLE_ID)) return
-    const style = document.createElement('style')
-    style.id = PRINT_STYLE_ID
-    style.textContent = `
-      @media print {
-        body > * { visibility: hidden !important; }
-        #${PRINT_CONTAINER_ID},
-        #${PRINT_CONTAINER_ID} * { visibility: visible !important; }
-        #${PRINT_CONTAINER_ID} {
-          display: block !important;
-          position: fixed !important;
-          top: 0 !important; left: 0 !important;
-          width: 100% !important;
-          padding: 4mm !important;
-          box-sizing: border-box !important;
-        }
-        @page { margin: 0; size: auto; }
-      }
-    `
-    document.head.appendChild(style)
-    return () => {
-      document.getElementById(PRINT_STYLE_ID)?.remove()
-    }
-  }, [])
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -205,43 +194,50 @@ export default function TransferLabelsModal({
         </div>
       </div>
 
-      {/* Contenedor de impresión: oculto en pantalla, visible al imprimir. */}
-      <div id={PRINT_CONTAINER_ID} style={{ display: 'none' }}>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '2mm' }}>
-          {labels.map((l) => (
-            <div
-              key={l.key}
-              style={{
-                width: `${size.width_mm}mm`,
-                height: `${size.height_mm}mm`,
-                border: '1px solid #e5e5e5',
-                padding: '1mm',
-                boxSizing: 'border-box',
-                display: 'flex',
-                flexDirection: 'column',
-                justifyContent: 'space-between',
-                overflow: 'hidden',
-              }}
-            >
-              {config.label_fields.name && (
-                <div style={{ fontSize: '6pt', fontWeight: 700, lineHeight: 1.1 }}>
-                  {l.productName}
-                </div>
-              )}
-              {config.label_fields.size_color && (
-                <div style={{ fontSize: '5.5pt', lineHeight: 1.1 }}>
-                  T.{l.size ?? '—'} · {l.color ?? '—'}
-                </div>
-              )}
-              <BarcodeSvg code={l.barcode as string} />
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '5.5pt' }}>
-                <span style={{ fontFamily: 'monospace' }}>{l.barcode}</span>
-                {config.label_fields.price && <span>{formatTransferMoney(l.price)}</span>}
+      {/* Superficie de impresión compartida con el modal de productos: portal a
+          body y UNA etiqueta por página. Sin wrapper flex a propósito. */}
+      <LabelPrintSurface containerId={PRINT_CONTAINER_ID} size={size}>
+        {labels.map((l) => (
+          <div
+            key={l.key}
+            className={LABEL_PRINT_CLASS}
+            style={{
+              width: s.width,
+              height: s.height,
+              border: s.border,
+              padding: s.padding,
+              boxSizing: 'border-box',
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: 'space-between',
+              overflow: 'hidden',
+              background: '#fff',
+            }}
+          >
+            {config.label_fields.name && (
+              <div style={{ fontSize: s.nameFs, fontWeight: 700, lineHeight: 1.1 }}>
+                {l.productName}
               </div>
+            )}
+            {config.label_fields.size_color && (
+              <div style={{ fontSize: s.detailFs, lineHeight: 1.1 }}>
+                T.{l.size ?? '—'} · {l.color ?? '—'}
+              </div>
+            )}
+            <div style={{ flex: 1, minHeight: 0, display: 'flex', alignItems: 'center' }}>
+              <BarcodeSvg code={l.barcode as string} height={s.barcodeHeight} width={s.barcodeWidth} />
             </div>
-          ))}
-        </div>
-      </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: s.skuFs }}>
+              <span style={{ fontFamily: 'monospace' }}>{l.barcode}</span>
+              {config.label_fields.price && (
+                <span style={{ fontSize: s.priceFs, fontWeight: 700 }}>
+                  {formatTransferMoney(l.price)}
+                </span>
+              )}
+            </div>
+          </div>
+        ))}
+      </LabelPrintSurface>
     </>
   )
 }
