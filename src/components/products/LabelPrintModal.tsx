@@ -6,11 +6,12 @@ import { fmtCOP } from '@/lib/formatters'
 import { generateBarcode } from '@/lib/products'
 import { useResolvedConfig } from '@/hooks/useConfig'
 import { useVariantMutations } from '@/hooks/useVariantMutations'
+import LabelPrintSurface from '@/components/print/LabelPrintSurface'
+import { LABEL_PRINT_CLASS } from '@/lib/labelPrint'
 import { deriveLabelStyle, findLabelSize } from '@/lib/labelSizes'
 import type { LabelSize } from '@/types/config.types'
 import type { Variant } from '@/types/database.types'
 
-const PRINT_STYLE_ID = 'gmura-label-print-style'
 const PRINT_CONTAINER_ID = 'gmura-label-print'
 
 // JsBarcode (CODE128) acepta ASCII imprimible. Un código vacío o con
@@ -80,7 +81,7 @@ function LabelCard({ variant, productName, brand, size, onBarcodeError }: LabelC
 
   return (
     <div
-      className="label-card"
+      className={LABEL_PRINT_CLASS}
       style={{
         width: s.width,
         height: s.height,
@@ -172,7 +173,6 @@ export default function LabelPrintModal({
   const productId = variants[0]?.product_id ?? ''
   const { update } = useVariantMutations(productId)
 
-  const printRef = useRef<HTMLDivElement>(null)
   const persistedRef = useRef(false)
   const errorReportedRef = useRef(false)
 
@@ -202,32 +202,6 @@ export default function LabelPrintModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Inyectar estilos de impresión — con guard para evitar duplicados
-  useEffect(() => {
-    if (document.getElementById(PRINT_STYLE_ID)) return
-    const style = document.createElement('style')
-    style.id = PRINT_STYLE_ID
-    style.textContent = `
-      @media print {
-        body > * { visibility: hidden !important; }
-        #${PRINT_CONTAINER_ID},
-        #${PRINT_CONTAINER_ID} * { visibility: visible !important; }
-        #${PRINT_CONTAINER_ID} {
-          display: block !important;
-          position: fixed !important;
-          top: 0 !important; left: 0 !important;
-          width: 100% !important;
-          padding: 4mm !important;
-          box-sizing: border-box !important;
-        }
-        @page { margin: 0; size: auto; }
-      }
-    `
-    document.head.appendChild(style)
-    return () => {
-      document.getElementById(PRINT_STYLE_ID)?.remove()
-    }
-  }, [])
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -254,7 +228,9 @@ export default function LabelPrintModal({
   }
 
   function handlePrint() {
-    if (!printRef.current) {
+    // El contenedor ahora vive en un portal a body (LabelPrintSurface), así que
+    // el chequeo es sobre el DOM real y no sobre un ref local.
+    if (!document.getElementById(PRINT_CONTAINER_ID)) {
       toast.error('La vista de impresión aún no está lista. Intenta de nuevo.')
       return
     }
@@ -277,28 +253,20 @@ export default function LabelPrintModal({
 
   return (
     <>
-      {/* Contenedor de impresión (invisible en pantalla) */}
-      <div
-        ref={printRef}
-        id={PRINT_CONTAINER_ID}
-        style={{
-          display: 'none',
-          fontFamily: 'system-ui, sans-serif',
-        }}
-      >
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '2mm' }}>
-          {labelsToRender.map(({ variant, key }) => (
-            <LabelCard
-              key={key}
-              variant={variant}
-              productName={productName}
-              brand={brand}
-              size={activeSize}
-              onBarcodeError={reportBarcodeError}
-            />
-          ))}
-        </div>
-      </div>
+      {/* Superficie de impresión compartida: portal a body + una etiqueta por
+          página. SIN wrapper flex: un contenedor flex no fragmenta bien. */}
+      <LabelPrintSurface containerId={PRINT_CONTAINER_ID} size={activeSize}>
+        {labelsToRender.map(({ variant, key }) => (
+          <LabelCard
+            key={key}
+            variant={variant}
+            productName={productName}
+            brand={brand}
+            size={activeSize}
+            onBarcodeError={reportBarcodeError}
+          />
+        ))}
+      </LabelPrintSurface>
 
       {/* Modal */}
       <div
