@@ -5,9 +5,10 @@ import toast from 'react-hot-toast'
 import { fmtCOP } from '@/lib/formatters'
 import { generateBarcode } from '@/lib/products'
 import { useResolvedConfig } from '@/hooks/useConfig'
+import { useSingleLabelPrint } from '@/hooks/useSingleLabelPrint'
 import { useVariantMutations } from '@/hooks/useVariantMutations'
 import LabelPrintSurface from '@/components/print/LabelPrintSurface'
-import { LABEL_PRINT_CLASS } from '@/lib/labelPrint'
+import { LABEL_PRINT_CLASS, labelsToPrint } from '@/lib/labelPrint'
 import { deriveLabelStyle, findLabelSize } from '@/lib/labelSizes'
 import type { LabelSize } from '@/types/config.types'
 import type { Variant } from '@/types/database.types'
@@ -163,6 +164,7 @@ export default function LabelPrintModal({
   onClose,
 }: LabelPrintModalProps) {
   const config = useResolvedConfig()
+  const { soloKey, printOne } = useSingleLabelPrint()
   // Tamaño activo: el predeterminado de la tienda. label_sizes nunca está vacío
   // (seeding en resolveConfig), por lo que el fallback al primero es seguro.
   const activeSize: LabelSize =
@@ -256,7 +258,7 @@ export default function LabelPrintModal({
       {/* Superficie de impresión compartida: portal a body + una etiqueta por
           página. SIN wrapper flex: un contenedor flex no fragmenta bien. */}
       <LabelPrintSurface containerId={PRINT_CONTAINER_ID} size={activeSize}>
-        {labelsToRender.map(({ variant, key }) => (
+        {labelsToPrint(labelsToRender, soloKey).map(({ variant, key }) => (
           <LabelCard
             key={key}
             variant={variant}
@@ -335,7 +337,8 @@ export default function LabelPrintModal({
                     </p>
                   </div>
                 </div>
-                <div className="flex h-8 items-center overflow-hidden rounded-lg border border-[#ebe9e6] bg-white">
+                <div className="flex items-center gap-2">
+                  <div className="flex h-8 items-center overflow-hidden rounded-lg border border-[#ebe9e6] bg-white">
                   <button
                     onClick={() => setQty(variant.id, -1)}
                     disabled={qty <= 1}
@@ -351,6 +354,21 @@ export default function LabelPrintModal({
                     className="flex h-full w-8 items-center justify-center text-[#737373] hover:bg-[#f8f7f5]"
                   >
                     <Plus size={11} />
+                  </button>
+                  </div>
+                  {/* Reimpresión puntual: UNA sola etiqueta de esta variante,
+                      sin volver a sacar la tanda ni alterar las cantidades. */}
+                  <button
+                    onClick={() => printOne(`${variant.id}-0`)}
+                    title={
+                      qty > 1
+                        ? `Imprimir 1 etiqueta de esta variante (de ${qty})`
+                        : 'Imprimir solo esta etiqueta'
+                    }
+                    aria-label="Imprimir 1 etiqueta de esta variante"
+                    className="flex h-8 w-8 items-center justify-center rounded-lg border border-[#ebe9e6] bg-white text-[#737373] transition-colors hover:border-violet-300 hover:bg-violet-50 hover:text-violet-700"
+                  >
+                    <Printer size={13} />
                   </button>
                 </div>
               </div>

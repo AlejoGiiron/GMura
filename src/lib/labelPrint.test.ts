@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildLabelPrintCss, LABEL_PRINT_CLASS } from './labelPrint'
+import { buildLabelPrintCss, LABEL_PRINT_CLASS, labelsToPrint } from './labelPrint'
 import type { LabelSize } from '@/types/config.types'
 
 /**
@@ -62,5 +62,38 @@ describe('buildLabelPrintCss', () => {
     const otro = soloReglas(buildLabelPrintCss('otro-id', size38))
     expect(otro).toContain('#otro-id')
     expect(otro).not.toContain('#mi-contenedor')
+  })
+})
+
+describe('labelsToPrint', () => {
+  // Una línea de 3 unidades son 3 etiquetas con la misma raíz de clave.
+  const tanda = [
+    { key: 'a-0' }, { key: 'a-1' }, { key: 'a-2' },
+    { key: 'b-0' },
+    { key: 'c-0' }, { key: 'c-1' },
+  ]
+
+  it('sin reimpresión puntual devuelve la tanda completa', () => {
+    expect(labelsToPrint(tanda, null)).toHaveLength(6)
+    expect(labelsToPrint(tanda, null)).toBe(tanda)
+  })
+
+  it('imprime UNA sola etiqueta aunque la línea tenga varias unidades', () => {
+    // El caso de uso es "se me arruinó una", no "reimprimí las 3".
+    const solo = labelsToPrint(tanda, 'a-0')
+    expect(solo).toHaveLength(1)
+    expect(solo[0].key).toBe('a-0')
+  })
+
+  it('no se lleva las hermanas de la misma línea', () => {
+    expect(labelsToPrint(tanda, 'c-0').map((l) => l.key)).toEqual(['c-0'])
+  })
+
+  it('una clave inexistente no imprime nada (mejor que imprimir la tanda)', () => {
+    expect(labelsToPrint(tanda, 'z-0')).toHaveLength(0)
+  })
+
+  it('la tanda vacía se mantiene vacía', () => {
+    expect(labelsToPrint([], null)).toHaveLength(0)
   })
 })

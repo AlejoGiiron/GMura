@@ -3,9 +3,10 @@ import JsBarcode from 'jsbarcode'
 import { X, Printer } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useResolvedConfig } from '@/hooks/useConfig'
+import { useSingleLabelPrint } from '@/hooks/useSingleLabelPrint'
 import { deriveLabelStyle, findLabelSize } from '@/lib/labelSizes'
 import LabelPrintSurface from '@/components/print/LabelPrintSurface'
-import { LABEL_PRINT_CLASS } from '@/lib/labelPrint'
+import { LABEL_PRINT_CLASS, labelsToPrint } from '@/lib/labelPrint'
 import { formatTransferMoney } from '@/lib/transfers'
 import type { LabelSize } from '@/types/config.types'
 
@@ -76,6 +77,7 @@ export default function TransferLabelsModal({
   onClose,
 }: TransferLabelsModalProps) {
   const config = useResolvedConfig()
+  const { soloKey, printOne } = useSingleLabelPrint()
   const size: LabelSize =
     findLabelSize(config.label_sizes, config.label_default_size_id) ?? config.label_sizes[0]
 
@@ -168,6 +170,20 @@ export default function TransferLabelsModal({
                   <span className="w-14 text-right font-mono text-[13px] font-semibold text-neutral-800">
                     ×{l.qty}
                   </span>
+                  {/* Reimpresión puntual: saca UNA sola etiqueta de esta línea.
+                      No toca el estado "impreso" del traslado. */}
+                  <button
+                    onClick={() => printOne(`${l.transferItemId}-0`)}
+                    title={
+                      l.qty > 1
+                        ? `Imprimir 1 etiqueta de esta línea (de ${l.qty})`
+                        : 'Imprimir solo esta etiqueta'
+                    }
+                    aria-label={`Imprimir 1 etiqueta de ${l.productName}`}
+                    className="flex-shrink-0 rounded-lg border border-stone-200 bg-white p-1.5 text-neutral-500 transition-colors hover:border-violet-300 hover:bg-violet-50 hover:text-violet-700"
+                  >
+                    <Printer size={14} />
+                  </button>
                 </li>
               ))}
             </ul>
@@ -197,7 +213,7 @@ export default function TransferLabelsModal({
       {/* Superficie de impresión compartida con el modal de productos: portal a
           body y UNA etiqueta por página. Sin wrapper flex a propósito. */}
       <LabelPrintSurface containerId={PRINT_CONTAINER_ID} size={size}>
-        {labels.map((l) => (
+        {labelsToPrint(labels, soloKey).map((l) => (
           <div
             key={l.key}
             className={LABEL_PRINT_CLASS}
