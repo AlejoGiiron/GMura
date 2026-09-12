@@ -68,3 +68,19 @@ export function buildLabelPrintCss(containerId: string, size: LabelSize): string
     }
   `
 }
+
+/**
+ * Qué etiquetas recibe la superficie de impresión: la tanda completa, o una
+ * sola cuando se pidió una reimpresión puntual desde una fila.
+ *
+ * Vive acá y no inline en cada modal por la misma razón que el CSS: dos copias
+ * de la misma regla es exactamente cómo el bug del position:fixed terminó
+ * viviendo en dos lugares.
+ */
+export function labelsToPrint<T extends { key: string }>(
+  todas: T[],
+  soloKey: string | null,
+): T[] {
+  if (soloKey === null) return todas
+  return todas.filter((l) => l.key === soloKey)
+}
