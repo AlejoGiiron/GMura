@@ -54,13 +54,19 @@ export function useReports({ from, to }: ReportsFilters) {
     staleTime: STALE_5_MIN,
   })
 
+  // Desempeño por variante DEL PERÍODO (RPC report_variant_performance, 044).
+  // Antes salía de la vista product_performance, que no tiene fecha: el Top 10 y
+  // la tabla mostraban el histórico completo aunque el filtro dijera "este mes".
+  // La RPC usa la misma definición de venta neta que los informes de
+  // planificación y devuelve las variantes ordenadas por unidades netas.
   const productPerformanceQuery = useQuery({
-    queryKey: ['reports', 'product-performance', storeId],
+    queryKey: ['reports', 'product-performance', storeId, fromDate, toDate],
     queryFn: async (): Promise<ProductPerformance[]> => {
-      const { data, error } = await supabase
-        .from('product_performance' as never)
-        .select('*')
-        .order('revenue' as never, { ascending: false })
+      const { data, error } = await supabase.rpc('report_variant_performance' as never, {
+        p_store_ids: [storeId],
+        p_from: fromDate,
+        p_to: toDate,
+      } as never)
 
       if (error) {
         toast.error('Error cargando desempeño de productos')

@@ -10,6 +10,7 @@ import InventoryPage from '@/pages/InventoryPage'
 import ReturnsPage from '@/pages/ReturnsPage'
 import CustomersPage from '@/pages/CustomersPage'
 import ReportsPage from '@/pages/ReportsPage'
+import PurchasePlanningPage from '@/pages/PurchasePlanningPage'
 import ConfigPage from '@/pages/ConfigPage'
 import CashShiftsHistoryPage from '@/pages/CashShiftsHistoryPage'
 import ExpenseHistoryPage from '@/pages/ExpenseHistoryPage'
@@ -100,6 +101,14 @@ export default function App() {
             element={
               <ProtectedRoute permission="reportes.ver">
                 <ReportsPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="planificacion"
+            element={
+              <ProtectedRoute permission="reportes.ver">
+                <PurchasePlanningPage />
               </ProtectedRoute>
             }
           />

@@ -357,11 +357,18 @@ export default function ReportsPage() {
       .filter((d) => d.value > 0)
   }, [dailySales])
 
+  // Ranking por unidades NETAS del período (vendidas − devueltas). La RPC ya
+  // las devuelve ordenadas así; se descartan las que quedaron en 0 o negativo
+  // (una variante con más devoluciones que ventas no es "de las más vendidas").
   const topProductsData = useMemo((): TopProductRow[] =>
-    productPerformance.slice(0, 10).map((p) => ({
-      name:  [p.product_name, p.size && `T.${p.size}`, p.color].filter(Boolean).join(' '),
-      units: p.units_sold,
-    })).reverse(),
+    productPerformance
+      .filter((p) => p.net_units > 0)
+      .slice(0, 10)
+      .map((p) => ({
+        name:  [p.product_name, p.size && `T.${p.size}`, p.color].filter(Boolean).join(' '),
+        units: p.net_units,
+      }))
+      .reverse(),
     [productPerformance],
   )
 
@@ -823,7 +830,7 @@ export default function ReportsPage() {
         {/* ── Row 2: Top products + Returns ───────────────────────────────── */}
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
 
-          <SectionCard title="Top 10 variantes más vendidas">
+          <SectionCard title="Top 10 variantes más vendidas" subtitle="Unidades netas del período (vendidas − devueltas)">
             {isLoading ? (
               <SkeletonChart height={320} />
             ) : topProductsData.length === 0 ? (
@@ -835,7 +842,7 @@ export default function ReportsPage() {
                   <XAxis type="number" tick={{ fontSize: 11, fill: '#a8a29e' }} axisLine={false} tickLine={false} />
                   <YAxis type="category" dataKey="name" width={150} tick={{ fontSize: 11, fill: '#525252' }} axisLine={false} tickLine={false} />
                   <Tooltip
-                    formatter={(v) => [Number(v ?? 0), 'Unidades']}
+                    formatter={(v) => [Number(v ?? 0), 'Unidades netas']}
                     contentStyle={{ border: '1px solid #ebe9e6', borderRadius: 12, fontSize: 12 }}
                   />
                   <Bar dataKey="units" name="Unidades" fill="#8b5cf6" radius={[0,4,4,0]} />

@@ -22,6 +22,7 @@ import {
   Truck,
   Building2,
   HandCoins,
+  ClipboardList,
 } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import { usePermissions } from '@/hooks/usePermissions'
@@ -130,6 +131,7 @@ const NAV_GROUPS: NavGroup[] = [
     icon: BarChart3,
     items: [
       { label: 'Reportes', path: '/reportes', icon: BarChart2, permission: 'reportes.ver' },
+      { label: 'Planificación de compras', path: '/planificacion', icon: ClipboardList, permission: 'reportes.ver' },
       { label: 'Historial de caja', path: '/caja/historial', icon: Wallet, permission: 'reportes.ver' },
       { label: 'Historial de gastos', path: '/gastos/historial', icon: Receipt, permission: 'gastos.ver' },
       { label: 'Configuración', path: '/configuracion', icon: Settings, permission: 'config.gestionar' },

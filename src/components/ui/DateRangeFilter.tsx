@@ -16,6 +16,8 @@ const PRESET_LABELS: Record<DateRangePreset, string> = {
   today: 'Hoy',
   yesterday: 'Ayer',
   last7: 'Últimos 7 días',
+  last30: 'Últimos 30 días',
+  last90: 'Últimos 90 días',
   month: 'Este mes',
   'prev-month': 'Mes anterior',
   custom: 'Personalizado',
