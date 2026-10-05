@@ -645,6 +645,18 @@ Fixes de lógica financiera (test/financial-coverage) ✅
 - 50 tests (4 archivos): src/lib/shiftCalc.test.ts, src/lib/returnCalc.test.ts,
   src/lib/layawayCalc.test.ts, src/stores/cartStore.test.ts
 
+## Laboratorio (Supabase local)
+- Ciclo completo en scripts/LAB.md (lab-restore.sh → lab-apply-migration.sh).
+  Imagen fijada en supabase/.temp/postgres-version (17.6.1.166, supautils 3.4.0;
+  la 17.6.1.111 tenía un bug de supautils que hacía segfault al llamar una
+  función sin EXECUTE — era solo del lab, prod ya corre la 3.4.0).
+- **Después de lab-restore.sh los permisos de FUNCIONES no son los de prod.**
+  El dump es --no-acl y el script re-otorga los GRANT estándar de Supabase, así
+  que los REVOKE de las migraciones se pierden (p. ej. anon queda con EXECUTE
+  sobre search_transfer_targets, que en prod está revocada). Para probar
+  permisos hay que VOLVER A APLICAR en el lab las migraciones que los definen
+  (lab-apply-migration.sh), y recién ahí verificar.
+
 Refactor de calidad (refactor/quality-cleanup) ✅
   - Lint sin deuda: AuthContext (catch sin binding, directiva eslint-disable
     sobrante, contexto movido a src/contexts/auth-context.ts para react-refresh),
