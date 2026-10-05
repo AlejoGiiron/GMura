@@ -11,6 +11,8 @@ export type DateRangePreset =
   | 'today'
   | 'yesterday'
   | 'last7'
+  | 'last30'
+  | 'last90'
   | 'month'
   | 'prev-month'
   | 'custom'
@@ -85,6 +87,11 @@ export function resolveDateRange(
     case 'last7':
       // 7 días incluyendo hoy → [hoy-6, hoy].
       return { dateFrom: addDays(today, -6), dateTo: today }
+    case 'last30':
+      return { dateFrom: addDays(today, -29), dateTo: today }
+    case 'last90':
+      // Ventana de planificación de compras: 90 días incluyendo hoy.
+      return { dateFrom: addDays(today, -89), dateTo: today }
     case 'month':
       return { dateFrom: firstDayOfMonth(today), dateTo: today }
     case 'prev-month': {

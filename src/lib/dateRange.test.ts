@@ -44,6 +44,20 @@ describe('resolveDateRange', () => {
     })
   })
 
+  it('last30: [hoy-29, hoy] (30 días incluyendo hoy)', () => {
+    expect(resolveDateRange('last30', now)).toEqual({
+      dateFrom: '2026-02-12',
+      dateTo: '2026-03-13',
+    })
+  })
+
+  it('last90: [hoy-89, hoy] (90 días incluyendo hoy, cruza meses)', () => {
+    expect(resolveDateRange('last90', now)).toEqual({
+      dateFrom: '2025-12-14',
+      dateTo: '2026-03-13',
+    })
+  })
+
   it('month: [primer día del mes, hoy]', () => {
     expect(resolveDateRange('month', now)).toEqual({
       dateFrom: '2026-03-01',
