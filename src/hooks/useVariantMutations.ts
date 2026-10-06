@@ -17,12 +17,16 @@ type CreateVariantInput = {
   min_stock: number
 }
 
+// Sin stock_qty a propósito: el stock no se edita, se AJUSTA con registro
+// (useAdjustStock → RPC adjust_variant_stock, 045). Mandarlo en una edición
+// pisaba las ventas hechas con el formulario abierto, y desde la 045 la base
+// lo rechaza si cambia.
 type UpdateVariantInput = {
   id: string
 } & Partial<
   Pick<
     Variant,
-    'size' | 'color' | 'sku' | 'barcode' | 'price' | 'cost_price' | 'stock_qty' | 'min_stock' | 'is_active'
+    'size' | 'color' | 'sku' | 'barcode' | 'price' | 'cost_price' | 'min_stock' | 'is_active'
   >
 >
 

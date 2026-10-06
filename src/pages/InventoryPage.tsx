@@ -16,7 +16,7 @@ import toast from 'react-hot-toast'
 import { format } from 'date-fns'
 import { useStockLevels, useStockMovements, useStoreProfiles, MOV_PAGE_SIZE } from '@/hooks/useInventory'
 import type { MovementFilters, VariantRow } from '@/hooks/useInventory'
-import { useInventoryMutations } from '@/hooks/useInventoryMutations'
+import StockAdjustDialog from '@/components/inventory/StockAdjustDialog'
 import { usePermissions } from '@/hooks/usePermissions'
 import { useCategories } from '@/hooks/useProducts'
 import { useDebounce } from '@/hooks/useDebounce'
@@ -145,13 +145,9 @@ function SummaryCard({ label, value, icon: Icon, tone = 'normal', mono }: Summar
 }
 
 // ─── Adjust Modal ─────────────────────────────────────────────────────────────
-
-const ADJUST_TYPES = [
-  'Ingreso de mercancía',
-  'Ajuste por conteo',
-  'Merma',
-  'Otro',
-] as const
+// Elegir la variante (escáner o búsqueda) y ajustar con el diálogo compartido
+// StockAdjustDialog → RPC adjust_variant_stock (045): una sola operación que
+// cambia el stock y registra el movimiento con usuario y motivo.
 
 interface AdjustModalProps {
   open: boolean
@@ -161,19 +157,14 @@ interface AdjustModalProps {
 function AdjustModal({ open, onClose }: AdjustModalProps) {
   const [variantSearch, setVariantSearch] = useState('')
   const [selectedVariant, setSelectedVariant] = useState<VariantRow | null>(null)
-  const [tipo, setTipo] = useState<string>('Ingreso de mercancía')
-  const [qty, setQty] = useState<string>('')
-  const [motivo, setMotivo] = useState('')
 
   const debouncedSearch = useDebounce(variantSearch)
   const { data: allVariants = [] } = useStockLevels()
-  const { adjustStock } = useInventoryMutations()
 
   const searchInputRef = useRef<HTMLInputElement>(null)
-  const qtyInputRef = useRef<HTMLInputElement>(null)
 
-  // Escaneo: busca la variante por barcode exacto, la selecciona y salta a la
-  // cantidad. El lector "teclea" el código + Enter (ver useBarcode).
+  // Escaneo: busca la variante por barcode exacto y la selecciona. El lector
+  // "teclea" el código + Enter (ver useBarcode).
   const handleScan = useCallback(
     (code: string) => {
       const match = findByBarcode(allVariants, code)
@@ -202,11 +193,9 @@ function AdjustModal({ open, onClose }: AdjustModalProps) {
     }
   }
 
-  // Foco listo sin clickear: al seleccionar variante saltar a la cantidad; al
-  // limpiar la selección volver al buscador para seguir escaneando.
+  // Al volver a la búsqueda (o abrir), foco en el buscador para seguir escaneando.
   useEffect(() => {
-    if (selectedVariant) qtyInputRef.current?.focus()
-    else if (open) searchInputRef.current?.focus()
+    if (open && !selectedVariant) searchInputRef.current?.focus()
   }, [selectedVariant, open])
 
   const searchResults = useMemo(() => {
@@ -222,37 +211,30 @@ function AdjustModal({ open, onClose }: AdjustModalProps) {
       .slice(0, 8)
   }, [allVariants, debouncedSearch])
 
-  function reset() {
+  function handleClose() {
     setVariantSearch('')
     setSelectedVariant(null)
-    setTipo('Ingreso de mercancía')
-    setQty('')
-    setMotivo('')
-  }
-
-  function handleClose() {
-    reset()
     onClose()
-  }
-
-  function handleSubmit() {
-    if (!selectedVariant || !motivo.trim()) return
-    const qtyNum = Number(qty)
-    if (qtyNum === 0) return
-
-    const notes = tipo !== 'Otro' ? `[${tipo}] ${motivo.trim()}` : motivo.trim()
-
-    adjustStock.mutate(
-      { variantId: selectedVariant.id, qty: qtyNum, type: 'adjustment', notes },
-      { onSuccess: handleClose },
-    )
   }
 
   if (!open) return null
 
-  const qtyNum = Number(qty)
-  const canSubmit =
-    !!selectedVariant && motivo.trim().length > 0 && qty !== '' && qtyNum !== 0
+  if (selectedVariant) {
+    return (
+      <StockAdjustDialog
+        variant={{
+          id: selectedVariant.id,
+          productName: selectedVariant.products.name,
+          size: selectedVariant.size,
+          color: selectedVariant.color,
+          stock_qty: selectedVariant.stock_qty,
+          reserved_qty: selectedVariant.reserved_qty ?? 0,
+        }}
+        onClose={handleClose}
+        onChangeVariant={() => setSelectedVariant(null)}
+      />
+    )
+  }
 
   return (
     <div
@@ -261,7 +243,7 @@ function AdjustModal({ open, onClose }: AdjustModalProps) {
       onClick={handleClose}
     >
       <div
-        className="max-h-[90vh] w-[540px] overflow-auto rounded-[14px] bg-white shadow-[0_20px_60px_rgba(0,0,0,0.3)]"
+        className="max-h-[90vh] w-[540px] max-w-[calc(100vw-32px)] overflow-auto rounded-[14px] bg-white shadow-[0_20px_60px_rgba(0,0,0,0.3)]"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -276,10 +258,10 @@ function AdjustModal({ open, onClose }: AdjustModalProps) {
                 color: '#1a1a1a',
               }}
             >
-              Ajuste manual de stock
+              Ajustar stock
             </h2>
             <p className="mt-0.5 text-[13px] text-[#737373]">
-              Registra una entrada, salida o corrección de inventario.
+              Escanea o busca la prenda que quieres ajustar.
             </p>
           </div>
           <button
@@ -290,179 +272,49 @@ function AdjustModal({ open, onClose }: AdjustModalProps) {
           </button>
         </div>
 
-        <div className="space-y-5 px-7 py-6">
-          {/* Variant search / selected card */}
-          {!selectedVariant ? (
-            <div>
-              <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[.05em] text-[#737373]">
-                Buscar variante
-              </label>
-              <div className="relative">
-                <ScanLine size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-violet-500" />
-                <input
-                  ref={searchInputRef}
-                  autoFocus
-                  className="h-10 w-full rounded-lg border border-[#ebe9e6] bg-white pl-9 pr-3 text-sm outline-none transition-[border-color,box-shadow] focus:border-[#8b5cf6] focus:shadow-[0_0_0_4px_#8b5cf61a]"
-                  placeholder="Escanea o busca por nombre, SKU o código…"
-                  value={variantSearch}
-                  onChange={(e) => setVariantSearch(e.target.value)}
-                  onKeyDown={handleSearchKeyDown}
-                />
-              </div>
-              {searchResults.length > 0 && (
-                <div className="mt-1.5 max-h-52 overflow-y-auto rounded-lg border border-[#ebe9e6] bg-white shadow-sm">
-                  {searchResults.map((v) => (
-                    <button
-                      key={v.id}
-                      onClick={() => {
-                        setSelectedVariant(v)
-                        setVariantSearch('')
-                      }}
-                      className="flex w-full items-center gap-3 border-b border-[#f5f4f1] px-4 py-3 text-left last:border-0 hover:bg-[#f8f7f5]"
-                    >
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-medium text-[#1a1a1a]">
-                          {v.products.name}
-                        </p>
-                        <p className="text-xs text-[#737373]">
-                          {[v.size && `T.${v.size}`, v.color].filter(Boolean).join(' · ')}
-                          {v.sku ? ` · ${v.sku}` : ''}
-                        </p>
-                      </div>
-                      <span className="shrink-0 font-mono text-xs text-[#525252]">
-                        {v.stock_qty} uds
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          ) : (
-            /* Selected variant card */
-            <div className="flex items-center justify-between rounded-xl border border-[#ebe9e6] bg-[#f8f7f5] px-4 py-3">
-              <div className="flex items-center gap-3">
-                {selectedVariant.color && (
-                  <span
-                    className="h-5 w-5 shrink-0 rounded-full"
-                    style={{
-                      background: getColorHex(selectedVariant.color),
-                      boxShadow: '0 0 0 1.5px #d6d3d1',
-                    }}
-                  />
-                )}
-                <div>
-                  <p className="text-sm font-semibold text-[#1a1a1a]">
-                    {selectedVariant.products.name}
-                  </p>
-                  <p className="text-xs text-[#737373]">
-                    {[
-                      selectedVariant.size && `Talla ${selectedVariant.size}`,
-                      selectedVariant.color,
-                    ]
-                      .filter(Boolean)
-                      .join(' · ')}
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-center gap-3">
-                <div className="text-right">
-                  <p className="text-[10px] uppercase tracking-[.05em] text-[#a8a29e]">
-                    Stock actual
-                  </p>
-                  <p
-                    className="text-[28px] font-bold tabular-nums leading-none"
-                    style={{ fontFamily: 'Bricolage Grotesque, sans-serif', color: '#1a1a1a' }}
-                  >
-                    {selectedVariant.stock_qty}
-                  </p>
-                </div>
+        <div className="px-7 py-6">
+          <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[.05em] text-[#737373]">
+            Buscar variante
+          </label>
+          <div className="relative">
+            <ScanLine size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-violet-500" />
+            <input
+              ref={searchInputRef}
+              autoFocus
+              className="h-10 w-full rounded-lg border border-[#ebe9e6] bg-white pl-9 pr-3 text-sm outline-none transition-[border-color,box-shadow] focus:border-[#8b5cf6] focus:shadow-[0_0_0_4px_#8b5cf61a]"
+              placeholder="Escanea o busca por nombre, SKU o código…"
+              value={variantSearch}
+              onChange={(e) => setVariantSearch(e.target.value)}
+              onKeyDown={handleSearchKeyDown}
+            />
+          </div>
+          {searchResults.length > 0 && (
+            <div className="mt-1.5 max-h-52 overflow-y-auto rounded-lg border border-[#ebe9e6] bg-white shadow-sm">
+              {searchResults.map((v) => (
                 <button
-                  onClick={() => setSelectedVariant(null)}
-                  className="flex h-7 w-7 items-center justify-center rounded-[7px] border border-[#ebe9e6] bg-white hover:bg-[#f5f4f1]"
+                  key={v.id}
+                  onClick={() => {
+                    setSelectedVariant(v)
+                    setVariantSearch('')
+                  }}
+                  className="flex w-full items-center gap-3 border-b border-[#f5f4f1] px-4 py-3 text-left last:border-0 hover:bg-[#f8f7f5]"
                 >
-                  <X size={12} className="text-[#525252]" />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium text-[#1a1a1a]">
+                      {v.products.name}
+                    </p>
+                    <p className="text-xs text-[#737373]">
+                      {[v.size && `T.${v.size}`, v.color].filter(Boolean).join(' · ')}
+                      {v.sku ? ` · ${v.sku}` : ''}
+                    </p>
+                  </div>
+                  <span className="shrink-0 font-mono text-xs text-[#525252]">
+                    {v.stock_qty} uds
+                  </span>
                 </button>
-              </div>
+              ))}
             </div>
           )}
-
-          {/* Tipo */}
-          <div>
-            <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[.05em] text-[#737373]">
-              Tipo de ajuste
-            </label>
-            <select
-              className="h-10 w-full appearance-none rounded-lg border border-[#ebe9e6] bg-white px-3 pr-8 text-sm outline-none transition-[border-color,box-shadow] focus:border-[#8b5cf6] focus:shadow-[0_0_0_4px_#8b5cf61a]"
-              value={tipo}
-              onChange={(e) => setTipo(e.target.value)}
-            >
-              {ADJUST_TYPES.map((t) => (
-                <option key={t}>{t}</option>
-              ))}
-            </select>
-          </div>
-
-          {/* Cantidad */}
-          <div>
-            <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[.05em] text-[#737373]">
-              Cantidad{' '}
-              <span className="font-normal normal-case text-[#a8a29e]">
-                (positivo = entrada · negativo = salida)
-              </span>
-            </label>
-            <input
-              ref={qtyInputRef}
-              type="number"
-              className="h-10 w-full rounded-lg border border-[#ebe9e6] bg-white px-3 font-mono text-sm outline-none transition-[border-color,box-shadow] focus:border-[#8b5cf6] focus:shadow-[0_0_0_4px_#8b5cf61a]"
-              placeholder="Ej: 10 o -5"
-              value={qty}
-              onChange={(e) => setQty(e.target.value)}
-            />
-            {selectedVariant && qty !== '' && qtyNum !== 0 && (
-              <p className="mt-1.5 text-xs text-[#737373]">
-                Stock resultante:{' '}
-                <span
-                  className="font-mono font-semibold"
-                  style={{
-                    color: selectedVariant.stock_qty + qtyNum < 0 ? '#dc2626' : '#059669',
-                  }}
-                >
-                  {selectedVariant.stock_qty + qtyNum}
-                </span>
-              </p>
-            )}
-          </div>
-
-          {/* Motivo */}
-          <div>
-            <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[.05em] text-[#737373]">
-              Motivo <span className="font-bold text-red-400">*</span>
-            </label>
-            <textarea
-              className="w-full resize-y rounded-lg border border-[#ebe9e6] bg-white px-3 py-2.5 text-sm outline-none transition-[border-color,box-shadow] focus:border-[#8b5cf6] focus:shadow-[0_0_0_4px_#8b5cf61a]"
-              rows={3}
-              placeholder="Describe el motivo del ajuste..."
-              value={motivo}
-              onChange={(e) => setMotivo(e.target.value)}
-            />
-          </div>
-        </div>
-
-        {/* Footer */}
-        <div className="flex gap-3 border-t border-[#f5f4f1] px-7 py-5">
-          <button
-            onClick={handleClose}
-            className="h-10 flex-1 rounded-lg border border-[#ebe9e6] bg-white text-sm font-medium text-[#525252] hover:bg-[#f8f7f5]"
-          >
-            Cancelar
-          </button>
-          <button
-            onClick={handleSubmit}
-            disabled={!canSubmit || adjustStock.isPending}
-            className="h-10 flex-1 rounded-lg bg-[#8b5cf6] text-sm font-semibold text-white shadow-[0_4px_12px_#8b5cf640] hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {adjustStock.isPending ? 'Guardando…' : 'Confirmar ajuste'}
-          </button>
         </div>
       </div>
     </div>
