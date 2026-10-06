@@ -40,6 +40,14 @@ códigos de barras, devoluciones y CRM de clientes.
 - Queries de Supabase solo en hooks, nunca en componentes
 - Canales Realtime con nombre único:
   supabase.channel("nombre-${Math.random().toString(36).slice(2)}")
+- **El stock solo cambia con registro (045).** variants.stock_qty y
+  reserved_qty NO se escriben desde el cliente: el trigger guard_variant_stock
+  lo rechaza. Ajuste manual = RPC adjust_variant_stock (delta + motivo,
+  StockAdjustDialog / useAdjustStock). Nunca mandar stock_qty en un update de
+  variante. Toda función NUEVA que mueva stock tiene que ser SECURITY DEFINER
+  del dueño de la tabla (postgres) Y registrar su stock_movement; si no, el
+  guardián la frena. La autoverificación de la 045 lista las funciones
+  revisadas: agregar ahí cualquier camino nuevo.
 
 ## RBAC / permisos por rol (multi-org)
 - Fuente única de verdad de los permisos de los roles base:
