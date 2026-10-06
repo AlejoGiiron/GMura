@@ -37,3 +37,4 @@ fase que toque la base de datos (especialmente la migración a multi-tenancy).
 | 2026-08-28 13:49 | `pre-043-transfer-shipping` | `gmura_20260828_1348_pre-043-transfer-shipping.dump` | 807KB | `2db9ee07ea70` |
 | 2026-10-05 17:56 | `pre-lab-refresh` | `gmura_20261005_1755_pre-lab-refresh.dump` | 967KB | `c22b4692f45c` |
 | 2026-10-05 18:38 | `pre-044-purchase-planning` | `gmura_20261005_1837_pre-044-purchase-planning.dump` | 1.1MB | `ef91dc33baca` |
+| 2026-10-06 11:48 | `pre-045-stock-audited` | `gmura_20261006_1147_pre-045-stock-audited.dump` | 1.1MB | `81e9b6501a4a` |

@@ -1,8 +1,10 @@
 import { useMemo, useState } from 'react'
-import { X, Plus, AlertTriangle, Edit2, ToggleRight, Printer } from 'lucide-react'
+import { X, Plus, AlertTriangle, Edit2, ToggleRight, Printer, SlidersHorizontal } from 'lucide-react'
 import { useVariants } from '@/hooks/useVariants'
 import { useVariantMutations } from '@/hooks/useVariantMutations'
 import LabelPrintModal from '@/components/products/LabelPrintModal'
+import StockAdjustDialog from '@/components/inventory/StockAdjustDialog'
+import { usePermissions } from '@/hooks/usePermissions'
 import { fmtCOP } from '@/lib/formatters'
 import { generateBarcode, getColorHex } from '@/lib/products'
 import { useResolvedConfig } from '@/hooks/useConfig'
@@ -69,6 +71,11 @@ export default function VariantsPanel({
   const { data: variants = [], isLoading } = useVariants(product.id)
   const { create, update, toggleActive } = useVariantMutations(product.id)
   const sizeTypes = useResolvedConfig().size_types
+  // El stock solo cambia con registro (045): ajustarlo, o cargar stock inicial
+  // al crear, exige inventario.gestionar. Sin él la variante nace en 0.
+  const { can } = usePermissions()
+  const canAdjustStock = can('inventario.gestionar')
+  const [adjusting, setAdjusting] = useState<Variant | null>(null)
 
   const catalogSizes = useMemo<readonly string[]>(
     () => findSizeType(sizeTypes, product.size_type)?.sizes ?? [],
@@ -96,6 +103,10 @@ export default function VariantsPanel({
     }
     return catalogSizes
   }, [catalogSizes, isCustomSizes, form.size])
+
+  // La variante en edición, tal como está HOY en la base (se refresca tras un
+  // ajuste): el stock que se muestra no sale del formulario.
+  const editingVariant = editingId ? variants.find((v) => v.id === editingId) ?? null : null
 
   function openAdd() {
     setEditingId(null)
@@ -130,7 +141,9 @@ export default function VariantsPanel({
       const costPrice = form.cost_price.trim() !== '' ? parseFloat(form.cost_price) : null
       // En el flujo de compra la variante nace en 0: el stock lo carga la
       // factura al confirmarse. Defensa en profundidad además de ocultar el input.
-      const stockQty = isPurchase ? 0 : parseInt(form.stock_qty) || 0
+      // Sin inventario.gestionar también nace en 0 (la base lo rechazaría).
+      // Solo se usa al CREAR: editar nunca manda stock_qty (ver abajo).
+      const stockQty = isPurchase || !canAdjustStock ? 0 : parseInt(form.stock_qty) || 0
       const minStock = parseInt(form.min_stock) || 0
 
       if (editingId) {
@@ -142,7 +155,9 @@ export default function VariantsPanel({
           ...(barcode !== null && { barcode }),
           price,
           cost_price: costPrice,
-          stock_qty: stockQty,
+          // SIN stock_qty, a propósito: mandarlo pisaba las ventas hechas con el
+          // formulario abierto ("des-vendía" la prenda). El stock se cambia con
+          // "Ajustar stock" (RPC adjust_variant_stock, 045).
           min_stock: minStock,
         })
         toast.success('Variante actualizada')
@@ -346,6 +361,36 @@ export default function VariantsPanel({
                       <div className="flex items-center rounded-lg border border-violet-100 bg-violet-50 px-3 text-[12px] leading-snug text-violet-700">
                         El stock lo carga esta compra al confirmar la factura.
                       </div>
+                    ) : editingVariant ? (
+                      <div>
+                        <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                          Stock
+                        </label>
+                        <div className="flex h-9 items-center justify-between rounded-lg border border-slate-200 bg-slate-50 pl-2.5 pr-1">
+                          <span className="font-mono text-sm font-semibold text-slate-700">
+                            {editingVariant.stock_qty}
+                            {editingVariant.reserved_qty > 0 && (
+                              <span className="ml-1.5 font-sans text-[11px] font-medium text-violet-600">
+                                ({editingVariant.reserved_qty} apartadas)
+                              </span>
+                            )}
+                          </span>
+                          {canAdjustStock && (
+                            <button
+                              type="button"
+                              onClick={() => setAdjusting(editingVariant)}
+                              className="flex h-7 items-center gap-1 rounded-md px-2 text-[12px] font-semibold text-violet-600 hover:bg-violet-50"
+                            >
+                              <SlidersHorizontal size={12} />
+                              Ajustar stock
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    ) : !canAdjustStock ? (
+                      <div className="flex items-center rounded-lg border border-slate-200 bg-slate-50 px-3 text-[12px] leading-snug text-slate-500">
+                        Nace en 0: cargar stock requiere permiso de inventario.
+                      </div>
                     ) : (
                       <div>
                         <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-slate-400">
@@ -524,6 +569,15 @@ export default function VariantsPanel({
                               >
                                 <Printer size={12} />
                               </button>
+                              {canAdjustStock && !isPurchase && (
+                                <button
+                                  onClick={() => setAdjusting(v)}
+                                  title="Ajustar stock"
+                                  className="grid h-7 w-7 place-items-center rounded-md border border-slate-200 text-slate-400 hover:bg-slate-50 hover:text-violet-500"
+                                >
+                                  <SlidersHorizontal size={12} />
+                                </button>
+                              )}
                               <button
                                 onClick={() => openEdit(v)}
                                 title="Editar variante"
@@ -602,6 +656,20 @@ export default function VariantsPanel({
       </div>
 
       {/* Label print modal */}
+      {adjusting && (
+        <StockAdjustDialog
+          variant={{
+            id: adjusting.id,
+            productName: product.name,
+            size: adjusting.size,
+            color: adjusting.color,
+            stock_qty: adjusting.stock_qty,
+            reserved_qty: adjusting.reserved_qty ?? 0,
+          }}
+          onClose={() => setAdjusting(null)}
+        />
+      )}
+
       {labelVariants && (
         <LabelPrintModal
           productName={product.name}
